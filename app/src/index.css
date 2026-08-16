@@ -1,0 +1,42 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ardoise-50: #f4f6f8;
+  --color-ardoise-100: #e6eaef;
+  --color-ardoise-200: #cbd4de;
+  --color-ardoise-300: #a3b2c2;
+  --color-ardoise-400: #7389a1;
+  --color-ardoise-500: #526d86;
+  --color-ardoise-600: #40566d;
+  --color-ardoise-700: #354659;
+  --color-ardoise-800: #2e3c4b;
+  --color-ardoise-900: #1f2a35;
+  --color-ardoise-950: #141c24;
+
+  --color-mer-500: #0f7d8c;
+  --color-mer-600: #0c6675;
+  --color-mer-700: #0a5260;
+}
+
+html {
+  /* Évite le zoom automatique iOS sur les champs de saisie tactiles. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-ardoise-50);
+  color: var(--color-ardoise-900);
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* Chiffres alignés dans les tableaux d'exploitation. */
+.tabulaire {
+  font-variant-numeric: tabular-nums;
+}
+
+@media print {
+  .sans-impression {
+    display: none !important;
+  }
+}
