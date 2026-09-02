@@ -201,7 +201,7 @@ EMPLACEMENTS = [
     ("OCEAMIC 1", "EXTERNE", "Site externe"),
 ]
 
-ENUM_TYPEOP = '"RECEPTION,TRANSFERT,CONSOMMATION"'
+ENUM_TYPEOP = '"RECEPTION,TRANSFERT,CONSOMMATION,AJUSTEMENT"'
 ENUM_SRCST = '"FOURNISSEUR,STOCK EXISTANT"'
 
 
@@ -250,7 +250,8 @@ def build_param(wb):
     # --- valeurs figees (documentation) ---------------------------------
     section(ws, 48, "VALEURS FIGEES PAR LA LOGIQUE METIER  (non modifiables)",
             27)
-    figees = [("TYPE D'OPERATION", "RECEPTION / TRANSFERT / CONSOMMATION"),
+    figees = [("TYPE D'OPERATION",
+               "RECEPTION / TRANSFERT / CONSOMMATION / AJUSTEMENT"),
               ("CLASSE DE STOCK", "INTERNE / EXTERNE  (aucune autre valeur)"),
               ("SOURCE SOUS-TRAITANCE", "FOURNISSEUR / STOCK EXISTANT"),
               ("STATUTS", "OK / EN COURS / DONNEES MANQUANTES / STOCK "
@@ -294,6 +295,8 @@ def add_names(wb):
         N(name, "OFFSET(%s,0,0,MAX(1,COUNTA(%s)),1)" % (anchor, counta_range))
 
     N("EMPL_KEY", "PARAM!$B$6:$B$%d" % (5 + N_EMPL))
+    N("L_PRODUIT_R", "PARAM!$F$6:$F$%d" % (5 + N_LIST))
+    N("L_ETAT_R", "PARAM!$L$6:$L$%d" % (5 + N_LIST))
     N("EMPL_CLASSE", "PARAM!$C$6:$C$%d" % (5 + N_EMPL))
     dyn("L_EMPL", "PARAM!$B$6", "PARAM!$B$6:$B$%d" % (5 + N_EMPL))
     for letter, label, name, values in LISTS:
@@ -305,125 +308,146 @@ def add_names(wb):
         N(name, "PARAM!$C$%d" % (55 + i))
 
     L1, L2 = FIRST, FIRST + N_LOTS - 1
-    for name, col in [("LOT_KEY", "A"), ("LOT_PROD", "B"), ("LOT_FOURN", "C"),
-                      ("LOT_ORIG", "D"), ("LOT_IMMAT", "E"), ("LOT_ETAT", "F"),
-                      ("LOT_CONSERV", "G"), ("LOT_QUAL", "H"),
-                      ("LOT_MOULE", "I"), ("LOT_DATE", "J"),
-                      ("LOT_PARENT", "K"), ("LOT_OBS", "L"),
-                      ("LOT_PARENTE", "M"), ("LOT_PRODE", "N"),
-                      ("LOT_FOURNE", "O"), ("LOT_ORIGE", "P"),
-                      ("LOT_CONSERVE", "Q"), ("LOT_STATUT", "U")]:
+    for name, col in [("LOT_KEY", "A"), ("LOT_EXT", "B"), ("LOT_PROD", "C"),
+                      ("LOT_FOURN", "D"), ("LOT_ORIG", "E"),
+                      ("LOT_IMMAT", "F"), ("LOT_ETAT", "G"),
+                      ("LOT_CONSERV", "H"), ("LOT_QUAL", "I"),
+                      ("LOT_MOULE", "J"), ("LOT_DATE", "K"),
+                      ("LOT_PARENT", "L"), ("LOT_OBS", "M"),
+                      ("LOT_PARENTE", "N"), ("LOT_EXTE", "O"),
+                      ("LOT_PRODE", "P"), ("LOT_FOURNE", "Q"),
+                      ("LOT_ORIGE", "R"), ("LOT_CONSERVE", "S"),
+                      ("LOT_IMMATE", "T"), ("LOT_STOCK", "U"),
+                      ("LOT_DECISION", "X"), ("LOT_STATUT", "Y"),
+                      ("LOT_RANGEXT", "AA")]:
         N(name, "LOTS!${0}${1}:${0}${2}".format(col, L1, L2))
     dyn("L_LOTS", "LOTS!$A$%d" % L1, "LOTS!$A$%d:$A$%d" % (L1, L2))
 
     O1, O2 = FIRST, FIRST + N_OPS - 1
     for name, col in [("OPS_ID", "A"), ("OPS_TYPE", "C"), ("OPS_LOT", "D"),
-                      ("OPS_STATUT", "P")]:
+                      ("OPS_STATUT", "Q")]:
         N(name, "OPERATIONS!${0}${1}:${0}${2}".format(col, O1, O2))
 
     S1, S2 = FIRST, FIRST + N_ST - 1
     for name, col in [("ST_ID", "A"), ("ST_DATE", "B"), ("ST_DATERET", "K"), ("ST_LOT", "E"),
-                      ("ST_STRAIT", "C"), ("ST_QTE", "G"), ("ST_STATUT", "W"),
-                      ("ST_ENCOURS", "Z"), ("ST_RANG", "AB"),
-                      ("ST_ECART", "U"), ("ST_TOTSORTIE", "S"),
-                      ("ST_SOURCE", "D"), ("ST_EMPL", "F"), ("ST_NBRES", "T")]:
+                      ("ST_STRAIT", "C"), ("ST_QTE", "G"), ("ST_STATUT", "X"),
+                      ("ST_ENCOURS", "AA"), ("ST_RANG", "AC"),
+                      ("ST_ECART", "V"), ("ST_TOTSORTIE", "T"),
+                      ("ST_SOURCE", "D"), ("ST_EMPL", "F"), ("ST_NBRES", "U")]:
         N(name, "SOUS_TRAITANCE!${0}${1}:${0}${2}".format(col, S1, S2))
     dyn("L_IDST", "SOUS_TRAITANCE!$A$%d" % S1,
         "SOUS_TRAITANCE!$D$%d:$D$%d" % (S1, S2))
 
     R1, R2 = FIRST, FIRST + N_RES - 1
-    for name, col in [("RES_ID", "A"), ("RES_IDST", "B"), ("RES_DATE", "V"),
+    for name, col in [("RES_ID", "A"), ("RES_IDST", "B"), ("RES_DATE", "W"),
                       ("RES_ETAT", "D"), ("RES_QTE", "F"), ("RES_QUAL", "G"),
                       ("RES_MOULE", "H"), ("RES_DEST", "J"),
                       ("RES_LOTSRC", "L"), ("RES_LOTEFF", "N"),
-                      ("RES_QTEVAL", "Q"), ("RES_STATUT", "S"),
-                      ("RES_LOTLIE", "W"), ("RES_RANGLIEN", "X"),
-                      ("RES_RANG", "Z")]:
+                      ("RES_QTEVAL", "R"), ("RES_STATUT", "T"),
+                      ("RES_LOTLIE", "X"), ("RES_RANGLIEN", "Y"),
+                      ("RES_RANG", "AA")]:
         N(name, "ST_RESULTATS!${0}${1}:${0}${2}".format(col, R1, R2))
 
     Q1, Q2 = FIRST, FIRST + N_QC - 1
     for name, col in [("QC_DATE", "B"), ("QC_LOT", "C"), ("QC_EMPL", "D"),
                       ("QC_TEMP", "F"), ("QC_HIST", "G"), ("QC_QUAL", "H"),
                       ("QC_MOULE", "I"), ("QC_DEF", "J"), ("QC_DEC", "K"),
-                      ("QC_STATUT", "Q"), ("QC_ALERTE", "R"),
-                      ("QC_RANG", "T")]:
+                      ("QC_STATUT", "R"), ("QC_ALERTE", "S"),
+                      ("QC_CLEDER", "U"), ("QC_RANG", "W")]:
         N(name, "QUALITE!${0}${1}:${0}${2}".format(col, Q1, Q2))
 
     for name, col in [("MVT_NO", "A"), ("MVT_SRC", "B"), ("MVT_REF", "C"),
                       ("MVT_DATE", "D"), ("MVT_SENS", "E"), ("MVT_OP", "F"),
-                      ("MVT_LOT", "G"), ("MVT_EMPL", "H"),
-                      ("MVT_CLASSE", "I"), ("MVT_PROD", "J"),
-                      ("MVT_BRUT", "K"), ("MVT_NET", "L"),
-                      ("MVT_STATUT", "M"), ("MVT_RANG", "N")]:
+                      ("MVT_LOT", "G"), ("MVT_EXT", "H"), ("MVT_EMPL", "I"),
+                      ("MVT_CLASSE", "J"), ("MVT_PROD", "K"),
+                      ("MVT_ETAT", "L"), ("MVT_BRUT", "M"), ("MVT_NET", "N"),
+                      ("MVT_STATUT", "O"), ("MVT_RANG", "P")]:
         N(name, "MOUVEMENTS!${0}${1}:${0}${2}".format(col, MV_B1, MV_END))
 
-    N("R_LOT", "RECHERCHE!$C$4")
+    N("R_LOT", "RECHERCHE!$C$5")
 # ============================================================================
 # LOTS
 # ============================================================================
 LOTS_COLS = [
-    ("A", "LOT", "in"), ("B", "PRODUIT / ESPECE", "in"),
-    ("C", "FOURNISSEUR / PRODUCTEUR", "in"), ("D", "ORIGINE", "in"),
-    ("E", "IMMATRICULATION", "in"), ("F", "ETAT MATIERE", "in"),
-    ("G", "CONSERVATION", "in"), ("H", "QUALITE INITIALE", "in"),
-    ("I", "MOULE INITIAL", "in"), ("J", "DATE CREATION", "in"),
-    ("K", "LOT PARENT", "in"), ("L", "OBSERVATION", "in"),
-    ("M", "LOT PARENT EFFECTIF", "calc"), ("N", "PRODUIT EFFECTIF", "calc"),
-    ("O", "FOURNISSEUR EFFECTIF", "calc"), ("P", "ORIGINE EFFECTIVE", "calc"),
-    ("Q", "CONSERVATION EFFECTIVE", "calc"), ("R", "STOCK TOTAL (KG)", "calc"),
-    ("S", "NB MOUVEMENTS", "calc"), ("T", "NB CONTROLES", "calc"),
-    ("U", "STATUT FICHE", "calc"),
+    ("A", "LOT INTERNE", "in"), ("B", "LOT EXTERNE", "in"),
+    ("C", "ESPECE", "in"), ("D", "PRODUCTEUR / FOURNISSEUR", "in"),
+    ("E", "ORIGINE", "in"), ("F", "MATRICULE CAMION", "in"),
+    ("G", "ETAT MATIERE", "in"), ("H", "CONSERVATION", "in"),
+    ("I", "QUALITE INITIALE", "in"), ("J", "MOULE INITIAL", "in"),
+    ("K", "DATE CREATION", "in"), ("L", "LOT PARENT", "in"),
+    ("M", "OBSERVATION", "in"),
+    ("N", "LOT PARENT EFFECTIF", "calc"), ("O", "LOT EXTERNE EFFECTIF", "calc"),
+    ("P", "ESPECE EFFECTIVE", "calc"), ("Q", "PRODUCTEUR EFFECTIF", "calc"),
+    ("R", "ORIGINE EFFECTIVE", "calc"),
+    ("S", "CONSERVATION EFFECTIVE", "calc"),
+    ("T", "MATRICULE EFFECTIF", "calc"), ("U", "STOCK TOTAL (KG)", "calc"),
+    ("V", "NB MOUVEMENTS", "calc"), ("W", "NB CONTROLES", "calc"),
+    ("X", "DERNIERE DECISION QUALITE", "calc"), ("Y", "STATUT FICHE", "calc"),
+    ("Z", "REL. LOT EXTERNE", "calc"), ("AA", "RANG LOT EXTERNE", "calc"),
 ]
-LOTS_W = {"A": 14, "B": 16, "C": 22, "D": 13, "E": 15, "F": 13, "G": 13,
-          "H": 10, "I": 9, "J": 12, "K": 12, "L": 30, "M": 16, "N": 16,
-          "O": 20, "P": 15, "Q": 16, "R": 14, "S": 12, "T": 11, "U": 20}
+LOTS_W = {"A": 14, "B": 14, "C": 14, "D": 24, "E": 13, "F": 17, "G": 13,
+          "H": 15, "I": 20, "J": 26, "K": 12, "L": 12, "M": 30, "N": 16,
+          "O": 17, "P": 16, "Q": 22, "R": 15, "S": 18, "T": 17, "U": 14,
+          "V": 12, "W": 11, "X": 20, "Y": 20, "Z": 12, "AA": 13}
 
 
 def build_lots(wb):
     ws = wb.create_sheet("LOTS")
     r0, r1 = FIRST, FIRST + N_LOTS - 1
     title_bar(ws, "LOTS  -  FICHIER D'IDENTITE",
-              "Une ligne = un lot. On saisit ces informations UNE SEULE FOIS. "
-              "Partout ailleurs, il suffit de choisir le lot : produit, "
-              "fournisseur, origine... sont repris automatiquement.", "P")
+              "Une ligne = un lot. LOT INTERNE est la cle du stock : elle est "
+              "obligatoire et ne change plus. Si aucun numero interne n'est "
+              "encore attribue, reprenez le LOT EXTERNE du fournisseur. "
+              "Ces informations ne se saisissent qu'une seule fois.", "AA")
     section(ws, 3, "Champs jaunes = saisie   |   Champs gris = calcules "
-            "automatiquement, ne rien y ecrire", 16)
+            "automatiquement, ne rien y ecrire", 27)
     headers(ws, HDR, LOTS_COLS, LOTS_W)
     body_style(ws, LOTS_COLS, r0, r1,
-               fmts={"J": NUM_DATE, "R": NUM_KG0, "S": NUM_INT, "T": NUM_INT})
-    ws.freeze_panes = "B%d" % FIRST
+               fmts={"K": NUM_DATE, "U": NUM_KG0, "V": NUM_INT, "W": NUM_INT,
+                     "Z": NUM_INT})
+    ws.freeze_panes = "C%d" % FIRST
 
-    fill_col(ws, "M", r0, r1,
-             '=IF($A{r}="","",IF($K{r}<>"",$K{r},'
+    fill_col(ws, "N", r0, r1,
+             '=IF($A{r}="","",IF($L{r}<>"",$L{r},'
              'IF(IFERROR(INDEX(RES_LOTSRC,MATCH($A{r},RES_LOTEFF,0)),"")'
              '=$A{r},"",IFERROR(INDEX(RES_LOTSRC,'
              'MATCH($A{r},RES_LOTEFF,0)),""))))')
-    for eff, own in (("N", "B"), ("O", "C"), ("P", "D"), ("Q", "G")):
+    for eff, own in (("O", "B"), ("P", "C"), ("Q", "D"), ("R", "E"),
+                     ("S", "H"), ("T", "F")):
         fill_col(ws, eff, r0, r1,
                  ('=IF($A{{r}}="","",IF(${o}{{r}}<>"",${o}{{r}},'
-                  'IF($M{{r}}="","",IFERROR(INDEX(${o}${a}:${o}${b},'
-                  'MATCH($M{{r}},$A${a}:$A${b},0)),""))))'
+                  'IF($N{{r}}="","",IFERROR(INDEX(${o}${a}:${o}${b},'
+                  'MATCH($N{{r}},$A${a}:$A${b},0)),""))))'
                   ).format(o=own, a=r0, b=r1))
-    fill_col(ws, "R", r0, r1,
-             '=IF($A{r}="","",SUMIFS(MVT_NET,MVT_LOT,$A{r}))')
-    fill_col(ws, "S", r0, r1,
-             '=IF($A{r}="","",COUNTIFS(MVT_LOT,$A{r},MVT_BRUT,"<>0"))')
-    fill_col(ws, "T", r0, r1, '=IF($A{r}="","",COUNTIFS(QC_LOT,$A{r}))')
     fill_col(ws, "U", r0, r1,
+             '=IF($A{r}="","",SUMIFS(MVT_NET,MVT_LOT,$A{r}))')
+    fill_col(ws, "V", r0, r1,
+             '=IF($A{r}="","",COUNTIFS(MVT_LOT,$A{r},MVT_BRUT,"<>0"))')
+    fill_col(ws, "W", r0, r1, '=IF($A{r}="","",COUNTIFS(QC_LOT,$A{r}))')
+    fill_col(ws, "X", r0, r1,
+             '=IF($A{r}="","",IFERROR(INDEX(QC_DEC,'
+             'MATCH($A{r},QC_CLEDER,0)),""))')
+    fill_col(ws, "Y", r0, r1,
              '=IF($A{r}="","",IF(COUNTIF($A$%d:$A$%d,$A{r})>1,'
-             'IF(SUMPRODUCT(($A$%d:$A$%d=$A{r})*(($B$%d:$B$%d<>$B{r})+'
-             '($C$%d:$C$%d<>$C{r})))>0,"INCOHERENCE","LOT EN DOUBLE"),"OK"))'
+             'IF(SUMPRODUCT(($A$%d:$A$%d=$A{r})*(($C$%d:$C$%d<>$C{r})+'
+             '($D$%d:$D$%d<>$D{r})))>0,"INCOHERENCE","LOT EN DOUBLE"),"OK"))'
              % (r0, r1, r0, r1, r0, r1, r0, r1))
+    fill_col(ws, "Z", r0, r1,
+             '=IF($A{r}="",0,IF(AND($O{r}<>"",$A{r}<>R_LOT,'
+             '$O{r}=IFERROR(INDEX(LOT_EXTE,MATCH(R_LOT,LOT_KEY,0)),"#")),'
+             '1,0))')
+    fill_col(ws, "AA", r0, r1,
+             '=IF($Z{r}=0,"",COUNTIF($Z$%d:$Z{r},1))' % r0)
 
-    rng = "A%d:A%d" % (r0, r1)
-    for col, name in [("B", "L_PRODUIT"), ("C", "L_FOURN"), ("D", "L_ORIGINE"),
-                      ("F", "L_ETAT"), ("G", "L_CONSERV"), ("H", "L_QUALITE"),
-                      ("I", "L_MOULE"), ("K", "L_LOTS")]:
+    for col, name in [("C", "L_PRODUIT"), ("D", "L_FOURN"), ("E", "L_ORIGINE"),
+                      ("G", "L_ETAT"), ("H", "L_CONSERV"), ("I", "L_QUALITE"),
+                      ("J", "L_MOULE"), ("L", "L_LOTS")]:
         dv(ws, "{0}{1}:{0}{2}".format(col, r0, r1), name, strict=False)
-    cf_status(ws, "U%d:U%d" % (r0, r1))
+    cf_status(ws, "Y%d:Y%d" % (r0, r1))
+    cf_status(ws, "X%d:X%d" % (r0, r1))
     ws.conditional_formatting.add(
-        "A%d:A%d" % (r0, r1),
-        FormulaRule(formula=['AND($A%d<>"",$U%d<>"OK")' % (r0, r0)],
+        "A%d:B%d" % (r0, r1),
+        FormulaRule(formula=['AND($A%d<>"",$Y%d<>"OK")' % (r0, r0)],
                     fill=PatternFill("solid", fgColor=G_BAD[0])))
     return ws
 
@@ -433,120 +457,140 @@ def build_lots(wb):
 # ============================================================================
 OPS_COLS = [
     ("A", "ID OPERATION", "calc"), ("B", "DATE", "in"), ("C", "TYPE", "in"),
-    ("D", "LOT", "in"), ("E", "EMPL. SOURCE", "in"),
+    ("D", "LOT INTERNE", "in"), ("E", "EMPL. SOURCE", "in"),
     ("F", "EMPL. DESTINATION", "in"), ("G", "QUANTITE (KG)", "in"),
     ("H", "MOTIF / DESTINATION", "in"), ("I", "OBSERVATION", "in"),
-    ("J", "PRODUIT", "calc"), ("K", "FOURNISSEUR", "calc"),
-    ("L", "CLASSE SOURCE", "calc"), ("M", "CLASSE DEST.", "calc"),
-    ("N", "VALIDE", "calc"), ("O", "DISPO AVANT (KG)", "calc"),
-    ("P", "STATUT", "calc"), ("Q", "IMPACT STOCK", "calc"),
-    ("R", "CONTROLE / ACTION", "calc"),
+    ("J", "LOT EXTERNE", "calc"), ("K", "ESPECE", "calc"),
+    ("L", "PRODUCTEUR", "calc"), ("M", "CLASSE SOURCE", "calc"),
+    ("N", "CLASSE DEST.", "calc"), ("O", "VALIDE", "calc"),
+    ("P", "DISPO AVANT (KG)", "calc"), ("Q", "STATUT", "calc"),
+    ("R", "IMPACT STOCK", "calc"), ("S", "CONTROLE / ACTION", "calc"),
 ]
 OPS_W = {"A": 13, "B": 11, "C": 15, "D": 14, "E": 16, "F": 17, "G": 13,
-         "H": 22, "I": 24, "J": 14, "K": 20, "L": 12, "M": 12, "N": 8,
-         "O": 15, "P": 21, "Q": 10, "R": 44}
+         "H": 24, "I": 24, "J": 13, "K": 14, "L": 22, "M": 12, "N": 12,
+         "O": 8, "P": 15, "Q": 21, "R": 10, "S": 46}
 
 
 def build_operations(wb):
     ws = wb.create_sheet("OPERATIONS")
     r0, r1 = FIRST, FIRST + N_OPS - 1
     title_bar(ws, "OPERATIONS DE STOCK  -  RECEPTION / TRANSFERT / "
-              "CONSOMMATION",
+              "CONSOMMATION / AJUSTEMENT",
               "RECEPTION = entree sur un emplacement.  TRANSFERT = sortie d'un "
               "emplacement + entree sur un autre (meme quantite).  "
-              "CONSOMMATION = sortie de la seule quantite consommee.", "R")
-    section(ws, 3, "Saisie minimale : DATE, TYPE, LOT, EMPLACEMENT(S), "
-            "QUANTITE. Le reste est deduit du lot.", 18)
+              "CONSOMMATION = sortie de la seule quantite consommee.  "
+              "AJUSTEMENT = correction d'inventaire sur l'emplacement de "
+              "destination : quantite signee (negative = perte) et MOTIF "
+              "obligatoire.", "S")
+    section(ws, 3, "Saisie minimale : DATE, TYPE, LOT INTERNE, "
+            "EMPLACEMENT(S), QUANTITE. Le reste est deduit du lot.", 19)
     headers(ws, HDR, OPS_COLS, OPS_W)
     body_style(ws, OPS_COLS, r0, r1,
-               fmts={"B": NUM_DATE, "G": NUM_KG0, "O": NUM_KG0, "N": NUM_INT,
-                     "Q": NUM_INT})
-    ws.freeze_panes = "B%d" % FIRST
+               fmts={"B": NUM_DATE, "G": NUM_KG0, "P": NUM_KG0, "O": NUM_INT,
+                     "R": NUM_INT})
+    ws.freeze_panes = "C%d" % FIRST
 
     fill_col(ws, "A", r0, r1,
              '=IF($C{r}="","","OP-"&TEXT(ROW()-%d,"000"))' % HDR)
     fill_col(ws, "J", r0, r1,
+             '=IF($D{r}="","",IFERROR(INDEX(LOT_EXTE,MATCH($D{r},LOT_KEY,0)),'
+             '""))')
+    fill_col(ws, "K", r0, r1,
              '=IF($D{r}="","",IFERROR(INDEX(LOT_PRODE,MATCH($D{r},LOT_KEY,0)),'
              '"LOT NON REFERENCE"))')
-    fill_col(ws, "K", r0, r1,
-             '=IF($D{r}="","",IFERROR(INDEX(LOT_FOURNE,MATCH($D{r},LOT_KEY,0)),'
-             '""))')
     fill_col(ws, "L", r0, r1,
+             '=IF($D{r}="","",IFERROR(INDEX(LOT_FOURNE,'
+             'MATCH($D{r},LOT_KEY,0)),""))')
+    fill_col(ws, "M", r0, r1,
              '=IF($E{r}="","",IFERROR(INDEX(EMPL_CLASSE,'
              'MATCH($E{r},EMPL_KEY,0)),"?"))')
-    fill_col(ws, "M", r0, r1,
+    fill_col(ws, "N", r0, r1,
              '=IF($F{r}="","",IFERROR(INDEX(EMPL_CLASSE,'
              'MATCH($F{r},EMPL_KEY,0)),"?"))')
-    fill_col(ws, "N", r0, r1,
-             '=IF($C{r}="",0,IF(OR($B{r}="",$D{r}="",NOT(ISNUMBER($G{r})),'
-             '$G{r}<=0),0,IF($C{r}="RECEPTION",IF($F{r}="",0,1),'
-             'IF($C{r}="CONSOMMATION",IF($E{r}="",0,1),'
-             'IF(OR($E{r}="",$F{r}="",$E{r}=$F{r}),0,1)))))')
     fill_col(ws, "O", r0, r1,
-             '=IF(OR($N{r}=0,$C{r}="RECEPTION"),"",'
-             'SUMIFS(MVT_BRUT,MVT_LOT,$D{r},MVT_EMPL,$E{r})+$G{r})')
+             '=IF($C{r}="",0,IF(OR($B{r}="",$D{r}=""),0,'
+             'IF($C{r}="AJUSTEMENT",'
+             'IF(OR(NOT(ISNUMBER($G{r})),$G{r}=0,$F{r}="",$H{r}=""),0,1),'
+             'IF(OR(NOT(ISNUMBER($G{r})),$G{r}<=0),0,'
+             'IF($C{r}="RECEPTION",IF($F{r}="",0,1),'
+             'IF($C{r}="CONSOMMATION",IF($E{r}="",0,1),'
+             'IF(OR($E{r}="",$F{r}="",$E{r}=$F{r}),0,1)))))))')
     fill_col(ws, "P", r0, r1,
-             '=IF($C{r}="","",IF($N{r}=0,"DONNEES MANQUANTES",'
-             'IF($C{r}="RECEPTION","OK",IF($O{r}<=0,"EMPLACEMENT INCOHERENT",'
-             'IF($G{r}>$O{r}+0.001,"STOCK INSUFFISANT","OK")))))')
-    fill_col(ws, "Q", r0, r1, '=IF($P{r}="OK",1,0)')
-    fill_col(ws, "R", r0, r1,
-             '=IF($C{r}="","",IF($N{r}=0,"A COMPLETER : "'
-             '&IF($B{r}="","DATE; ","")&IF($D{r}="","LOT; ","")'
-             '&IF(OR(NOT(ISNUMBER($G{r})),$G{r}<=0),"QUANTITE > 0; ","")'
-             '&IF(AND($C{r}<>"RECEPTION",$E{r}=""),"EMPL. SOURCE; ","")'
+             '=IF(OR($O{r}=0,$C{r}="RECEPTION"),"",'
+             'IF($C{r}="AJUSTEMENT",IF($G{r}>0,"",'
+             'SUMIFS(MVT_BRUT,MVT_LOT,$D{r},MVT_EMPL,$F{r})-$G{r}),'
+             'SUMIFS(MVT_BRUT,MVT_LOT,$D{r},MVT_EMPL,$E{r})+$G{r}))')
+    fill_col(ws, "Q", r0, r1,
+             '=IF($C{r}="","",IF($O{r}=0,"DONNEES MANQUANTES",'
+             'IF($C{r}="RECEPTION","OK",'
+             'IF(AND($C{r}="AJUSTEMENT",$G{r}>0),"OK",'
+             'IF($P{r}<=0,"EMPLACEMENT INCOHERENT",'
+             'IF(ABS($G{r})>$P{r}+0.001,"STOCK INSUFFISANT","OK"))))))')
+    fill_col(ws, "R", r0, r1, '=IF($Q{r}="OK",1,0)')
+    fill_col(ws, "S", r0, r1,
+             '=IF($C{r}="","",IF($O{r}=0,"A COMPLETER : "'
+             '&IF($B{r}="","DATE; ","")&IF($D{r}="","LOT INTERNE; ","")'
+             '&IF(NOT(ISNUMBER($G{r})),"QUANTITE; ",'
+             'IF(AND($C{r}="AJUSTEMENT",$G{r}=0),"QUANTITE <> 0; ",'
+             'IF(AND($C{r}<>"AJUSTEMENT",$G{r}<=0),"QUANTITE > 0; ","")))'
+             '&IF(AND($C{r}="AJUSTEMENT",$H{r}=""),"MOTIF; ","")'
+             '&IF(AND(OR($C{r}="TRANSFERT",$C{r}="CONSOMMATION"),$E{r}=""),'
+             '"EMPL. SOURCE; ","")'
              '&IF(AND($C{r}<>"CONSOMMATION",$F{r}=""),"EMPL. DESTINATION; ","")'
              '&IF(AND($C{r}="TRANSFERT",$E{r}<>"",$E{r}=$F{r}),'
              '"SOURCE = DESTINATION; ",""),'
-             'IF($P{r}="EMPLACEMENT INCOHERENT","Le lot "&$D{r}&" n\'existe pas'
-             ' sur "&$E{r}&" (stock 0). Verifier l\'emplacement source.",'
-             'IF($P{r}="STOCK INSUFFISANT","Disponible avant operation : "'
-             '&TEXT($O{r},"#,##0.00")&" kg. Ligne NON comptee en stock.",'
+             'IF($Q{r}="EMPLACEMENT INCOHERENT","Le lot "&$D{r}&" n\'existe pas'
+             ' sur cet emplacement (stock 0). Verifier l\'emplacement.",'
+             'IF($Q{r}="STOCK INSUFFISANT","Disponible avant operation : "'
+             '&TEXT($P{r},"#,##0.00")&" kg. Ligne NON comptee en stock.",'
              'IF(COUNTIFS($B$%d:$B$%d,$B{r},$C$%d:$C$%d,$C{r},'
              '$D$%d:$D$%d,$D{r},$G$%d:$G$%d,$G{r})>1,'
              '"Doublon possible (meme date, type, lot et quantite).",'
-             'IF($J{r}="LOT NON REFERENCE",'
+             'IF($K{r}="LOT NON REFERENCE",'
              '"Creer d\'abord la fiche du lot dans l\'onglet LOTS.",""))))))'
              % (r0, r1, r0, r1, r0, r1, r0, r1))
 
     dv(ws, "C{0}:C{1}".format(r0, r1), ENUM_TYPEOP, strict=True,
-       prompt="RECEPTION, TRANSFERT ou CONSOMMATION")
+       prompt="RECEPTION, TRANSFERT, CONSOMMATION ou AJUSTEMENT")
     dv(ws, "D{0}:D{1}".format(r0, r1), "L_LOTS", strict=True,
-       prompt="Choisir un lot deja cree dans l'onglet LOTS.")
+       prompt="Choisir un lot interne deja cree dans l'onglet LOTS.")
     dv(ws, "E{0}:E{1}".format(r0, r1), "L_EMPL", strict=True,
-       prompt="Laisser vide pour une RECEPTION.")
+       prompt="Laisser vide pour une RECEPTION ou un AJUSTEMENT.")
     dv(ws, "F{0}:F{1}".format(r0, r1), "L_EMPL", strict=True,
        prompt="Laisser vide pour une CONSOMMATION.")
-    dv(ws, "G{0}:G{1}".format(r0, r1), "0", kind="decimal", op="greaterThan",
-       strict=True)
-    cf_status(ws, "P%d:P%d" % (r0, r1))
+    dv(ws, "G{0}:G{1}".format(r0, r1), "0", kind="decimal", op="notEqual",
+       strict=True,
+       prompt="Quantite > 0. Seul un AJUSTEMENT accepte une valeur negative.")
+    cf_status(ws, "Q%d:Q%d" % (r0, r1))
     return ws
-SUITE = ('IF($T{r}=0,"EN COURS",IF($S{r}>$G{r}+0.001,"BLOQUE",'
-         'IF(AND($U{r}>P_TOL,$L{r}=""),"A JUSTIFIER","OK")))')
-
 # ============================================================================
 # SOUS_TRAITANCE  (en-tete d'envoi)
 # ============================================================================
+SUITE = ('IF($U{r}=0,"EN COURS",IF($T{r}>$G{r}+0.001,"BLOQUE",'
+         'IF(AND($V{r}>P_TOL,$L{r}=""),"A JUSTIFIER","OK")))')
+
 ST_COLS = [
     ("A", "ID ST", "calc"), ("B", "DATE ENVOI", "in"),
     ("C", "SOUS-TRAITANT", "in"), ("D", "SOURCE", "in"),
-    ("E", "LOT SOURCE", "in"), ("F", "EMPL. SOURCE", "in"),
+    ("E", "LOT SOURCE (INTERNE)", "in"), ("F", "EMPL. SOURCE", "in"),
     ("G", "QTE ENVOYEE (KG)", "in"), ("H", "QUALITE ENTREE", "in"),
     ("I", "MOULE ENTREE", "in"), ("J", "HISTAMINE ENTREE (PPM)", "in"),
     ("K", "DATE RETOUR", "in"), ("L", "JUSTIFICATION ECART", "in"),
     ("M", "MOTIF ECART", "in"), ("N", "OBSERVATION", "in"),
-    ("O", "PRODUIT", "calc"), ("P", "FOURNISSEUR", "calc"),
-    ("Q", "VALIDE", "calc"), ("R", "DISPO AVANT (KG)", "calc"),
-    ("S", "TOTAL SORTIE (KG)", "calc"), ("T", "NB RESULTATS", "calc"),
-    ("U", "ECART A JUSTIFIER (KG)", "calc"), ("V", "RENDEMENT", "calc"),
-    ("W", "STATUT", "calc"), ("X", "IMPACT STOCK", "calc"),
-    ("Y", "CONTROLE / ACTION", "calc"), ("Z", "EN COURS (KG)", "calc"),
-    ("AA", "REL. RECHERCHE", "calc"), ("AB", "RANG RECHERCHE", "calc"),
+    ("O", "LOT EXTERNE", "calc"), ("P", "ESPECE", "calc"),
+    ("Q", "PRODUCTEUR", "calc"), ("R", "VALIDE", "calc"),
+    ("S", "DISPO AVANT (KG)", "calc"), ("T", "TOTAL SORTIE (KG)", "calc"),
+    ("U", "NB RESULTATS", "calc"), ("V", "ECART A JUSTIFIER (KG)", "calc"),
+    ("W", "RENDEMENT", "calc"), ("X", "STATUT", "calc"),
+    ("Y", "IMPACT STOCK", "calc"), ("Z", "CONTROLE / ACTION", "calc"),
+    ("AA", "EN COURS (KG)", "calc"), ("AB", "REL. RECHERCHE", "calc"),
+    ("AC", "RANG RECHERCHE", "calc"),
 ]
-ST_W = {"A": 10, "B": 11, "C": 22, "D": 16, "E": 13, "F": 15, "G": 15,
-        "H": 12, "I": 11, "J": 13, "K": 11, "L": 30, "M": 16, "N": 22,
-        "O": 14, "P": 20, "Q": 8, "R": 15, "S": 15, "T": 11, "U": 16,
-        "V": 11, "W": 21, "X": 11, "Y": 46, "Z": 13, "AA": 12, "AB": 12}
+ST_W = {"A": 10, "B": 11, "C": 22, "D": 16, "E": 17, "F": 15, "G": 15,
+        "H": 14, "I": 14, "J": 15, "K": 11, "L": 30, "M": 16, "N": 22,
+        "O": 13, "P": 14, "Q": 22, "R": 8, "S": 15, "T": 15, "U": 11,
+        "V": 16, "W": 11, "X": 21, "Y": 11, "Z": 46, "AA": 13, "AB": 12,
+        "AC": 12}
 
 
 def build_st(wb):
@@ -558,72 +602,74 @@ def build_st(wb):
               "consomme (ni emplacement ni reception a saisir).   "
               "SOURCE = STOCK EXISTANT : la quantite envoyee est retiree de "
               "l'emplacement indique.   Un envoi sans resultat reste EN COURS "
-              "- ce n'est pas une erreur.", "AB")
+              "- ce n'est pas une erreur.", "AC")
     section(ws, 3, "Etape 1 : enregistrer l'envoi.  Etape 2 (plus tard) : "
-            "saisir les resultats dans l'onglet ST_RESULTATS.", 28)
+            "saisir les resultats dans l'onglet ST_RESULTATS.", 29)
     headers(ws, HDR, ST_COLS, ST_W)
     body_style(ws, ST_COLS, r0, r1,
-               fmts={"B": NUM_DATE, "K": NUM_DATE, "G": NUM_KG0, "R": NUM_KG0,
-                     "S": NUM_KG0, "U": NUM_KG0, "Z": NUM_KG0, "V": NUM_PCT,
-                     "T": NUM_INT, "Q": NUM_INT, "X": NUM_INT})
-    ws.freeze_panes = "B%d" % FIRST
+               fmts={"B": NUM_DATE, "K": NUM_DATE, "G": NUM_KG0, "S": NUM_KG0,
+                     "T": NUM_KG0, "V": NUM_KG0, "AA": NUM_KG0, "W": NUM_PCT,
+                     "U": NUM_INT, "R": NUM_INT, "Y": NUM_INT})
+    ws.freeze_panes = "C%d" % FIRST
 
     fill_col(ws, "A", r0, r1,
              '=IF($D{r}="","","ST-"&TEXT(ROW()-%d,"000"))' % HDR)
     fill_col(ws, "O", r0, r1,
+             '=IF($E{r}="","",IFERROR(INDEX(LOT_EXTE,MATCH($E{r},LOT_KEY,0)),'
+             '""))')
+    fill_col(ws, "P", r0, r1,
              '=IF($E{r}="","",IFERROR(INDEX(LOT_PRODE,MATCH($E{r},LOT_KEY,0)),'
              '"LOT NON REFERENCE"))')
-    fill_col(ws, "P", r0, r1,
-             '=IF($E{r}="","",IFERROR(INDEX(LOT_FOURNE,MATCH($E{r},LOT_KEY,0)),'
-             '""))')
     fill_col(ws, "Q", r0, r1,
+             '=IF($E{r}="","",IFERROR(INDEX(LOT_FOURNE,'
+             'MATCH($E{r},LOT_KEY,0)),""))')
+    fill_col(ws, "R", r0, r1,
              '=IF($D{r}="",0,IF(OR($B{r}="",$C{r}="",$E{r}="",'
              'NOT(ISNUMBER($G{r})),$G{r}<=0),0,'
              'IF($D{r}="STOCK EXISTANT",IF($F{r}="",0,1),1)))')
-    fill_col(ws, "R", r0, r1,
-             '=IF(OR($Q{r}=0,$D{r}<>"STOCK EXISTANT"),"",'
-             'SUMIFS(MVT_BRUT,MVT_LOT,$E{r},MVT_EMPL,$F{r})+$G{r})')
     fill_col(ws, "S", r0, r1,
+             '=IF(OR($R{r}=0,$D{r}<>"STOCK EXISTANT"),"",'
+             'SUMIFS(MVT_BRUT,MVT_LOT,$E{r},MVT_EMPL,$F{r})+$G{r})')
+    fill_col(ws, "T", r0, r1,
              '=IF($A{r}="","",SUMIFS(RES_QTEVAL,RES_IDST,$A{r}))')
-    fill_col(ws, "T", r0, r1, '=IF($A{r}="","",COUNTIFS(RES_IDST,$A{r}))')
-    fill_col(ws, "U", r0, r1,
-             '=IF(OR($A{r}="",$T{r}=0),"",$G{r}-$S{r})')
-    fill_col(ws, "V", r0, r1,
-             '=IF(OR($A{r}="",$T{r}=0,NOT(ISNUMBER($G{r})),$G{r}<=0),"",'
-             '$S{r}/$G{r})')
+    fill_col(ws, "U", r0, r1, '=IF($A{r}="","",COUNTIFS(RES_IDST,$A{r}))')
+    fill_col(ws, "V", r0, r1, '=IF(OR($A{r}="",$U{r}=0),"",$G{r}-$T{r})')
     fill_col(ws, "W", r0, r1,
-             '=IF($D{r}="","",IF($Q{r}=0,"DONNEES MANQUANTES",'
-             'IF($D{r}="STOCK EXISTANT",IF($R{r}<=0,'
-             '"EMPLACEMENT INCOHERENT",IF($G{r}>$R{r}+0.001,'
-             '"STOCK INSUFFISANT",' + SUITE + ')),' + SUITE + ')))')
+             '=IF(OR($A{r}="",$U{r}=0,NOT(ISNUMBER($G{r})),$G{r}<=0),"",'
+             '$T{r}/$G{r})')
     fill_col(ws, "X", r0, r1,
-             '=IF(OR($W{r}="",$W{r}="DONNEES MANQUANTES",'
-             '$W{r}="EMPLACEMENT INCOHERENT",$W{r}="STOCK INSUFFISANT"),0,1)')
+             '=IF($D{r}="","",IF($R{r}=0,"DONNEES MANQUANTES",'
+             'IF($D{r}="STOCK EXISTANT",IF($S{r}<=0,'
+             '"EMPLACEMENT INCOHERENT",IF($G{r}>$S{r}+0.001,'
+             '"STOCK INSUFFISANT",' + SUITE + ')),' + SUITE + ')))')
     fill_col(ws, "Y", r0, r1,
-             '=IF($D{r}="","",IF($Q{r}=0,"A COMPLETER : "'
+             '=IF(OR($X{r}="",$X{r}="DONNEES MANQUANTES",'
+             '$X{r}="EMPLACEMENT INCOHERENT",$X{r}="STOCK INSUFFISANT"),0,1)')
+    fill_col(ws, "Z", r0, r1,
+             '=IF($D{r}="","",IF($R{r}=0,"A COMPLETER : "'
              '&IF($B{r}="","DATE ENVOI; ","")'
              '&IF($C{r}="","SOUS-TRAITANT; ","")'
              '&IF($E{r}="","LOT SOURCE; ","")'
              '&IF(OR(NOT(ISNUMBER($G{r})),$G{r}<=0),"QTE ENVOYEE > 0; ","")'
              '&IF(AND($D{r}="STOCK EXISTANT",$F{r}=""),"EMPL. SOURCE; ",""),'
-             'IF($W{r}="EMPLACEMENT INCOHERENT","Le lot "&$E{r}&" n\'existe '
+             'IF($X{r}="EMPLACEMENT INCOHERENT","Le lot "&$E{r}&" n\'existe '
              'pas sur "&$F{r}&" (stock 0).",'
-             'IF($W{r}="STOCK INSUFFISANT","Disponible avant envoi : "'
-             '&TEXT($R{r},"#,##0.00")&" kg. Ligne NON comptee en stock.",'
-             'IF($W{r}="BLOQUE","Total des sorties ("&TEXT($S{r},"#,##0.00")'
+             'IF($X{r}="STOCK INSUFFISANT","Disponible avant envoi : "'
+             '&TEXT($S{r},"#,##0.00")&" kg. Ligne NON comptee en stock.",'
+             'IF($X{r}="BLOQUE","Total des sorties ("&TEXT($T{r},"#,##0.00")'
              '&" kg) superieur a la quantite envoyee.",'
-             'IF($W{r}="EN COURS","Envoi enregistre, resultats non connus. '
+             'IF($X{r}="EN COURS","Envoi enregistre, resultats non connus. '
              'A completer dans ST_RESULTATS.",'
-             'IF($W{r}="A JUSTIFIER","Ecart de "&TEXT($U{r},"#,##0.00")'
+             'IF($X{r}="A JUSTIFIER","Ecart de "&TEXT($V{r},"#,##0.00")'
              '&" kg : renseigner JUSTIFICATION ECART (colonne L).",'
-             'IF($O{r}="LOT NON REFERENCE",'
+             'IF($P{r}="LOT NON REFERENCE",'
              '"Creer d\'abord la fiche du lot dans l\'onglet LOTS.",""))))))))')
-    fill_col(ws, "Z", r0, r1, '=IF(OR($X{r}=0,$T{r}>0),0,$G{r})')
-    fill_col(ws, "AA", r0, r1,
-             '=IF($Q{r}=0,0,IF(OR($E{r}=R_LOT,'
-             'COUNTIFS(RES_IDST,$A{r},RES_LOTEFF,R_LOT)>0),1,0))')
+    fill_col(ws, "AA", r0, r1, '=IF(OR($Y{r}=0,$U{r}>0),0,$G{r})')
     fill_col(ws, "AB", r0, r1,
-             '=IF($AA{r}=0,"",COUNTIF($AA$%d:$AA{r},1))' % r0)
+             '=IF($R{r}=0,0,IF(OR($E{r}=R_LOT,'
+             'COUNTIFS(RES_IDST,$A{r},RES_LOTEFF,R_LOT)>0),1,0))')
+    fill_col(ws, "AC", r0, r1,
+             '=IF($AB{r}=0,"",COUNTIF($AB$%d:$AB{r},1))' % r0)
 
     dv(ws, "C{0}:C{1}".format(r0, r1), "L_STRAIT")
     dv(ws, "D{0}:D{1}".format(r0, r1), ENUM_SRCST, strict=True,
@@ -637,9 +683,9 @@ def build_st(wb):
     dv(ws, "H{0}:H{1}".format(r0, r1), "L_QUALITE")
     dv(ws, "I{0}:I{1}".format(r0, r1), "L_MOULE")
     dv(ws, "M{0}:M{1}".format(r0, r1), "L_MOTIF")
-    cf_status(ws, "W%d:W%d" % (r0, r1))
+    cf_status(ws, "X%d:X%d" % (r0, r1))
     ws.conditional_formatting.add(
-        "U%d:U%d" % (r0, r1),
+        "V%d:V%d" % (r0, r1),
         CellIsRule(operator="greaterThan", formula=["0"],
                    font=Font(name=FONT, size=9, bold=True, color=G_WARN[1])))
     return ws
@@ -651,22 +697,23 @@ def build_st(wb):
 RES_COLS = [
     ("A", "ID RESULTAT", "calc"), ("B", "ID ST", "in"),
     ("C", "DATE RESULTAT", "in"), ("D", "RESULTAT / ETAT", "in"),
-    ("E", "LOT RESULTAT", "in"), ("F", "QUANTITE (KG)", "in"),
+    ("E", "LOT RESULTAT (INTERNE)", "in"), ("F", "QUANTITE (KG)", "in"),
     ("G", "QUALITE SORTIE", "in"), ("H", "MOULE SORTIE", "in"),
     ("I", "HISTAMINE (PPM)", "in"), ("J", "EMPL. DESTINATION", "in"),
     ("K", "OBSERVATION", "in"), ("L", "LOT SOURCE", "calc"),
     ("M", "SOUS-TRAITANT", "calc"), ("N", "LOT RESULTAT EFFECTIF", "calc"),
-    ("O", "CLASSE DEST.", "calc"), ("P", "VALIDE", "calc"),
-    ("Q", "QTE VALIDE (KG)", "calc"), ("R", "STATUT ST", "calc"),
-    ("S", "STATUT", "calc"), ("T", "IMPACT STOCK", "calc"),
-    ("U", "CONTROLE / ACTION", "calc"), ("V", "DATE EFFECTIVE", "calc"),
-    ("W", "LOT LIE", "calc"), ("X", "RANG LIEN", "calc"),
-    ("Y", "REL. RECHERCHE", "calc"), ("Z", "RANG RECHERCHE", "calc"),
+    ("O", "LOT EXTERNE", "calc"), ("P", "CLASSE DEST.", "calc"),
+    ("Q", "VALIDE", "calc"), ("R", "QTE VALIDE (KG)", "calc"),
+    ("S", "STATUT ST", "calc"), ("T", "STATUT", "calc"),
+    ("U", "IMPACT STOCK", "calc"), ("V", "CONTROLE / ACTION", "calc"),
+    ("W", "DATE EFFECTIVE", "calc"), ("X", "LOT LIE", "calc"),
+    ("Y", "RANG LIEN", "calc"), ("Z", "REL. RECHERCHE", "calc"),
+    ("AA", "RANG RECHERCHE", "calc"),
 ]
-RES_W = {"A": 12, "B": 10, "C": 12, "D": 14, "E": 14, "F": 13, "G": 12,
-         "H": 11, "I": 11, "J": 17, "K": 22, "L": 12, "M": 20, "N": 18,
-         "O": 12, "P": 8, "Q": 13, "R": 20, "S": 20, "T": 11, "U": 44,
-         "V": 13, "W": 13, "X": 10, "Y": 12, "Z": 12}
+RES_W = {"A": 12, "B": 10, "C": 12, "D": 14, "E": 18, "F": 13, "G": 14,
+         "H": 14, "I": 13, "J": 17, "K": 22, "L": 12, "M": 20, "N": 18,
+         "O": 13, "P": 12, "Q": 8, "R": 13, "S": 20, "T": 20, "U": 11,
+         "V": 44, "W": 13, "X": 13, "Y": 10, "Z": 12, "AA": 12}
 
 
 def build_res(wb):
@@ -676,14 +723,14 @@ def build_res(wb):
               "Un envoi peut produire plusieurs resultats (etats, qualites ou "
               "moules differents). Chaque resultat entre en stock a "
               "l'emplacement de destination.   LOT RESULTAT laisse vide = on "
-              "conserve le lot source.", "Z")
+              "conserve le lot source.", "AA")
     section(ws, 3, "Choisir l'ID ST, puis saisir uniquement : quantite, "
-            "destination, et ce qui est connu (etat, qualite, moule).", 26)
+            "destination, et ce qui est connu (etat, qualite, moule).", 27)
     headers(ws, HDR, RES_COLS, RES_W)
     body_style(ws, RES_COLS, r0, r1,
-               fmts={"C": NUM_DATE, "V": NUM_DATE, "F": NUM_KG0,
-                     "Q": NUM_KG0, "P": NUM_INT, "T": NUM_INT})
-    ws.freeze_panes = "B%d" % FIRST
+               fmts={"C": NUM_DATE, "W": NUM_DATE, "F": NUM_KG0,
+                     "R": NUM_KG0, "Q": NUM_INT, "U": NUM_INT})
+    ws.freeze_panes = "C%d" % FIRST
 
     fill_col(ws, "A", r0, r1,
              '=IF($B{r}="","","RES-"&TEXT(ROW()-%d,"000"))' % HDR)
@@ -694,42 +741,45 @@ def build_res(wb):
              '""))')
     fill_col(ws, "N", r0, r1, '=IF($B{r}="","",IF($E{r}="",$L{r},$E{r}))')
     fill_col(ws, "O", r0, r1,
+             '=IF($N{r}="","",IFERROR(INDEX(LOT_EXTE,MATCH($N{r},LOT_KEY,0)),'
+             '""))')
+    fill_col(ws, "P", r0, r1,
              '=IF($J{r}="","",IFERROR(INDEX(EMPL_CLASSE,'
              'MATCH($J{r},EMPL_KEY,0)),"?"))')
-    fill_col(ws, "P", r0, r1,
+    fill_col(ws, "Q", r0, r1,
              '=IF($B{r}="",0,IF(OR(ISNA(MATCH($B{r},ST_ID,0)),'
              'NOT(ISNUMBER($F{r})),$F{r}<=0,$J{r}="",$N{r}=""),0,1))')
-    fill_col(ws, "Q", r0, r1, '=IF($P{r}=0,0,$F{r})')
-    fill_col(ws, "R", r0, r1,
+    fill_col(ws, "R", r0, r1, '=IF($Q{r}=0,0,$F{r})')
+    fill_col(ws, "S", r0, r1,
              '=IF($B{r}="","",IFERROR(INDEX(ST_STATUT,MATCH($B{r},ST_ID,0)),'
              '""))')
-    fill_col(ws, "S", r0, r1,
-             '=IF($B{r}="","",IF($P{r}=0,"DONNEES MANQUANTES",'
-             'IF(OR($R{r}="DONNEES MANQUANTES",$R{r}="STOCK INSUFFISANT",'
-             '$R{r}="EMPLACEMENT INCOHERENT",$R{r}="BLOQUE"),"BLOQUE","OK")))')
-    fill_col(ws, "T", r0, r1, '=IF($S{r}="OK",1,0)')
-    fill_col(ws, "U", r0, r1,
-             '=IF($B{r}="","",IF($P{r}=0,"A COMPLETER : "'
+    fill_col(ws, "T", r0, r1,
+             '=IF($B{r}="","",IF($Q{r}=0,"DONNEES MANQUANTES",'
+             'IF(OR($S{r}="DONNEES MANQUANTES",$S{r}="STOCK INSUFFISANT",'
+             '$S{r}="EMPLACEMENT INCOHERENT",$S{r}="BLOQUE"),"BLOQUE","OK")))')
+    fill_col(ws, "U", r0, r1, '=IF($T{r}="OK",1,0)')
+    fill_col(ws, "V", r0, r1,
+             '=IF($B{r}="","",IF($Q{r}=0,"A COMPLETER : "'
              '&IF(ISNA(MATCH($B{r},ST_ID,0)),"ID ST valide; ","")'
              '&IF(OR(NOT(ISNUMBER($F{r})),$F{r}<=0),"QUANTITE > 0; ","")'
              '&IF($J{r}="","EMPL. DESTINATION; ",""),'
-             'IF($S{r}="BLOQUE","Envoi parent en anomalie ("&$R{r}&") : '
+             'IF($T{r}="BLOQUE","Envoi parent en anomalie ("&$S{r}&") : '
              'corriger l\'onglet SOUS_TRAITANCE.",'
              'IF(AND($E{r}<>"",ISNA(MATCH($E{r},LOT_KEY,0))),'
              '"Creer la fiche du lot resultat dans l\'onglet LOTS.",""))))')
-    fill_col(ws, "V", r0, r1,
+    fill_col(ws, "W", r0, r1,
              '=IF($B{r}="","",IF($C{r}<>"",$C{r},'
              'IFERROR(INDEX(ST_DATERET,MATCH($B{r},ST_ID,0)),"")))')
-    fill_col(ws, "W", r0, r1,
-             '=IF($P{r}=0,"",IF($L{r}=R_LOT,IF($N{r}<>R_LOT,$N{r},""),'
+    fill_col(ws, "X", r0, r1,
+             '=IF($Q{r}=0,"",IF($L{r}=R_LOT,IF($N{r}<>R_LOT,$N{r},""),'
              'IF($N{r}=R_LOT,$L{r},"")))')
     for r in range(r0, r1 + 1):
-        ws["X%d" % r] = ('=IF($W{r}="","",IF(COUNTIF($W${h}:$W{p},$W{r})>0,"",'
-                         'COUNT($X${h}:$X{p})+1))').format(r=r, h=HDR, p=r - 1)
-    fill_col(ws, "Y", r0, r1,
-             '=IF($P{r}=0,0,IF(OR($L{r}=R_LOT,$N{r}=R_LOT),1,0))')
+        ws["Y%d" % r] = ('=IF($X{r}="","",IF(COUNTIF($X${h}:$X{p},$X{r})>0,"",'
+                         'COUNT($Y${h}:$Y{p})+1))').format(r=r, h=HDR, p=r - 1)
     fill_col(ws, "Z", r0, r1,
-             '=IF($Y{r}=0,"",COUNTIF($Y$%d:$Y{r},1))' % r0)
+             '=IF($Q{r}=0,0,IF(OR($L{r}=R_LOT,$N{r}=R_LOT),1,0))')
+    fill_col(ws, "AA", r0, r1,
+             '=IF($Z{r}=0,"",COUNTIF($Z$%d:$Z{r},1))' % r0)
 
     dv(ws, "B{0}:B{1}".format(r0, r1), "L_IDST", strict=True,
        prompt="Choisir l'envoi concerne (onglet SOUS_TRAITANCE).")
@@ -741,7 +791,7 @@ def build_res(wb):
     dv(ws, "G{0}:G{1}".format(r0, r1), "L_QUALITE")
     dv(ws, "H{0}:H{1}".format(r0, r1), "L_MOULE")
     dv(ws, "J{0}:J{1}".format(r0, r1), "L_EMPL", strict=True)
-    cf_status(ws, "S%d:S%d" % (r0, r1))
+    cf_status(ws, "T%d:T%d" % (r0, r1))
     return ws
 
 
@@ -749,19 +799,22 @@ def build_res(wb):
 # QUALITE
 # ============================================================================
 QC_COLS = [
-    ("A", "ID CONTROLE", "calc"), ("B", "DATE", "in"), ("C", "LOT", "in"),
-    ("D", "EMPLACEMENT", "in"), ("E", "TYPE DE CONTROLE", "in"),
-    ("F", "TEMPERATURE (C)", "in"), ("G", "HISTAMINE (PPM)", "in"),
-    ("H", "QUALITE", "in"), ("I", "MOULE", "in"), ("J", "DEFAUTS", "in"),
-    ("K", "DECISION", "in"), ("L", "CONTROLEUR", "in"),
-    ("M", "OBSERVATION", "in"), ("N", "PRODUIT", "calc"),
-    ("O", "CONSERVATION", "calc"), ("P", "STOCK LOT / EMPL. (KG)", "calc"),
-    ("Q", "STATUT", "calc"), ("R", "ALERTE", "calc"),
-    ("S", "REL. RECHERCHE", "calc"), ("T", "RANG RECHERCHE", "calc"),
+    ("A", "ID CONTROLE", "calc"), ("B", "DATE", "in"),
+    ("C", "LOT INTERNE", "in"), ("D", "EMPLACEMENT", "in"),
+    ("E", "TYPE DE CONTROLE", "in"), ("F", "TEMPERATURE (C)", "in"),
+    ("G", "HISTAMINE (PPM)", "in"), ("H", "QUALITE", "in"),
+    ("I", "MOULE", "in"), ("J", "DEFAUTS", "in"), ("K", "DECISION", "in"),
+    ("L", "CONTROLEUR", "in"), ("M", "OBSERVATION", "in"),
+    ("N", "LOT EXTERNE", "calc"), ("O", "ESPECE", "calc"),
+    ("P", "CONSERVATION", "calc"), ("Q", "STOCK LOT / EMPL. (KG)", "calc"),
+    ("R", "STATUT", "calc"), ("S", "ALERTE", "calc"),
+    ("T", "DERNIER CONTROLE", "calc"), ("U", "CLE DERNIER", "calc"),
+    ("V", "REL. RECHERCHE", "calc"), ("W", "RANG RECHERCHE", "calc"),
 ]
-QC_W = {"A": 12, "B": 11, "C": 14, "D": 16, "E": 16, "F": 14, "G": 15,
-        "H": 10, "I": 9, "J": 26, "K": 20, "L": 14, "M": 24, "N": 14,
-        "O": 14, "P": 17, "Q": 21, "R": 46, "S": 12, "T": 12}
+QC_W = {"A": 12, "B": 11, "C": 14, "D": 16, "E": 20, "F": 14, "G": 15,
+        "H": 20, "I": 26, "J": 26, "K": 18, "L": 14, "M": 24, "N": 13,
+        "O": 14, "P": 14, "Q": 17, "R": 21, "S": 46, "T": 12, "U": 13,
+        "V": 12, "W": 12}
 
 
 def build_qualite(wb):
@@ -771,46 +824,58 @@ def build_qualite(wb):
               "Un controle qualite ne modifie JAMAIS le stock. Saisir "
               "uniquement les mesures reellement effectuees : aucun champ "
               "n'est obligatoire au-dela du lot, de la date et d'au moins une "
-              "information de controle.", "T")
+              "information de controle.   QUALITE et MOULE acceptent la "
+              "saisie libre (ex. A=20 B=40 C=40  /  20/24=14 26/30=55).", "W")
     section(ws, 3, "Le resultat appartient au lot physiquement controle. Un "
-            "lot lie reste tracable mais n'herite pas du resultat.", 20)
+            "lot lie reste tracable mais n'herite pas du resultat.", 23)
     headers(ws, HDR, QC_COLS, QC_W)
     body_style(ws, QC_COLS, r0, r1,
                fmts={"B": NUM_DATE, "F": '0.0', "G": '#,##0',
-                     "P": NUM_KG0, "S": NUM_INT})
-    ws.freeze_panes = "B%d" % FIRST
+                     "Q": NUM_KG0, "T": NUM_INT, "V": NUM_INT})
+    ws.freeze_panes = "C%d" % FIRST
 
     fill_col(ws, "A", r0, r1,
              '=IF($C{r}="","","QC-"&TEXT(ROW()-%d,"000"))' % HDR)
     fill_col(ws, "N", r0, r1,
+             '=IF($C{r}="","",IFERROR(INDEX(LOT_EXTE,MATCH($C{r},LOT_KEY,0)),'
+             '""))')
+    fill_col(ws, "O", r0, r1,
              '=IF($C{r}="","",IFERROR(INDEX(LOT_PRODE,MATCH($C{r},LOT_KEY,0)),'
              '"LOT NON REFERENCE"))')
-    fill_col(ws, "O", r0, r1,
+    fill_col(ws, "P", r0, r1,
              '=IF($C{r}="","",IFERROR(INDEX(LOT_CONSERVE,'
              'MATCH($C{r},LOT_KEY,0)),""))')
-    fill_col(ws, "P", r0, r1,
+    fill_col(ws, "Q", r0, r1,
              '=IF(OR($C{r}="",$D{r}=""),"",'
              'SUMIFS(MVT_NET,MVT_LOT,$C{r},MVT_EMPL,$D{r}))')
-    fill_col(ws, "Q", r0, r1,
+    fill_col(ws, "R", r0, r1,
              '=IF($C{r}="","",IF(OR($B{r}="",AND($F{r}="",$G{r}="",$H{r}="",'
              '$I{r}="",$J{r}="",$K{r}="")),"DONNEES MANQUANTES",'
-             'IF(AND($D{r}<>"",$P{r}<=0),"EMPLACEMENT INCOHERENT","OK")))')
-    fill_col(ws, "R", r0, r1,
+             'IF(AND($D{r}<>"",$Q{r}<=0),"EMPLACEMENT INCOHERENT","OK")))')
+    fill_col(ws, "S", r0, r1,
              '=IF($C{r}="","",IF(AND(ISNUMBER($G{r}),$G{r}>P_HIST),'
              '"HISTAMINE "&TEXT($G{r},"#,##0")&" PPM > seuil "'
              '&TEXT(P_HIST,"#,##0")&". ","")'
-             '&IF(AND(ISNUMBER($F{r}),$O{r}="CONGELE",$F{r}>P_TCONG),'
+             '&IF(AND(ISNUMBER($F{r}),$P{r}="CONGELE",$F{r}>P_TCONG),'
              '"TEMPERATURE "&TEXT($F{r},"0.0")&" C hors seuil congele. ","")'
-             '&IF(AND(ISNUMBER($F{r}),$O{r}="FRAIS",$F{r}>P_TFRAIS),'
+             '&IF(AND(ISNUMBER($F{r}),$P{r}="FRAIS",$F{r}>P_TFRAIS),'
              '"TEMPERATURE "&TEXT($F{r},"0.0")&" C hors seuil frais. ","")'
-             '&IF($Q{r}="EMPLACEMENT INCOHERENT",'
+             '&IF($K{r}="BLOQUER","Lot bloque qualite : stock signale mais '
+             'inchange. ","")'
+             '&IF($R{r}="EMPLACEMENT INCOHERENT",'
              '"Lot absent de cet emplacement : controle conserve, stock '
              'inchange. ","")'
-             '&IF($Q{r}="DONNEES MANQUANTES",'
+             '&IF($R{r}="DONNEES MANQUANTES",'
              '"Renseigner la DATE et au moins une mesure. ",""))')
-    fill_col(ws, "S", r0, r1, '=IF($C{r}="",0,IF($C{r}=R_LOT,1,0))')
     fill_col(ws, "T", r0, r1,
-             '=IF($S{r}=0,"",COUNTIF($S$%d:$S{r},1))' % r0)
+             '=IF(OR($C{r}="",$B{r}=""),0,'
+             'IF(COUNTIFS(QC_LOT,$C{r},QC_DATE,">"&$B{r})>0,0,'
+             'IF(COUNTIFS($C$%d:$C{r},$C{r},$B$%d:$B{r},$B{r})'
+             '=COUNTIFS(QC_LOT,$C{r},QC_DATE,$B{r}),1,0)))' % (r0, r0))
+    fill_col(ws, "U", r0, r1, '=IF($T{r}=1,$C{r},"")')
+    fill_col(ws, "V", r0, r1, '=IF($C{r}="",0,IF($C{r}=R_LOT,1,0))')
+    fill_col(ws, "W", r0, r1,
+             '=IF($V{r}=0,"",COUNTIF($V$%d:$V{r},1))' % r0)
 
     dv(ws, "C{0}:C{1}".format(r0, r1), "L_LOTS", strict=True)
     dv(ws, "D{0}:D{1}".format(r0, r1), "L_EMPL", strict=True,
@@ -819,10 +884,11 @@ def build_qualite(wb):
     dv(ws, "H{0}:H{1}".format(r0, r1), "L_QUALITE")
     dv(ws, "I{0}:I{1}".format(r0, r1), "L_MOULE")
     dv(ws, "K{0}:K{1}".format(r0, r1), "L_DECISION")
-    cf_status(ws, "Q%d:Q%d" % (r0, r1))
+    cf_status(ws, "R%d:R%d" % (r0, r1))
+    cf_status(ws, "K%d:K%d" % (r0, r1))
     ws.conditional_formatting.add(
-        "R%d:R%d" % (r0, r1),
-        FormulaRule(formula=['LEN($R%d)>0' % r0],
+        "S%d:S%d" % (r0, r1),
+        FormulaRule(formula=['LEN($S%d)>0' % r0],
                     fill=PatternFill("solid", fgColor=G_WARN[0]),
                     font=Font(name=FONT, size=9, color=G_WARN[1])))
     return ws
@@ -832,13 +898,15 @@ def build_qualite(wb):
 MV_COLS = [
     ("A", "N", "calc"), ("B", "ORIGINE", "calc"), ("C", "REFERENCE", "calc"),
     ("D", "DATE", "calc"), ("E", "SENS", "calc"), ("F", "OPERATION", "calc"),
-    ("G", "LOT", "calc"), ("H", "EMPLACEMENT", "calc"),
-    ("I", "CLASSE", "calc"), ("J", "PRODUIT", "calc"),
-    ("K", "QTE BRUTE (KG)", "calc"), ("L", "QTE STOCK (KG)", "calc"),
-    ("M", "STATUT LIGNE", "calc"), ("N", "RANG RECHERCHE", "calc"),
+    ("G", "LOT INTERNE", "calc"), ("H", "LOT EXTERNE", "calc"),
+    ("I", "EMPLACEMENT", "calc"), ("J", "CLASSE", "calc"),
+    ("K", "ESPECE", "calc"), ("L", "ETAT MATIERE", "calc"),
+    ("M", "QTE DECLAREE (KG)", "calc"), ("N", "QTE EN STOCK (KG)", "calc"),
+    ("O", "STATUT LIGNE", "calc"), ("P", "RANG RECHERCHE", "calc"),
 ]
 MV_W = {"A": 7, "B": 16, "C": 12, "D": 11, "E": 10, "F": 24, "G": 14,
-        "H": 16, "I": 11, "J": 14, "K": 15, "L": 15, "M": 21, "N": 12}
+        "H": 13, "I": 16, "J": 11, "K": 14, "L": 14, "M": 16, "N": 16,
+        "O": 21, "P": 12}
 
 
 def build_mouvements(wb):
@@ -846,19 +914,24 @@ def build_mouvements(wb):
     title_bar(ws, "MOUVEMENTS  -  GRAND LIVRE UNIQUE DU STOCK",
               "Feuille entierement calculee : NE RIEN SAISIR ICI. Chaque "
               "operation valide y produit automatiquement sa ou ses lignes.  "
-              "ENTREES - SORTIES = STOCK ACTUEL.", "N")
-    section(ws, 3, "QTE BRUTE = mouvement declare (sert au calcul du "
-            "disponible).   QTE STOCK = mouvement reellement compte "
-            "(0 si la ligne est en anomalie).", 14)
+              "ENTREES - SORTIES +/- AJUSTEMENTS = STOCK ACTUEL.", "P")
+    section(ws, 3, "QTE DECLAREE = mouvement declare (sert au calcul du "
+            "disponible).   QTE EN STOCK = mouvement reellement compte "
+            "(0 si la ligne est en anomalie).", 16)
     headers(ws, HDR, MV_COLS, MV_W)
     body_style(ws, MV_COLS, MV_B1, MV_END,
-               fmts={"D": NUM_DATE, "K": NUM_KG, "L": NUM_KG, "A": NUM_INT})
-    ws.freeze_panes = "B%d" % FIRST
+               fmts={"D": NUM_DATE, "M": NUM_KG, "N": NUM_KG, "A": NUM_INT})
+    ws.freeze_panes = "C%d" % FIRST
 
     common = {
-        "A": '=IF($K{r}=0,"",ROW()-%d)' % HDR,
-        "I": '=IF($H{r}="","",IFERROR(INDEX(EMPL_CLASSE,'
-             'MATCH($H{r},EMPL_KEY,0)),""))',
+        "A": '=IF($M{r}=0,"",ROW()-%d)' % HDR,
+        "H": '=IF($G{r}="","",IFERROR(INDEX(LOT_EXTE,'
+             'MATCH($G{r},LOT_KEY,0)),""))',
+        "J": '=IF($I{r}="","",IFERROR(INDEX(EMPL_CLASSE,'
+             'MATCH($I{r},EMPL_KEY,0)),""))',
+        "L": '=IF($G{r}="","",IF(IFERROR(INDEX(LOT_ETAT,'
+             'MATCH($G{r},LOT_KEY,0)),"")="","",'
+             'INDEX(LOT_ETAT,MATCH($G{r},LOT_KEY,0))))',
     }
 
     def block(dest0, src0, n, spec):
@@ -872,74 +945,74 @@ def build_mouvements(wb):
 
     # --- bloc 1 : sorties issues de OPERATIONS ---------------------------
     block(MV_B1, FIRST, N_OPS, {
-        "K": '=IF(OR(OPERATIONS!$N{s}=0,OPERATIONS!$C{s}="RECEPTION"),0,'
-             '-OPERATIONS!$G{s})',
-        "L": '=IF($K{r}=0,0,OPERATIONS!$Q{s}*$K{r})',
-        "B": '=IF($K{r}=0,"","OPERATIONS")',
-        "C": '=IF($K{r}=0,"",OPERATIONS!$A{s})',
-        "D": '=IF($K{r}=0,"",OPERATIONS!$B{s})',
-        "E": '=IF($K{r}=0,"","SORTIE")',
-        "F": '=IF($K{r}=0,"",OPERATIONS!$C{s})',
-        "G": '=IF($K{r}=0,"",OPERATIONS!$D{s})',
-        "H": '=IF($K{r}=0,"",OPERATIONS!$E{s})',
-        "J": '=IF($K{r}=0,"",OPERATIONS!$J{s})',
-        "M": '=IF($K{r}=0,"",OPERATIONS!$P{s})',
+        "M": '=IF(OR(OPERATIONS!$O{s}=0,OPERATIONS!$C{s}="RECEPTION",'
+             'OPERATIONS!$C{s}="AJUSTEMENT"),0,-OPERATIONS!$G{s})',
+        "N": '=IF($M{r}=0,0,OPERATIONS!$R{s}*$M{r})',
+        "B": '=IF($M{r}=0,"","OPERATIONS")',
+        "C": '=IF($M{r}=0,"",OPERATIONS!$A{s})',
+        "D": '=IF($M{r}=0,"",OPERATIONS!$B{s})',
+        "E": '=IF($M{r}=0,"","SORTIE")',
+        "F": '=IF($M{r}=0,"",OPERATIONS!$C{s})',
+        "G": '=IF($M{r}=0,"",OPERATIONS!$D{s})',
+        "I": '=IF($M{r}=0,"",OPERATIONS!$E{s})',
+        "K": '=IF($M{r}=0,"",OPERATIONS!$K{s})',
+        "O": '=IF($M{r}=0,"",OPERATIONS!$Q{s})',
     })
-    # --- bloc 2 : entrees issues de OPERATIONS ---------------------------
+    # --- bloc 2 : entrees et ajustements issus de OPERATIONS -------------
     block(MV_B2, FIRST, N_OPS, {
-        "K": '=IF(OR(OPERATIONS!$N{s}=0,OPERATIONS!$C{s}="CONSOMMATION"),0,'
+        "M": '=IF(OR(OPERATIONS!$O{s}=0,OPERATIONS!$C{s}="CONSOMMATION"),0,'
              'OPERATIONS!$G{s})',
-        "L": '=IF($K{r}=0,0,OPERATIONS!$Q{s}*$K{r})',
-        "B": '=IF($K{r}=0,"","OPERATIONS")',
-        "C": '=IF($K{r}=0,"",OPERATIONS!$A{s})',
-        "D": '=IF($K{r}=0,"",OPERATIONS!$B{s})',
-        "E": '=IF($K{r}=0,"","ENTREE")',
-        "F": '=IF($K{r}=0,"",OPERATIONS!$C{s})',
-        "G": '=IF($K{r}=0,"",OPERATIONS!$D{s})',
-        "H": '=IF($K{r}=0,"",OPERATIONS!$F{s})',
-        "J": '=IF($K{r}=0,"",OPERATIONS!$J{s})',
-        "M": '=IF($K{r}=0,"",OPERATIONS!$P{s})',
+        "N": '=IF($M{r}=0,0,OPERATIONS!$R{s}*$M{r})',
+        "B": '=IF($M{r}=0,"","OPERATIONS")',
+        "C": '=IF($M{r}=0,"",OPERATIONS!$A{s})',
+        "D": '=IF($M{r}=0,"",OPERATIONS!$B{s})',
+        "E": '=IF($M{r}=0,"",IF($M{r}<0,"SORTIE","ENTREE"))',
+        "F": '=IF($M{r}=0,"",OPERATIONS!$C{s})',
+        "G": '=IF($M{r}=0,"",OPERATIONS!$D{s})',
+        "I": '=IF($M{r}=0,"",OPERATIONS!$F{s})',
+        "K": '=IF($M{r}=0,"",OPERATIONS!$K{s})',
+        "O": '=IF($M{r}=0,"",OPERATIONS!$Q{s})',
     })
     # --- bloc 3 : sorties vers sous-traitance ----------------------------
     block(MV_B3, FIRST, N_ST, {
-        "K": '=IF(OR(SOUS_TRAITANCE!$Q{s}=0,'
+        "M": '=IF(OR(SOUS_TRAITANCE!$R{s}=0,'
              'SOUS_TRAITANCE!$D{s}<>"STOCK EXISTANT"),0,-SOUS_TRAITANCE!$G{s})',
-        "L": '=IF($K{r}=0,0,SOUS_TRAITANCE!$X{s}*$K{r})',
-        "B": '=IF($K{r}=0,"","SOUS-TRAITANCE")',
-        "C": '=IF($K{r}=0,"",SOUS_TRAITANCE!$A{s})',
-        "D": '=IF($K{r}=0,"",SOUS_TRAITANCE!$B{s})',
-        "E": '=IF($K{r}=0,"","SORTIE")',
-        "F": '=IF($K{r}=0,"","ENVOI SOUS-TRAITANCE")',
-        "G": '=IF($K{r}=0,"",SOUS_TRAITANCE!$E{s})',
-        "H": '=IF($K{r}=0,"",SOUS_TRAITANCE!$F{s})',
-        "J": '=IF($K{r}=0,"",SOUS_TRAITANCE!$O{s})',
-        "M": '=IF($K{r}=0,"",SOUS_TRAITANCE!$W{s})',
+        "N": '=IF($M{r}=0,0,SOUS_TRAITANCE!$Y{s}*$M{r})',
+        "B": '=IF($M{r}=0,"","SOUS-TRAITANCE")',
+        "C": '=IF($M{r}=0,"",SOUS_TRAITANCE!$A{s})',
+        "D": '=IF($M{r}=0,"",SOUS_TRAITANCE!$B{s})',
+        "E": '=IF($M{r}=0,"","SORTIE")',
+        "F": '=IF($M{r}=0,"","ENVOI SOUS-TRAITANCE")',
+        "G": '=IF($M{r}=0,"",SOUS_TRAITANCE!$E{s})',
+        "I": '=IF($M{r}=0,"",SOUS_TRAITANCE!$F{s})',
+        "K": '=IF($M{r}=0,"",SOUS_TRAITANCE!$P{s})',
+        "O": '=IF($M{r}=0,"",SOUS_TRAITANCE!$X{s})',
     })
     # --- bloc 4 : entrees issues des resultats de sous-traitance ---------
     block(MV_B4, FIRST, N_RES, {
-        "K": '=IF(ST_RESULTATS!$P{s}=0,0,ST_RESULTATS!$F{s})',
-        "L": '=IF($K{r}=0,0,ST_RESULTATS!$T{s}*$K{r})',
-        "B": '=IF($K{r}=0,"","RESULTAT ST")',
-        "C": '=IF($K{r}=0,"",ST_RESULTATS!$A{s})',
-        "D": '=IF($K{r}=0,"",ST_RESULTATS!$V{s})',
-        "E": '=IF($K{r}=0,"","ENTREE")',
-        "F": '=IF($K{r}=0,"","RETOUR SOUS-TRAITANCE")',
-        "G": '=IF($K{r}=0,"",ST_RESULTATS!$N{s})',
-        "H": '=IF($K{r}=0,"",ST_RESULTATS!$J{s})',
-        "J": '=IF($K{r}=0,"",IFERROR(INDEX(LOT_PRODE,'
+        "M": '=IF(ST_RESULTATS!$Q{s}=0,0,ST_RESULTATS!$F{s})',
+        "N": '=IF($M{r}=0,0,ST_RESULTATS!$U{s}*$M{r})',
+        "B": '=IF($M{r}=0,"","RESULTAT ST")',
+        "C": '=IF($M{r}=0,"",ST_RESULTATS!$A{s})',
+        "D": '=IF($M{r}=0,"",ST_RESULTATS!$W{s})',
+        "E": '=IF($M{r}=0,"","ENTREE")',
+        "F": '=IF($M{r}=0,"","RETOUR SOUS-TRAITANCE")',
+        "G": '=IF($M{r}=0,"",ST_RESULTATS!$N{s})',
+        "I": '=IF($M{r}=0,"",ST_RESULTATS!$J{s})',
+        "K": '=IF($M{r}=0,"",IFERROR(INDEX(LOT_PRODE,'
              'MATCH($G{r},LOT_KEY,0)),""))',
-        "M": '=IF($K{r}=0,"",ST_RESULTATS!$S{s})',
+        "O": '=IF($M{r}=0,"",ST_RESULTATS!$T{s})',
     })
 
     for r in range(MV_B1, MV_END + 1):
-        ws["N%d" % r] = ('=IF($G{r}="","",IF($G{r}=R_LOT,'
+        ws["P%d" % r] = ('=IF($G{r}="","",IF($G{r}=R_LOT,'
                          'COUNTIF($G${f}:$G{r},R_LOT),""))').format(
                              r=r, f=MV_B1)
 
-    cf_status(ws, "M%d:M%d" % (MV_B1, MV_END))
+    cf_status(ws, "O%d:O%d" % (MV_B1, MV_END))
     ws.conditional_formatting.add(
-        "L%d:L%d" % (MV_B1, MV_END),
-        FormulaRule(formula=['AND($K%d<>0,$L%d=0)' % (MV_B1, MV_B1)],
+        "N%d:N%d" % (MV_B1, MV_END),
+        FormulaRule(formula=['AND($M%d<>0,$N%d=0)' % (MV_B1, MV_B1)],
                     fill=PatternFill("solid", fgColor=G_BAD[0]),
                     font=Font(name=FONT, size=9, color=G_BAD[1])))
     return ws
@@ -948,66 +1021,81 @@ def build_mouvements(wb):
 # ============================================================================
 # STOCK  -  synthese
 # ============================================================================
+HDR_M = 14                      # ligne d'en-tete de la matrice
+R0_M = HDR_M + 1                # premiere ligne de lot
+R1_M = HDR_M + N_LOTS
+RT_M = R1_M + 1                 # ligne TOTAL
+SYN = RT_M + 3                  # premiere ligne du bloc de syntheses
+
+
 def build_stock(wb):
     ws = wb.create_sheet("STOCK")
     title_bar(ws, "SYNTHESE DES STOCKS",
               "Reconstruit integralement a partir du grand livre MOUVEMENTS. "
-              "Une case vide signifie zero.", "R")
+              "Une case vide signifie zero.", "U")
     kpi = [
         ("STOCK TOTAL INTERNE (kg)", '=SUMIFS(MVT_NET,MVT_CLASSE,"INTERNE")'),
         ("STOCK TOTAL EXTERNE (kg)", '=SUMIFS(MVT_NET,MVT_CLASSE,"EXTERNE")'),
         ("STOCK TOTAL (kg)", '=SUM(MVT_NET)'),
-        ("NB LOTS EN STOCK", '=COUNTIF($N$14:$N$%d,">0")' % (13 + N_LOTS)),
+        ("NB LOTS EN STOCK", '=COUNTIF($N$%d:$N$%d,">0")' % (R0_M, R1_M)),
         ("EN COURS CHEZ LES SOUS-TRAITANTS (kg)", '=SUM(ST_ENCOURS)'),
+        ("STOCK BLOQUE QUALITE (kg)", '=SUM($T$%d:$T$%d)' % (R0_M, R1_M)),
         ("CONTROLE : ECART MATRICE / GRAND LIVRE (kg)",
-         '=ROUND(SUM(MVT_NET)-SUM($N$14:$N$%d),3)' % (13 + N_LOTS)),
+         '=ROUND(SUM(MVT_NET)-SUM($N$%d:$N$%d),3)' % (R0_M, R1_M)),
     ]
     for i, (lab, f) in enumerate(kpi):
         r = 4 + i
         ws.merge_cells("A%d:C%d" % (r, r))
-        cell(ws, "A%d" % r, lab, bold=(i > 4), size=9, color=INK, fill=KPI_BG,
+        cell(ws, "A%d" % r, lab, bold=(i >= 5), size=9, color=INK, fill=KPI_BG,
              border=BOX, align="left", indent=1)
         cell(ws, "D%d" % r, f, bold=True, size=10, color=NAVY, fill=KPI_BG,
              border=BOX, align="center", fmt=NUM_KG0 if i != 3 else NUM_INT)
     ws.conditional_formatting.add(
-        "D9", CellIsRule(operator="notEqual", formula=["0"],
+        "D9", CellIsRule(operator="greaterThan", formula=["0"],
                          fill=PatternFill("solid", fgColor=G_BAD[0]),
                          font=Font(name=FONT, size=10, bold=True,
                                    color=G_BAD[1])))
-    ws.merge_cells("E9:K9")
-    cell(ws, "E9", "Doit rester a 0. Sinon un lot present dans les mouvements "
-         "n'a pas de fiche dans LOTS.", size=8, color=MUTED, align="left")
+    ws.conditional_formatting.add(
+        "D10", CellIsRule(operator="notEqual", formula=["0"],
+                          fill=PatternFill("solid", fgColor=G_BAD[0]),
+                          font=Font(name=FONT, size=10, bold=True,
+                                    color=G_BAD[1])))
+    ws.merge_cells("E10:K10")
+    cell(ws, "E10", "Doit rester a 0. Sinon un lot present dans les "
+         "mouvements n'a pas de fiche dans LOTS.", size=8, color=MUTED,
+         align="left")
 
-    section(ws, 11, "STOCK PAR LOT ET PAR EMPLACEMENT", 18)
-    hdr = 13
-    cell(ws, "A12", "CLASSE", bold=True, size=8, color=MUTED, align="center",
+    section(ws, 12, "STOCK PAR LOT ET PAR EMPLACEMENT", 21)
+    cell(ws, "A13", "CLASSE", bold=True, size=8, color=MUTED, align="center",
          border=BOX, fill=CALC_BG)
     for j in range(N_COLS_EMPL):
         L = get_column_letter(2 + j)
-        ws["%s12" % L] = ('=IF(INDEX(EMPL_KEY,%d)="","",'
+        ws["%s13" % L] = ('=IF(INDEX(EMPL_KEY,%d)="","",'
                           'IFERROR(INDEX(EMPL_CLASSE,%d),""))' % (j + 1, j + 1))
-        cell(ws, "%s12" % L, None, bold=True, size=8, color=MUTED,
+        cell(ws, "%s13" % L, None, bold=True, size=8, color=MUTED,
              align="center", border=BOX, fill=CALC_BG)
-        ws["%s%d" % (L, hdr)] = '=IF(INDEX(EMPL_KEY,%d)="","",INDEX(EMPL_KEY,%d))' % (j + 1, j + 1)
-        cell(ws, "%s%d" % (L, hdr), None, bold=True, size=9, color=WHITE,
+        ws["%s%d" % (L, HDR_M)] = ('=IF(INDEX(EMPL_KEY,%d)="","",'
+                                   'INDEX(EMPL_KEY,%d))' % (j + 1, j + 1))
+        cell(ws, "%s%d" % (L, HDR_M), None, bold=True, size=9, color=WHITE,
              fill=TEAL, align="center", wrap=True, border=BOX)
         ws.column_dimensions[L].width = 13
-    cell(ws, "A%d" % hdr, "LOT", bold=True, size=9, color=WHITE, fill=TEAL,
-         align="center", border=BOX)
+    cell(ws, "A%d" % HDR_M, "LOT INTERNE", bold=True, size=9, color=WHITE,
+         fill=TEAL, align="center", border=BOX)
     ws.column_dimensions["A"].width = 15
     extra = [("N", "TOTAL LOT (KG)"), ("O", "DONT INTERNE"),
-             ("P", "DONT EXTERNE"), ("Q", "EN COURS ST"), ("R", "ALERTE")]
+             ("P", "DONT EXTERNE"), ("Q", "EN COURS ST"), ("R", "LOT EXTERNE"),
+             ("S", "DERNIERE DECISION"), ("T", "STOCK BLOQUE (KG)"),
+             ("U", "ALERTE")]
     for L, lab in extra:
-        cell(ws, "%s%d" % (L, hdr), lab, bold=True, size=9, color=WHITE,
+        cell(ws, "%s%d" % (L, HDR_M), lab, bold=True, size=9, color=WHITE,
              fill=MUTED, align="center", wrap=True, border=BOX)
         ws.column_dimensions[L].width = 15
-    ws.column_dimensions["R"].width = 22
-    ws.row_dimensions[hdr].height = 28
+    ws.column_dimensions["S"].width = 20
+    ws.column_dimensions["U"].width = 22
+    ws.row_dimensions[HDR_M].height = 28
 
-    r0 = hdr + 1
-    r1 = hdr + N_LOTS
-    for r in range(r0, r1 + 1):
-        src = FIRST + (r - r0)
+    for r in range(R0_M, R1_M + 1):
+        src = FIRST + (r - R0_M)
         ws["A%d" % r] = '=IF(LOTS!$A%d="","",LOTS!$A%d)' % (src, src)
         cell(ws, "A%d" % r, None, size=9, bold=True, color=INK, fill=WHITE,
              border=BOX)
@@ -1015,92 +1103,199 @@ def build_stock(wb):
             L = get_column_letter(2 + j)
             ws["%s%d" % (L, r)] = ('=IF(OR($A{r}="",{L}${h}=""),0,'
                                    'SUMIFS(MVT_NET,MVT_LOT,$A{r},MVT_EMPL,'
-                                   '{L}${h}))').format(r=r, L=L, h=hdr)
+                                   '{L}${h}))').format(r=r, L=L, h=HDR_M)
             cell(ws, "%s%d" % (L, r), None, size=9, fill=WHITE, border=BOX,
                  align="right", fmt=NUM_KG)
         ws["N%d" % r] = '=SUM($B%d:$M%d)' % (r, r)
-        ws["O%d" % r] = '=SUMPRODUCT(($B$12:$M$12="INTERNE")*$B%d:$M%d)' % (r, r)
-        ws["P%d" % r] = '=SUMPRODUCT(($B$12:$M$12="EXTERNE")*$B%d:$M%d)' % (r, r)
+        ws["O%d" % r] = '=SUMPRODUCT(($B$13:$M$13="INTERNE")*$B%d:$M%d)' % (r, r)
+        ws["P%d" % r] = '=SUMPRODUCT(($B$13:$M$13="EXTERNE")*$B%d:$M%d)' % (r, r)
         ws["Q%d" % r] = '=IF($A%d="",0,SUMIFS(ST_ENCOURS,ST_LOT,$A%d))' % (r, r)
-        ws["R%d" % r] = ('=IF($A{r}="","",IF($N{r}<-0.001,'
-                         '"STOCK NEGATIF - ANOMALIE",""))').format(r=r)
-        for L in ("N", "O", "P", "Q"):
+        ws["R%d" % r] = ('=IF($A{r}="","",IFERROR(INDEX(LOT_EXTE,'
+                         'MATCH($A{r},LOT_KEY,0)),""))').format(r=r)
+        ws["S%d" % r] = ('=IF($A{r}="","",IFERROR(INDEX(LOT_DECISION,'
+                         'MATCH($A{r},LOT_KEY,0)),""))').format(r=r)
+        ws["T%d" % r] = '=IF($S%d="BLOQUER",MAX(0,$N%d),0)' % (r, r)
+        ws["U%d" % r] = ('=IF($A{r}="","",IF($N{r}<-0.001,'
+                         '"STOCK NEGATIF - ANOMALIE",'
+                         'IF($T{r}>0,"BLOQUE QUALITE","")))').format(r=r)
+        for L in ("N", "O", "P", "Q", "T"):
             cell(ws, "%s%d" % (L, r), None, size=9, bold=(L == "N"),
                  fill=CALC_BG, border=BOX, align="right", fmt=NUM_KG)
-        cell(ws, "R%d" % r, None, size=9, fill=CALC_BG, border=BOX,
+        for L in ("R", "S"):
+            cell(ws, "%s%d" % (L, r), None, size=9, fill=CALC_BG, border=BOX,
+                 align="center", color=MUTED)
+        cell(ws, "U%d" % r, None, size=9, fill=CALC_BG, border=BOX,
              color=G_BAD[1], bold=True, align="center")
 
-    rt = r1 + 1
-    cell(ws, "A%d" % rt, "TOTAL", bold=True, size=9, color=WHITE, fill=NAVY,
+    cell(ws, "A%d" % RT_M, "TOTAL", bold=True, size=9, color=WHITE, fill=NAVY,
          align="center", border=BOX)
     for j in range(N_COLS_EMPL):
         L = get_column_letter(2 + j)
-        ws["%s%d" % (L, rt)] = '=SUM(%s%d:%s%d)' % (L, r0, L, r1)
-        cell(ws, "%s%d" % (L, rt), None, bold=True, size=9, color=WHITE,
+        ws["%s%d" % (L, RT_M)] = '=SUM(%s%d:%s%d)' % (L, R0_M, L, R1_M)
+        cell(ws, "%s%d" % (L, RT_M), None, bold=True, size=9, color=WHITE,
              fill=NAVY, border=BOX, align="right", fmt=NUM_KG)
-    for L in ("N", "O", "P", "Q"):
-        ws["%s%d" % (L, rt)] = '=SUM(%s%d:%s%d)' % (L, r0, L, r1)
-        cell(ws, "%s%d" % (L, rt), None, bold=True, size=9, color=WHITE,
+    for L in ("N", "O", "P", "Q", "T"):
+        ws["%s%d" % (L, RT_M)] = '=SUM(%s%d:%s%d)' % (L, R0_M, L, R1_M)
+        cell(ws, "%s%d" % (L, RT_M), None, bold=True, size=9, color=WHITE,
              fill=NAVY, border=BOX, align="right", fmt=NUM_KG)
-    cell(ws, "R%d" % rt, "", fill=NAVY, border=BOX)
+    for L in ("R", "S", "U"):
+        cell(ws, "%s%d" % (L, RT_M), "", fill=NAVY, border=BOX)
 
     ws.conditional_formatting.add(
-        "B%d:N%d" % (r0, r1),
+        "B%d:N%d" % (R0_M, R1_M),
         CellIsRule(operator="lessThan", formula=["0"],
                    fill=PatternFill("solid", fgColor=G_BAD[0]),
                    font=Font(name=FONT, size=9, bold=True, color=G_BAD[1])))
-    ws.freeze_panes = "B%d" % r0
+    for val, (bg, fg) in (("BLOQUER", G_BAD), ("REFUSER", G_BAD),
+                          ("A RECONTROLER", G_WARN), ("ACCEPTER", G_OK)):
+        ws.conditional_formatting.add("S%d:S%d" % (R0_M, R1_M), CellIsRule(
+            operator="equal", formula=['"%s"' % val],
+            fill=PatternFill("solid", fgColor=bg),
+            font=Font(name=FONT, size=9, bold=True, color=fg)))
+
+    # ------------------------------------------------------------------
+    # Syntheses complementaires
+    # ------------------------------------------------------------------
+    section(ws, SYN - 1, "SYNTHESES  -  PAR ESPECE, PAR ETAT MATIERE, "
+            "RECONCILIATION DU GRAND LIVRE", 21)
+    trio = [("A", "B", "ESPECE", "L_PRODUIT_R", 12),
+            ("D", "E", "ETAT MATIERE", "L_ETAT_R", 10)]
+    for c1, c2, lab, rng, n in trio:
+        cell(ws, "%s%d" % (c1, SYN), lab, bold=True, size=9, color=WHITE,
+             fill=TEAL, align="center", border=BOX)
+        cell(ws, "%s%d" % (c2, SYN), "STOCK (KG)", bold=True, size=9,
+             color=WHITE, fill=TEAL, align="center", border=BOX)
+        for i in range(n):
+            r = SYN + 1 + i
+            ws["%s%d" % (c1, r)] = ('=IF(INDEX(%s,%d)="","",INDEX(%s,%d))'
+                                    % (rng, i + 1, rng, i + 1))
+            crit = "MVT_PROD" if lab == "ESPECE" else "MVT_ETAT"
+            ws["%s%d" % (c2, r)] = ('=IF(%s%d="","",SUMIFS(MVT_NET,%s,%s%d))'
+                                    % (c1, r, crit, c1, r))
+            cell(ws, "%s%d" % (c1, r), None, size=9, fill=WHITE, border=BOX)
+            cell(ws, "%s%d" % (c2, r), None, size=9, fill=WHITE, border=BOX,
+                 align="right", fmt=NUM_KG0)
+        rr = SYN + 1 + n
+        cell(ws, "%s%d" % (c1, rr), "TOTAL", bold=True, size=9, color=WHITE,
+             fill=NAVY, border=BOX, align="center")
+        ws["%s%d" % (c2, rr)] = '=SUM(%s%d:%s%d)' % (c2, SYN + 1, c2, rr - 1)
+        cell(ws, "%s%d" % (c2, rr), None, bold=True, size=9, color=WHITE,
+             fill=NAVY, border=BOX, align="right", fmt=NUM_KG0)
+
+    cell(ws, "G%d" % SYN, "RECONCILIATION DU GRAND LIVRE", bold=True, size=9,
+         color=WHITE, fill=TEAL, align="center", border=BOX)
+    cell(ws, "H%d" % SYN, "KG", bold=True, size=9, color=WHITE, fill=TEAL,
+         align="center", border=BOX)
+    rec = [
+        ("ENTREES (hors ajustements)",
+         '=SUMIFS(MVT_NET,MVT_NET,">0",MVT_OP,"<>AJUSTEMENT")'),
+        ("SORTIES (hors ajustements)",
+         '=-SUMIFS(MVT_NET,MVT_NET,"<0",MVT_OP,"<>AJUSTEMENT")'),
+        ("AJUSTEMENTS (signes)", '=SUMIFS(MVT_NET,MVT_OP,"AJUSTEMENT")'),
+        ("STOCK THEORIQUE", '=$H%d-$H%d+$H%d' % (SYN + 1, SYN + 2, SYN + 3)),
+        ("STOCK ACTUEL", '=SUM(MVT_NET)'),
+        ("ECART", '=ROUND($H%d-$H%d,3)' % (SYN + 5, SYN + 4)),
+        ("BILAN", '=IF(ROUND($H%d,3)=0,"BILAN OK","BILAN A CORRIGER")'
+         % (SYN + 6)),
+        ("Ecarts sous-traitance non justifies (info)",
+         '=SUMIFS(ST_ECART,ST_STATUT,"A JUSTIFIER")'),
+    ]
+    for i, (lab, f) in enumerate(rec):
+        r = SYN + 1 + i
+        bold = lab in ("STOCK THEORIQUE", "STOCK ACTUEL", "BILAN")
+        cell(ws, "G%d" % r, lab, bold=bold, size=9,
+             color=INK if bold else MUTED, fill=WHITE, border=BOX,
+             align="left", indent=1)
+        cell(ws, "H%d" % r, f, bold=bold, size=9, color=INK, fill=WHITE,
+             border=BOX, align="right" if lab != "BILAN" else "center",
+             fmt=None if lab == "BILAN" else NUM_KG0)
+    ws.column_dimensions["G"].width = 34
+    ws.column_dimensions["H"].width = 16
+    ws.conditional_formatting.add(
+        "H%d" % (SYN + 7), CellIsRule(
+            operator="equal", formula=['"BILAN OK"'],
+            fill=PatternFill("solid", fgColor=G_OK[0]),
+            font=Font(name=FONT, size=9, bold=True, color=G_OK[1])))
+    ws.conditional_formatting.add(
+        "H%d" % (SYN + 7), CellIsRule(
+            operator="equal", formula=['"BILAN A CORRIGER"'],
+            fill=PatternFill("solid", fgColor=G_BAD[0]),
+            font=Font(name=FONT, size=9, bold=True, color=G_BAD[1])))
+    ws.freeze_panes = "B%d" % R0_M
     return ws
 # ============================================================================
 # RECHERCHE
 # ============================================================================
 IDENT = [
-    (7,  "PRODUIT / ESPECE",         "LOT_PROD",    "LOT_PRODE"),
-    (8,  "FOURNISSEUR / PRODUCTEUR", "LOT_FOURN",   "LOT_FOURNE"),
-    (9,  "ORIGINE",                  "LOT_ORIG",    "LOT_ORIGE"),
-    (10, "IMMATRICULATION CAMION",   "LOT_IMMAT",   None),
-    (11, "ETAT MATIERE",             "LOT_ETAT",    None),
-    (12, "CONSERVATION",             "LOT_CONSERV", "LOT_CONSERVE"),
-    (13, "QUALITE INITIALE",         "LOT_QUAL",    None),
-    (14, "MOULE INITIAL",            "LOT_MOULE",   None),
-    (15, "DATE CREATION",            "LOT_DATE",    None),
-    (16, "LOT PARENT / SOURCE",      "LOT_PARENTE", None),
-    (17, "OBSERVATION",              "LOT_OBS",     None),
-    (18, "STATUT DE LA FICHE",       "LOT_STATUT",  None),
+    (8,  "LOT EXTERNE",              "LOT_EXT",     "LOT_EXTE"),
+    (9,  "ESPECE",                   "LOT_PROD",    "LOT_PRODE"),
+    (10, "PRODUCTEUR / FOURNISSEUR", "LOT_FOURN",   "LOT_FOURNE"),
+    (11, "ORIGINE",                  "LOT_ORIG",    "LOT_ORIGE"),
+    (12, "MATRICULE CAMION",         "LOT_IMMAT",   "LOT_IMMATE"),
+    (13, "ETAT MATIERE",             "LOT_ETAT",    None),
+    (14, "CONSERVATION",             "LOT_CONSERV", "LOT_CONSERVE"),
+    (15, "QUALITE INITIALE",         "LOT_QUAL",    None),
+    (16, "MOULE INITIAL",            "LOT_MOULE",   None),
+    (17, "DATE CREATION",            "LOT_DATE",    None),
+    (18, "LOT PARENT / SOURCE",      "LOT_PARENTE", None),
+    (19, "DERNIERE DECISION QUALITE", "LOT_DECISION", None),
+    (20, "OBSERVATION",              "LOT_OBS",     None),
+    (21, "STATUT DE LA FICHE",       "LOT_STATUT",  None),
 ]
+PARENT_CELL = "$C$18"
 
 RECH_BLOCKS = [
-    (23, "HISTORIQUE DES MOUVEMENTS DE STOCK", 25,
+    ("HISTORIQUE DES MOUVEMENTS DE STOCK", 25,
      ["N", "DATE", "OPERATION", "SENS", "EMPLACEMENT", "CLASSE",
-      "QTE DECLAREE", "QTE EN STOCK", "STATUT", "REFERENCE"],
-     ["MVT_RANG"]),
-    (0, "SOUS-TRAITANCE  (envois lies a ce lot)", 12,
+      "QTE DECLAREE", "QTE EN STOCK", "STATUT", "REFERENCE"], "MVT_RANG"),
+    ("SOUS-TRAITANCE  (envois lies a ce lot)", 12,
      ["ID ST", "DATE ENVOI", "SOUS-TRAITANT", "SOURCE", "EMPL. SOURCE",
       "QTE ENVOYEE", "TOTAL SORTIE", "ECART", "NB RESULTATS", "STATUT"],
-     ["ST_RANG"]),
-    (0, "RESULTATS DE SOUS-TRAITANCE", 12,
+     "ST_RANG"),
+    ("RESULTATS DE SOUS-TRAITANCE", 12,
      ["ID ST", "DATE", "RESULTAT / ETAT", "LOT RESULTAT", "QUANTITE",
-      "QUALITE", "MOULE", "DESTINATION", "CLASSE", "STATUT"],
-     ["RES_RANG"]),
-    (0, "HISTORIQUE QUALITE", 12,
-     ["DATE", "EMPLACEMENT", "TEMPERATURE", "HISTAMINE", "QUALITE", "MOULE",
-      "DEFAUTS", "DECISION", "STATUT", "ALERTE"],
-     ["QC_RANG"]),
-    (0, "LOTS LIES  (sans doublon)", 8,
-     ["LOT LIE", "PRODUIT", "ETAT MATIERE", "STOCK TOTAL (KG)", "RELATION",
-      "", "", "", "", ""],
-     ["RES_RANGLIEN"]),
+      "QUALITE", "MOULE", "DESTINATION", "CLASSE", "STATUT"], "RES_RANG"),
+    ("HISTORIQUE QUALITE", 12,
+     ["DATE", "EMPLACEMENT", "TEMPERATURE", "HISTAMINE (PPM)", "QUALITE",
+      "MOULE", "DEFAUTS", "DECISION", "STATUT", "ALERTE"], "QC_RANG"),
+    ("LOTS LIES PAR SOUS-TRAITANCE  (sans doublon)", 8,
+     ["LOT LIE", "ESPECE", "ETAT MATIERE", "STOCK TOTAL (KG)", "RELATION",
+      "", "", "", "", ""], "RES_RANGLIEN"),
+    ("AUTRES LOTS INTERNES PORTANT LE MEME LOT EXTERNE", 8,
+     ["LOT INTERNE", "LOT EXTERNE", "ESPECE", "ETAT MATIERE",
+      "STOCK TOTAL (KG)", "", "", "", "", ""], "LOT_RANGEXT"),
 ]
+
+SRC = {
+    "MVT_RANG": ["MVT_NO", "MVT_DATE", "MVT_OP", "MVT_SENS", "MVT_EMPL",
+                 "MVT_CLASSE", "MVT_BRUT", "MVT_NET", "MVT_STATUT",
+                 "MVT_REF"],
+    "ST_RANG": ["ST_ID", "ST_DATE", "ST_STRAIT", "ST_SOURCE", "ST_EMPL",
+                "ST_QTE", "ST_TOTSORTIE", "ST_ECART", "ST_NBRES",
+                "ST_STATUT"],
+    "RES_RANG": ["RES_IDST", "RES_DATE", "RES_ETAT", "RES_LOTEFF",
+                 "RES_QTE", "RES_QUAL", "RES_MOULE", "RES_DEST", None,
+                 "RES_STATUT"],
+    "QC_RANG": ["QC_DATE", "QC_EMPL", "QC_TEMP", "QC_HIST", "QC_QUAL",
+                "QC_MOULE", "QC_DEF", "QC_DEC", "QC_STATUT", "QC_ALERTE"],
+    "RES_RANGLIEN": ["RES_LOTLIE", None, None, None, None,
+                     None, None, None, None, None],
+    "LOT_RANGEXT": ["LOT_KEY", "LOT_EXTE", "LOT_PRODE", "LOT_ETAT",
+                    "LOT_STOCK", None, None, None, None, None],
+}
+DATES = {"MVT_DATE", "ST_DATE", "RES_DATE", "QC_DATE"}
+KGS = {"MVT_BRUT", "MVT_NET", "ST_QTE", "ST_TOTSORTIE", "ST_ECART",
+       "RES_QTE", "LOT_STOCK"}
 
 
 def build_recherche(wb):
     ws = wb.create_sheet("RECHERCHE")
     title_bar(ws, "RECHERCHE PAR LOT",
-              "Choisissez un lot : identite, stock, historique complet, "
-              "sous-traitance, qualite et lots lies s'affichent "
-              "automatiquement.", "K")
-    widths = {"A": 2, "B": 26, "C": 17, "D": 18, "E": 18, "F": 15, "G": 15,
-              "H": 15, "I": 16, "J": 21, "K": 30}
+              "Saisissez un LOT INTERNE ou un LOT EXTERNE : identite, stock, "
+              "historique complet, sous-traitance, qualite et lots lies "
+              "s'affichent automatiquement.", "K")
+    widths = {"A": 2, "B": 27, "C": 17, "D": 18, "E": 18, "F": 15, "G": 16,
+              "H": 16, "I": 16, "J": 21, "K": 30}
     for k, v in widths.items():
         ws.column_dimensions[k].width = v
 
@@ -1110,13 +1305,24 @@ def build_recherche(wb):
          align="center", border=BOX)
     ws.row_dimensions[4].height = 24
     dv(ws, "C4", "L_LOTS", strict=False)
+    cell(ws, "B5", "LOT INTERNE ANALYSE", bold=True, size=9, color=MUTED)
+    ws.merge_cells("C5:E5")
+    ws["C5"] = ('=IF($C$4="","",IF(ISNUMBER(MATCH($C$4,LOT_KEY,0)),$C$4,'
+                'IFERROR(INDEX(LOT_KEY,MATCH($C$4,LOT_EXTE,0)),"")))')
+    cell(ws, "C5", None, bold=True, size=11, color=NAVY, fill=CALC_BG,
+         align="center", border=BOX)
+    ws.merge_cells("G4:K5")
+    cell(ws, "G4", "Un LOT EXTERNE peut correspondre a plusieurs lots "
+         "internes : le premier est analyse ici, les autres sont listes en "
+         "bas de page.", size=8, color=MUTED, align="left", wrap=True,
+         indent=1)
 
-    ws.merge_cells("A6:E6")
-    cell(ws, "A6", "IDENTITE DU LOT  (reprise automatique - aucune re-saisie)",
+    ws.merge_cells("A7:E7")
+    cell(ws, "A7", "IDENTITE DU LOT  (reprise automatique - aucune re-saisie)",
          bold=True, size=10, color=NAVY, fill=TEAL_SOFT, align="left",
          indent=1)
-    ws.merge_cells("G6:I6")
-    cell(ws, "G6", "STOCK ACTUEL", bold=True, size=10, color=NAVY,
+    ws.merge_cells("G7:I7")
+    cell(ws, "G7", "STOCK ACTUEL", bold=True, size=10, color=NAVY,
          fill=TEAL_SOFT, align="left", indent=1)
 
     for row, label, name, eff in IDENT:
@@ -1126,72 +1332,61 @@ def build_recherche(wb):
         cell(ws, "C%d" % row, None, size=10, color=INK, fill=WHITE,
              border=BOX, align="left", indent=1,
              fmt=NUM_DATE if name == "LOT_DATE" else None)
-        own = ('IF($C$4="","",IF(IFERROR(INDEX({n},MATCH($C$4,LOT_KEY,0)),"")'
-               '="","",INDEX({n},MATCH($C$4,LOT_KEY,0))))'.format(n=name))
+        own = ('IF($C$5="","",IF(IFERROR(INDEX({n},MATCH($C$5,LOT_KEY,0)),"")'
+               '="","",INDEX({n},MATCH($C$5,LOT_KEY,0))))'.format(n=name))
         if eff is None:
             ws["C%d" % row] = "=" + own
         else:
             ws["C%d" % row] = (
-                '=IF($C$4="","",IF(IFERROR(INDEX({n},MATCH($C$4,LOT_KEY,0)),"")'
-                '<>"",INDEX({n},MATCH($C$4,LOT_KEY,0)),'
-                'IF(IFERROR(INDEX({e},MATCH($C$4,LOT_KEY,0)),"")="","",'
-                'INDEX({e},MATCH($C$4,LOT_KEY,0))'
-                '&"   (herite du lot "&$C$16&")")))').format(n=name, e=eff)
-    cf_status(ws, "C18")
+                '=IF($C$5="","",IF(IFERROR(INDEX({n},MATCH($C$5,LOT_KEY,0)),"")'
+                '<>"",INDEX({n},MATCH($C$5,LOT_KEY,0)),'
+                'IF(IFERROR(INDEX({e},MATCH($C$5,LOT_KEY,0)),"")="","",'
+                'INDEX({e},MATCH($C$5,LOT_KEY,0))'
+                '&"   (herite du lot "&{p}&")")))').format(n=name, e=eff,
+                                                           p=PARENT_CELL)
+    cf_status(ws, "C21")
+    for val, (bg, fg) in (("BLOQUER", G_BAD), ("REFUSER", G_BAD),
+                          ("A RECONTROLER", G_WARN), ("ACCEPTER", G_OK)):
+        ws.conditional_formatting.add("C19", CellIsRule(
+            operator="equal", formula=['"%s"' % val],
+            fill=PatternFill("solid", fgColor=bg),
+            font=Font(name=FONT, size=10, bold=True, color=fg)))
 
     for j, lab in enumerate(("EMPLACEMENT", "CLASSE", "STOCK (KG)")):
         L = "GHI"[j]
-        cell(ws, "%s7" % L, lab, bold=True, size=9, color=WHITE, fill=TEAL,
+        cell(ws, "%s8" % L, lab, bold=True, size=9, color=WHITE, fill=TEAL,
              align="center", border=BOX)
     for i in range(N_COLS_EMPL):
-        r = 8 + i
+        r = 9 + i
         ws["G%d" % r] = ('=IF(INDEX(EMPL_KEY,%d)="","",INDEX(EMPL_KEY,%d))'
                          % (i + 1, i + 1))
         ws["H%d" % r] = ('=IF($G%d="","",IFERROR(INDEX(EMPL_CLASSE,'
                          'MATCH($G%d,EMPL_KEY,0)),""))' % (r, r))
-        ws["I%d" % r] = ('=IF(OR($G%d="",$C$4=""),"",'
-                         'SUMIFS(MVT_NET,MVT_LOT,$C$4,MVT_EMPL,$G%d))'
+        ws["I%d" % r] = ('=IF(OR($G%d="",$C$5=""),"",'
+                         'SUMIFS(MVT_NET,MVT_LOT,$C$5,MVT_EMPL,$G%d))'
                          % (r, r))
         cell(ws, "G%d" % r, None, size=9, fill=WHITE, border=BOX)
         cell(ws, "H%d" % r, None, size=9, fill=WHITE, border=BOX,
              align="center", color=MUTED)
         cell(ws, "I%d" % r, None, size=9, fill=WHITE, border=BOX,
              align="right", fmt=NUM_KG)
-    ws.merge_cells("G20:H20")
-    cell(ws, "G20", "STOCK TOTAL DU LOT", bold=True, size=9, color=WHITE,
-         fill=NAVY, border=BOX, align="left", indent=1)
-    ws["I20"] = '=IF($C$4="","",SUM($I$8:$I$19))'
-    cell(ws, "I20", None, bold=True, size=10, color=WHITE, fill=NAVY,
-         border=BOX, align="right", fmt=NUM_KG0)
     ws.merge_cells("G21:H21")
-    cell(ws, "G21", "EN COURS CHEZ SOUS-TRAITANT", bold=True, size=9,
+    cell(ws, "G21", "STOCK TOTAL DU LOT", bold=True, size=9, color=WHITE,
+         fill=NAVY, border=BOX, align="left", indent=1)
+    ws["I21"] = '=IF($C$5="","",SUM($I$9:$I$20))'
+    cell(ws, "I21", None, bold=True, size=10, color=WHITE, fill=NAVY,
+         border=BOX, align="right", fmt=NUM_KG0)
+    ws.merge_cells("G22:H22")
+    cell(ws, "G22", "EN COURS CHEZ SOUS-TRAITANT", bold=True, size=9,
          color=NAVY, fill=KPI_BG, border=BOX, align="left", indent=1)
-    ws["I21"] = '=IF($C$4="","",SUMIFS(ST_ENCOURS,ST_LOT,$C$4))'
-    cell(ws, "I21", None, bold=True, size=10, color=NAVY, fill=KPI_BG,
+    ws["I22"] = '=IF($C$5="","",SUMIFS(ST_ENCOURS,ST_LOT,$C$5))'
+    cell(ws, "I22", None, bold=True, size=10, color=NAVY, fill=KPI_BG,
          border=BOX, align="right", fmt=NUM_KG0)
 
     # ---- blocs historiques ------------------------------------------------
-    src = {
-        "MVT_RANG": ["MVT_NO", "MVT_DATE", "MVT_OP", "MVT_SENS", "MVT_EMPL",
-                     "MVT_CLASSE", "MVT_BRUT", "MVT_NET", "MVT_STATUT",
-                     "MVT_REF"],
-        "ST_RANG": ["ST_ID", "ST_DATE", "ST_STRAIT", "ST_SOURCE", "ST_EMPL",
-                    "ST_QTE", "ST_TOTSORTIE", "ST_ECART", "ST_NBRES",
-                    "ST_STATUT"],
-        "RES_RANG": ["RES_IDST", "RES_DATE", "RES_ETAT", "RES_LOTEFF",
-                     "RES_QTE", "RES_QUAL", "RES_MOULE", "RES_DEST", None,
-                     "RES_STATUT"],
-        "QC_RANG": ["QC_DATE", "QC_EMPL", "QC_TEMP", "QC_HIST", "QC_QUAL",
-                    "QC_MOULE", "QC_DEF", "QC_DEC", "QC_STATUT", "QC_ALERTE"],
-        "RES_RANGLIEN": ["RES_LOTLIE", None, None, None, None,
-                         None, None, None, None, None],
-    }
-    dates = {"MVT_DATE", "ST_DATE", "RES_DATE", "QC_DATE"}
-    kgs = {"MVT_BRUT", "MVT_NET", "ST_QTE", "ST_TOTSORTIE", "ST_ECART",
-           "RES_QTE"}
-    r = 23
+    r = 24
     positions = {}
-    for _, name, nrows, labels, (rank,) in RECH_BLOCKS:
+    for name, nrows, labels, rank in RECH_BLOCKS:
         section(ws, r, name, 11)
         hr = r + 1
         for j, lab in enumerate(labels):
@@ -1206,12 +1401,9 @@ def build_recherche(wb):
                 if not lab:
                     continue
                 L = get_column_letter(2 + j)
-                nm = src[rank][j]
-                fmt = None
-                if nm in dates:
-                    fmt = NUM_DATE
-                elif nm in kgs:
-                    fmt = NUM_KG0
+                nm = SRC[rank][j]
+                fmt = NUM_DATE if nm in DATES else (
+                    NUM_KG0 if nm in KGS else None)
                 cell(ws, "%s%d" % (L, rr), None, size=9, fill=WHITE,
                      border=BOX, fmt=fmt)
                 if nm:
@@ -1221,7 +1413,6 @@ def build_recherche(wb):
         positions[rank] = (hr, hr + nrows)
         r = hr + nrows + 2
 
-    # colonnes calculees specifiques
     h0, h1 = positions["RES_RANG"]
     for rr in range(h0 + 1, h1 + 1):
         ws["J%d" % rr] = ('=IF($I%d="","",IFERROR(INDEX(EMPL_CLASSE,'
@@ -1236,9 +1427,9 @@ def build_recherche(wb):
                           % (rr, rr, rr))
         ws["E%d" % rr] = ('=IF($B%d="","",SUMIFS(MVT_NET,MVT_LOT,$B%d))'
                           % (rr, rr))
-        ws["F%d" % rr] = ('=IF($B%d="","",IF($B%d=$C$16,'
+        ws["F%d" % rr] = ('=IF($B%d="","",IF($B%d=%s,'
                           '"LOT SOURCE / PARENT","ISSU DE SOUS-TRAITANCE"))'
-                          % (rr, rr))
+                          % (rr, rr, PARENT_CELL))
         cell(ws, "E%d" % rr, None, size=9, fill=WHITE, border=BOX,
              fmt=NUM_KG0, align="right")
         for L in ("C", "D", "F"):
@@ -1248,7 +1439,7 @@ def build_recherche(wb):
                       ("RES_RANG", "K"), ("QC_RANG", "J")):
         h0, h1 = positions[rank]
         cf_status(ws, "%s%d:%s%d" % (col, h0 + 1, col, h1))
-    ws.freeze_panes = "A5"
+    ws.freeze_panes = "A6"
     return ws
 # ============================================================================
 # ACCUEIL
@@ -1264,8 +1455,8 @@ KPIS = [("STOCK INTERNE (kg)", "=STOCK!$D$4", NUM_KG0),
         ("STOCK EXTERNE (kg)", "=STOCK!$D$5", NUM_KG0),
         ("STOCK TOTAL (kg)", "=STOCK!$D$6", NUM_KG0),
         ("EN COURS SOUS-TRAITANCE (kg)", "=STOCK!$D$8", NUM_KG0),
-        ("NOMBRE DE LOTS", "=COUNTA(LOT_KEY)", NUM_INT),
-        ("LIGNES DE MOUVEMENT", '=SUMPRODUCT((MVT_BRUT<>0)*1)', NUM_INT)]
+        ("STOCK BLOQUE QUALITE (kg)", "=STOCK!$D$9", NUM_KG0),
+        ("NOMBRE DE LOTS", "=COUNTA(LOT_KEY)", NUM_INT)]
 
 CTRL = [
     ("Operations de stock en anomalie",
@@ -1285,7 +1476,9 @@ CTRL = [
      '+COUNTIF(LOT_STATUT,"LOT EN DOUBLE")', True),
     ("Lots avec stock negatif", '=COUNTIF(STOCK!$N$14:$N$%d,"<0")' % (13 + N_LOTS),
      True),
-    ("Ecart matrice / grand livre (kg)", "=STOCK!$D$9", True),
+    ("Ecart matrice / grand livre (kg)", "=STOCK!$D$10", True),
+    ("Reconciliation du grand livre",
+     '=IF(STOCK!$H$%d="BILAN OK",0,1)' % (SYN + 7), True),
     ("Envois EN COURS (normal, en attente de resultat)",
      '=COUNTIF(ST_STATUT,"EN COURS")', False),
     ("Ecarts de sous-traitance A JUSTIFIER",
@@ -1315,8 +1508,12 @@ STEPS = [
      "qu'un ecart positif n'est pas justifie, l'envoi reste A JUSTIFIER."),
     ("6", "Controler la qualite", "Onglet QUALITE : uniquement les mesures "
      "reellement faites. Un controle ne modifie jamais le stock."),
-    ("7", "Consulter", "Onglet STOCK pour la synthese, RECHERCHE pour tout "
-     "savoir d'un lot, MOUVEMENTS pour l'historique complet."),
+    ("7", "Corriger un inventaire", "Onglet OPERATIONS, type AJUSTEMENT : "
+     "quantite signee sur l'emplacement de destination (negative = perte) "
+     "et MOTIF obligatoire. C'est le seul moyen de corriger un stock."),
+    ("8", "Consulter", "Onglet STOCK pour la synthese (par lot, par espece, "
+     "par etat matiere, reconciliation), RECHERCHE pour tout savoir d'un lot, "
+     "MOUVEMENTS pour l'historique complet."),
 ]
 
 LEGEND = [(INPUT_BG, "Cellule a saisir"),
@@ -1361,13 +1558,13 @@ def build_accueil(wb):
 
     section(ws, 14, "CONTROLE D'INTEGRITE", 9)
     ws.merge_cells("B15:C15")
-    ws["B15"] = ('=IF(SUM($C$17:$C$22)=0,"INTEGRITE DES DONNEES : OK",'
+    ws["B15"] = ('=IF(SUM($C$17:$C$23)=0,"INTEGRITE DES DONNEES : OK",'
                  '"INTEGRITE DES DONNEES : A CORRIGER")')
     cell(ws, "B15", None, bold=True, size=12, color=WHITE, fill=NAVY,
          align="center", border=BOX)
     ws.row_dimensions[15].height = 24
     ws.conditional_formatting.add(
-        "B15", FormulaRule(formula=['SUM($C$17:$C$22)>0'],
+        "B15", FormulaRule(formula=['SUM($C$17:$C$23)>0'],
                            fill=PatternFill("solid", fgColor=G_BAD[1]),
                            font=Font(name=FONT, size=12, bold=True,
                                      color=WHITE)))
@@ -1428,6 +1625,14 @@ GUIDE_TXT = [
           "fournisseur different, la colonne STATUT FICHE affiche "
           "INCOHERENCE. Si les deux fiches sont identiques, elle affiche "
           "LOT EN DOUBLE. Dans les deux cas la ligne apparait en rouge."),
+    ("P", "Le LOT INTERNE est la cle du stock : obligatoire, unique et "
+          "definitif. Le LOT EXTERNE (numero du fournisseur) est un attribut "
+          "cherchable et tracable ; il peut etre partage par plusieurs lots "
+          "internes. Si aucun numero interne n'est encore attribue, reprenez "
+          "le numero externe comme LOT INTERNE et ne le changez plus."),
+    ("P", "QUALITE et MOULE acceptent la saisie libre : les listes "
+          "deroulantes ne sont qu'une aide. Les formats de repartition "
+          "(A=20 B=40 C=40, 20/24=14 26/30=55 38/50=31) passent tels quels."),
     ("S", "2. Classes de stock"),
     ("P", "Une seule dimension : INTERNE ou EXTERNE. OCEAMIC 2 est INTERNE ; "
           "SARMA, DAMSA, COFRIGOP, COFRIGOB et tout autre entrepot ou usine "
@@ -1441,6 +1646,10 @@ GUIDE_TXT = [
     ("P", "CONSOMMATION : retire uniquement la quantite saisie. 1 000 kg en "
           "stock, 300 kg consommes, il reste 700 kg. Le classeur ne solde "
           "jamais un lot automatiquement."),
+    ("P", "AJUSTEMENT : correction d'inventaire sur l'emplacement de "
+          "destination. La quantite est signee (negative = perte, positive = "
+          "gain) et le MOTIF est obligatoire. Un ajustement negatif ne peut "
+          "pas depasser le disponible."),
     ("S", "4. Moteur de stock"),
     ("P", "Toute operation valide alimente l'onglet MOUVEMENTS, qui est le "
           "seul historique. Le stock n'est jamais stocke : il est recalcule "
@@ -1542,32 +1751,35 @@ D = dt.date
 # ---------------------------------------------------------------- jeux d'essai
 DEMO = {
     "LOTS": [
-        ["255", "Sardine", "Fournisseur local", "Laayoune", "12345-A-6",
-         "ENTIER", "CONGELE", "A", "20/24", D(2026, 8, 3), None,
+        ["255", "L-EXT-255", "Sardine", "Fournisseur local", "Laayoune",
+         "12345-A-6", "ENTIER", "CONGELE", "A", "20/24", D(2026, 8, 3), None,
          "Lot de reference - scenarios 1, 5, 8, 11, 12, 14, 15"],
-        ["256", "Maquereau", "Producteur Boujdour", "Boujdour", "22876-B-1",
-         "ENTIER", "CONGELE", "B", "26/30", D(2026, 8, 4), None,
+        ["256", "L-EXT-256", "Maquereau", "Producteur Boujdour", "Boujdour",
+         "22876-B-1", "ENTIER", "CONGELE", "B", "26/30", D(2026, 8, 4), None,
          "Scenarios 2 et 4 - stock externe puis transfert"],
-        ["257", "Sardine", "Fournisseur local", "Laayoune", "33111-C-2",
-         "ENTIER", "FRAIS", "A", "20/24", D(2026, 8, 5), None,
-         "Scenario 3 - consommation partielle"],
-        ["258", "Sardine", "Fournisseur local", "Laayoune", "44900-E-7",
-         "ENTIER", "CONGELE", "B", "20/24", D(2026, 8, 6), None,
+        ["257", "L-EXT-255", "Sardine", "Fournisseur local", "Laayoune",
+         "33111-C-2", "ENTIER", "FRAIS", "A", "20/24", D(2026, 8, 5), None,
+         "Scenario 3 - meme lot externe que 255 (cas reel a deux lots)"],
+        ["258", "L-EXT-258", "Sardine", "Fournisseur local", "tan tan",
+         "44900-E-7", "ENTIER", "CONGELE", "B", "20/24", D(2026, 8, 6), None,
          "Scenario 13 - tentative de sortie superieure au stock"],
-        ["300", "Anchois", "Producteur Dakhla", "Dakhla", "44222-D-3", "ENTIER",
-         "CONGELE", "A", "20/24", D(2026, 8, 7), None,
+        ["300", "L-EXT-300", "Anchois", "Producteur Dakhla", "Dakhla",
+         "44222-D-3", "ENTIER", "CONGELE", "A", "20/24", D(2026, 8, 7), None,
          "Scenario 6 - livraison directe fournisseur vers sous-traitant"],
-        ["301", "Maquereau", "Producteur Boujdour", "Boujdour", "55333-F-8",
-         "ENTIER", "CONGELE", "A", "26/30", D(2026, 8, 10), None,
-         "Scenario 7 - sous-traitance EN COURS"],
-        ["255-HG", None, None, None, None, "HG", "CONGELE", "A", "20/24",
-         D(2026, 8, 14), "255",
+        ["301", "L-EXT-301", "Maquereau", "Producteur Boujdour", "Boujdour",
+         "55333-F-8", "ENTIER", "CONGELE", "A", "26/30", D(2026, 8, 10), None,
+         "Scenario 7 - sous-traitance EN COURS, puis blocage qualite"],
+        ["302", "L-EXT-302", "Chinchard", "Producteur Dakhla", "Dakhla",
+         "66444-G-9", "ENTIER", "CONGELE", "A", "26/30", D(2026, 8, 17), None,
+         "Scenario 21 - ajustement d'inventaire"],
+        ["255-HG", None, None, None, None, None, "HG", "CONGELE", "A",
+         "20/24", D(2026, 8, 14), "255",
          "Issu de ST-001 - identite heritee du lot 255"],
-        ["255-HGT", None, None, None, None, "HGT", "CONGELE", "B", "26/30",
-         D(2026, 8, 14), "255",
+        ["255-HGT", None, None, None, None, None, "HGT", "CONGELE", "B",
+         "26/30", D(2026, 8, 14), "255",
          "Issu de ST-001 - envoye en stock externe COFRIGOP"],
-        ["300-FIL", None, None, None, None, "FILET", "CONGELE", "A", "20/24",
-         D(2026, 8, 13), "300", "Issu de ST-002 - retour OCEAMIC 2"],
+        ["300-FIL", None, None, None, None, None, "FILET", "CONGELE", "A",
+         "20/24", D(2026, 8, 13), "300", "Issu de ST-002 - retour OCEAMIC 2"],
     ],
     "OPERATIONS": [
         [D(2026, 8, 3), "RECEPTION", "255", None, "OCEAMIC 2", 1000,
@@ -1587,11 +1799,16 @@ DEMO = {
         [D(2026, 8, 11), "CONSOMMATION", "258", "OCEAMIC 2", None, 500,
          "Production conserve",
          "Scenario 13 - doit etre refuse : stock disponible 200 kg"],
+        [D(2026, 8, 17), "RECEPTION", "302", None, "OCEAMIC 2", 1000,
+         "Reception usine", None],
+        [D(2026, 8, 18), "AJUSTEMENT", "302", None, "OCEAMIC 2", -25,
+         "Ecart d'inventaire constate au comptage",
+         "Scenario 21 - ajustement negatif, il doit rester 975 kg"],
     ],
     "SOUS_TRAITANCE": [
         [D(2026, 8, 12), "USINE SOUS-TRAITANTE", "STOCK EXISTANT", "255",
-         "OCEAMIC 2", 500, "A", "20/24", 45, D(2026, 8, 14), None, None,
-         "Scenarios 5, 8, 9, 10, 11"],
+         "OCEAMIC 2", 500, "A=60 B=40", "20/24", 45, D(2026, 8, 14), None,
+         None, "Scenarios 5, 8, 9, 10, 11"],
         [D(2026, 8, 7), "USINE SOUS-TRAITANTE", "FOURNISSEUR", "300", None,
          600, "A", "20/24", None, D(2026, 8, 13),
          "Perte de process au filetage, pesee et controlee", "PERTE PROCESS",
@@ -1605,13 +1822,13 @@ DEMO = {
          "OCEAMIC 2", "Scenarios 8 et 9 - retour OCEAMIC 2"],
         ["ST-001", D(2026, 8, 14), "HGT", "255-HGT", 150, "B", "26/30", None,
          "COFRIGOP", "Scenarios 8 et 10 - resultat vers stock externe"],
-        ["ST-002", D(2026, 8, 13), "FILET", "300-FIL", 590, "A", "20/24", None,
-         "OCEAMIC 2", "Scenario 6 - ecart de 10 kg justifie"],
+        ["ST-002", D(2026, 8, 13), "FILET", "300-FIL", 590, "A", "20/24",
+         None, "OCEAMIC 2", "Scenario 6 - ecart de 10 kg justifie"],
     ],
     "QUALITE": [
         [D(2026, 8, 13), "255", "OCEAMIC 2", "CONTROLE MOUVEMENT", -19, 45,
-         "A=20 B=40 C=40", "20/24=14 26/30=55 38/50=31",
-         "Aucun defaut", "ACCEPTER", "K. BENALI",
+         "A=20 B=40 C=40", "20/24=14 26/30=55 38/50=31", "Aucun defaut",
+         "ACCEPTER", "K. BENALI",
          "Scenario 12 - aucun impact sur le stock"],
         [D(2026, 8, 14), "257", "COFRIGOB", "STOCK", 2, None, "A", None,
          None, "ACCEPTER", "K. BENALI",
@@ -1620,14 +1837,17 @@ DEMO = {
          "A=10 B=60 C=30", "26/30=70 38/50=30",
          "Aspect legerement decolore", "A RECONTROLER", "K. BENALI",
          "Alerte histamine au-dessus du seuil"],
+        [D(2026, 8, 19), "301", "OCEAMIC 2", "STOCK", -17, 210, None, None,
+         "Suspicion histamine", "BLOQUER", "K. BENALI",
+         "Scenario 22 - lot bloque qualite : signale, stock inchange"],
     ],
 }
 
 EX = "LIGNE EXEMPLE - a supprimer avant la mise en service"
 SAMPLE = {
-    "LOTS": [["EXEMPLE-001", "Sardine", "Fournisseur local", "Laayoune",
-              "12345-A-6", "ENTIER", "CONGELE", "A", "20/24", D(2026, 9, 1),
-              None, EX]],
+    "LOTS": [["EXEMPLE-001", "L-EXT-001", "Sardine", "Fournisseur local",
+              "Laayoune", "12345-A-6", "ENTIER", "CONGELE", "A", "20/24",
+              D(2026, 9, 1), None, EX]],
     "OPERATIONS": [[D(2026, 9, 1), "RECEPTION", "EXEMPLE-001", None,
                     "OCEAMIC 2", 1000, "Reception usine", EX]],
     "SOUS_TRAITANCE": [[D(2026, 9, 1), "USINE SOUS-TRAITANTE",
@@ -1638,9 +1858,10 @@ SAMPLE = {
     "ST_RESULTATS": [["ST-001", D(2026, 9, 2), "HG", None, 190, "A", "20/24",
                       None, "OCEAMIC 2",
                       EX + " - LOT RESULTAT vide = on garde le lot source"]],
-    "QUALITE": [[D(2026, 9, 1), "EXEMPLE-001", "OCEAMIC 2", "RECEPTION", -19,
-                 45, "A=30 B=50 C=20", "20/24=40 26/30=60", "Aucun defaut",
-                 "ACCEPTER", "QUALITE", EX]],
+    "QUALITE": [[D(2026, 9, 1), "EXEMPLE-001", "OCEAMIC 2",
+                 "CONTROLE MOUVEMENT", -19, 45, "A=30 B=50 C=20",
+                 "20/24=40 26/30=60", "Aucun defaut", "ACCEPTER", "QUALITE",
+                 EX]],
 }
 
 SEED_START = {"LOTS": "A", "OPERATIONS": "B", "SOUS_TRAITANCE": "B",
@@ -1703,27 +1924,45 @@ TESTS = [
     ("12c", "Controle a un emplacement ou le lot est absent -> avertissement",
      "EMPLACEMENT INCOHERENT", '=INDEX(QC_STATUT,MATCH("257",QC_LOT,0))'),
     ("13a", "Sortie superieure au stock : ligne refusee (STOCK INSUFFISANT)",
-     "STOCK INSUFFISANT", '=OPERATIONS!$P$12'),
+     "STOCK INSUFFISANT", '=OPERATIONS!$Q$12'),
     ("13b", "Sortie refusee : le stock du lot 258 reste a 200 kg",
      200, '=SUMIFS(MVT_NET,MVT_LOT,"258")'),
-    ("14", "Lot reutilise : produit repris automatiquement, sans re-saisie",
-     "Sardine", '=OPERATIONS!$J$12'),
+    ("14a", "Lot reutilise : espece reprise automatiquement, sans re-saisie",
+     "Sardine", '=OPERATIONS!$K$12'),
+    ("14b", "Lot reutilise : lot externe repris automatiquement",
+     "L-EXT-302", '=OPERATIONS!$J$13'),
     ("15a", "Tracabilite : 2 lots lies au lot 255 (sans doublon)",
      2, '=COUNT(RES_RANGLIEN)'),
     ("15b", "Tracabilite : parent du lot 255-HG retrouve automatiquement",
      "255", '=IFERROR(INDEX(RES_LOTSRC,MATCH("255-HG",RES_LOTEFF,0)),"")'),
+    ("15c", "Lot externe partage : 3 autres lots internes sous L-EXT-255",
+     3, '=COUNT(LOT_RANGEXT)'),
     ("16", "Integrite : aucun stock negatif dans la matrice",
-     0, '=COUNTIF(STOCK!$N$14:$N$%d,"<0")' % (13 + N_LOTS)),
+     0, '=COUNTIF(STOCK!$N$%d:$N$%d,"<0")' % (R0_M, R1_M)),
     ("17", "Integrite : matrice STOCK = grand livre MOUVEMENTS (ecart 0 kg)",
-     0, '=STOCK!$D$9'),
-    ("18", "Integrite : stock total interne attendu 3 090 kg",
-     3090, '=SUMIFS(MVT_NET,MVT_CLASSE,"INTERNE")'),
+     0, '=STOCK!$D$10'),
+    ("18", "Integrite : stock total interne attendu 4 065 kg",
+     4065, '=SUMIFS(MVT_NET,MVT_CLASSE,"INTERNE")'),
     ("19", "Integrite : stock total externe attendu 1 350 kg",
      1350, '=SUMIFS(MVT_NET,MVT_CLASSE,"EXTERNE")'),
-    ("20", "Alerte qualite : histamine 180 mg/kg signalee sur le lot 256",
+    ("20", "Alerte qualite : histamine 180 PPM signalee sur le lot 256",
      1, '=IF(LEN(INDEX(QC_ALERTE,MATCH("256",QC_LOT,0)))>0,1,0)'),
+    ("21a", "Ajustement negatif : 1 000 - 25 -> il reste 975 kg",
+     975, '=SUMIFS(MVT_NET,MVT_LOT,"302")'),
+    ("21b", "Ajustement enregistre comme AJUSTEMENT dans le grand livre",
+     -25, '=SUMIFS(MVT_NET,MVT_OP,"AJUSTEMENT")'),
+    ("21c", "Ajustement valide (motif renseigne)", "OK", '=OPERATIONS!$Q$14'),
+    ("22a", "Blocage qualite : lot 301 signale BLOQUER, 200 kg bloques",
+     200, '=STOCK!$D$9'),
+    ("22b", "Blocage qualite : le stock du lot 301 est inchange",
+     200, '=SUMIFS(MVT_NET,MVT_LOT,"301")'),
+    ("23a", "Synthese par espece : Sardine 1 650 kg",
+     1650, '=SUMIFS(MVT_NET,MVT_PROD,"Sardine")'),
+    ("23b", "Synthese par etat matiere : ENTIER 4 375 kg",
+     4375, '=SUMIFS(MVT_NET,MVT_ETAT,"ENTIER")'),
+    ("24", "Reconciliation : ENTREES - SORTIES +/- AJUSTEMENTS = STOCK ACTUEL",
+     "BILAN OK", '=STOCK!$H$%d' % (SYN + 7)),
 ]
-
 
 def build_tests(wb):
     ws = wb.create_sheet("TESTS")

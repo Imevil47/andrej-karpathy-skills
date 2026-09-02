@@ -53,6 +53,20 @@ mais le classeur la neutralise et la signale — ligne rouge, statut
 `STOCK INSUFFISANT`, compteur bloquant sur `ACCUEIL`. Le contrôle
 `ECART MATRICE / GRAND LIVRE` doit rester à 0 kg en permanence.
 
+## Identité du lot : interne + externe
+
+Comme dans la V2, un lot porte **deux** numéros :
+
+- **`LOT INTERNE`** — la clé du stock. Obligatoire, unique, **définitive**. Si
+  aucun numéro interne n'est encore attribué (marchandise en entrepôt externe),
+  on reprend le numéro externe et on ne le change plus.
+- **`LOT EXTERNE`** — le numéro du fournisseur. Attribut cherchable et traçable,
+  qui peut être partagé par plusieurs lots internes.
+
+`RECHERCHE` accepte **l'un ou l'autre** : saisir un numéro externe le résout vers
+le lot interne correspondant, et un bloc dédié liste tous les autres lots
+internes portant ce même numéro externe (lots issus de sous-traitance compris).
+
 ## Aucune double saisie
 
 Seul le **code lot** est ressaisi. Produit, fournisseur, origine,
@@ -110,5 +124,20 @@ refusée. Le fichier de production démarre à `OK`.
   conditionnelles, filtres automatiques, volets figés.
 - Classe de stock limitée à `INTERNE` / `EXTERNE` ; `CONSOMMATION` est une
   opération, jamais une classe.
+- Quatrième opération : `AJUSTEMENT` — correction d'inventaire à quantité
+  signée (négative = perte) avec `MOTIF` obligatoire, seul moyen de corriger un
+  stock. Un ajustement négatif ne peut pas dépasser le disponible.
+
+## Synthèses
+
+L'onglet `STOCK` porte, en plus de la matrice lot × emplacement :
+
+- stock **par espèce** et **par état matière** ;
+- **stock bloqué qualité** — total des lots dont la *dernière* décision qualité
+  est `BLOQUER`. Signalé uniquement : conformément à la règle « un contrôle ne
+  change jamais une quantité », aucun mouvement n'est généré ;
+- **réconciliation du grand livre** — `ENTREES − SORTIES ± AJUSTEMENTS =
+  STOCK ACTUEL`, avec un indicateur `BILAN OK` qui vérifie l'égalité en
+  permanence, plus le total des écarts de sous-traitance non justifiés.
 - Capacités : 200 lots, 300 opérations, 150 envois, 300 résultats,
   250 contrôles, 1 050 lignes de mouvement, 12 emplacements.
