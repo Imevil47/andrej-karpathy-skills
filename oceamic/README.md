@@ -65,6 +65,19 @@ son lot parent — parent renseigné à la main, ou retrouvé automatiquement vi
 `ST_RESULTATS`. `RECHERCHE` affiche alors la mention *« hérité du lot X »*.
 Un `LOT RESULTAT` laissé vide conserve simplement le lot source.
 
+## Données de référence
+
+`PARAM` est aligné sur les listes maîtres du système V2 existant :
+emplacements réels (OCEAMIC 2 en INTERNE ; SARMA, DAMSA, COFRIGOP, COFRIGOB,
+FOURSEASEN, ATLANTIC, WILL FISHING, KJ FISH, OCEAMIC 1 en EXTERNE), espèces,
+producteurs, origines, états matière (dont IQF), conservation (FRAIS / CONGELE),
+sites de sous-traitance et décisions (ACCEPTER / REFUSER / A RECONTROLER /
+BLOQUER). L'histamine est en PPM.
+
+`QUALITE` et `MOULE` acceptent la **saisie libre** : les listes déroulantes ne
+sont qu'une aide, et le format réel de distribution (`A=20 B=40 C=40`,
+`20/24=14 26/30=55 38/50=31`) passe sans contrainte.
+
 ## Statuts
 
 `OK` · `EN COURS` · `DONNEES MANQUANTES` · `STOCK INSUFFISANT` ·
