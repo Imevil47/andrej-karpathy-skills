@@ -1,0 +1,430 @@
+:root {
+  --fond: #eef0f4;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --bordure: #e2e5eb;
+  --texte: #1c2230;
+  --texte-doux: #6b7280;
+  --accent: #1f6f5c;
+  --accent-doux: #e6f2ee;
+  --alerte: #b42318;
+  --alerte-doux: #fdecea;
+  --avertissement: #b54708;
+  --avertissement-doux: #fff4e5;
+  --succes: #147a45;
+  --succes-doux: #e7f5ed;
+  --rayon: 14px;
+  --ombre: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.04);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* --- Mise en page ---------------------------------------------------- */
+.app {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--bordure);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar .marque {
+  font-size: 19px;
+  font-weight: 700;
+  padding: 4px 10px 18px;
+  letter-spacing: -0.02em;
+}
+.sidebar .marque span {
+  color: var(--accent);
+}
+
+.sidebar nav a {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 10px;
+  color: var(--texte);
+  font-weight: 500;
+}
+.sidebar nav a:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+.sidebar nav a.actif {
+  background: var(--accent-doux);
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar .groupe {
+  margin-top: 14px;
+  padding: 0 12px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--texte-doux);
+}
+.sidebar .pied {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--bordure);
+  font-size: 13px;
+  color: var(--texte-doux);
+}
+
+.contenu {
+  padding: 24px 28px 56px;
+  max-width: 1400px;
+  width: 100%;
+}
+
+.entete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.entete h1 {
+  font-size: 22px;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.entete p {
+  margin: 2px 0 0;
+  color: var(--texte-doux);
+  font-size: 14px;
+}
+
+/* --- Cartes ----------------------------------------------------------- */
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.carte h2 {
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+.carte h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+  color: var(--texte-doux);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.grille-cartes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.indicateur {
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 16px 18px;
+}
+.indicateur .titre {
+  color: var(--texte-doux);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.indicateur .valeur {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.indicateur .unite {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--texte-doux);
+  margin-left: 4px;
+}
+.indicateur.accent {
+  background: var(--texte);
+  color: #fff;
+}
+.indicateur.accent .titre {
+  color: #cbd2dd;
+}
+
+/* --- Tableaux --------------------------------------------------------- */
+.tableau-conteneur {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texte-doux);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--bordure);
+  white-space: nowrap;
+}
+td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--bordure);
+  vertical-align: top;
+}
+tbody tr:last-child td {
+  border-bottom: none;
+}
+tbody tr:hover {
+  background: var(--surface-2);
+}
+td.nombre,
+th.nombre {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --- Formulaires ------------------------------------------------------ */
+.grille-champs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.champ {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.champ label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.champ .aide {
+  font-size: 12px;
+  color: var(--texte-doux);
+}
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 9px 11px;
+  border: 1px solid var(--bordure);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--texte);
+  width: 100%;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--accent-doux);
+  border-color: var(--accent);
+}
+input[type='checkbox'] {
+  width: auto;
+}
+.ligne-boutons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+button.secondaire {
+  background: var(--surface);
+  color: var(--texte);
+  border-color: var(--bordure);
+}
+button.danger {
+  background: var(--alerte);
+}
+button.lien {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 600;
+}
+
+/* --- Etats ------------------------------------------------------------ */
+.badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--surface-2);
+  color: var(--texte-doux);
+  border: 1px solid var(--bordure);
+}
+.badge.succes {
+  background: var(--succes-doux);
+  color: var(--succes);
+  border-color: transparent;
+}
+.badge.alerte {
+  background: var(--alerte-doux);
+  color: var(--alerte);
+  border-color: transparent;
+}
+.badge.avertissement {
+  background: var(--avertissement-doux);
+  color: var(--avertissement);
+  border-color: transparent;
+}
+.badge.info {
+  background: var(--accent-doux);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.message {
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  white-space: pre-line;
+}
+.message.erreur {
+  background: var(--alerte-doux);
+  color: var(--alerte);
+}
+.message.succes {
+  background: var(--succes-doux);
+  color: var(--succes);
+}
+.message.info {
+  background: var(--accent-doux);
+  color: var(--accent);
+}
+
+.vide {
+  padding: 26px;
+  text-align: center;
+  color: var(--texte-doux);
+}
+
+.filtres {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.paires {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 20px;
+}
+.paire .cle {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texte-doux);
+}
+.paire .valeur {
+  font-weight: 600;
+}
+
+/* --- Connexion -------------------------------------------------------- */
+.page-connexion {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.page-connexion .carte {
+  width: min(420px, 100%);
+  margin: 0;
+}
+
+/* --- Responsive ------------------------------------------------------- */
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--bordure);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .sidebar .marque {
+    padding: 0 10px 0 0;
+    width: 100%;
+  }
+  .sidebar nav {
+    display: contents;
+  }
+  .sidebar .groupe {
+    display: none;
+  }
+  .sidebar .pied {
+    margin: 0;
+    border: none;
+    width: 100%;
+  }
+  .contenu {
+    padding: 16px 14px 48px;
+  }
+}
