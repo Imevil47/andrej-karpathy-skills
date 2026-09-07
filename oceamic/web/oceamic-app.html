@@ -1,0 +1,1463 @@
+<title>OCEAMIC Qualité &amp; Stock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@450;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F1F5F6; --surface:#FFFFFF; --surface-2:#E7EDEF; --surface-3:#DCE5E8;
+  --ink:#0F1B22; --ink-2:#485B65; --ink-3:#7A8C95;
+  --line:#D2DCE0; --line-2:#B9C8CE;
+  --accent:#0E7C86; --accent-2:#0A5F67; --accent-on:#FFFFFF; --accent-soft:#DCEFF0;
+  --ok:#1B6E45; --ok-soft:#DCEDE3; --ok-line:#A8CDB8;
+  --warn:#8A5B00; --warn-soft:#F7EBD1; --warn-line:#E0C68A;
+  --bad:#A6231B; --bad-soft:#F8DFDD; --bad-line:#E2AEA9;
+  --info:#1A5680; --info-soft:#DDEAF3; --info-line:#A8C6DC;
+  --shadow:0 1px 2px rgba(15,27,34,.06), 0 8px 24px -12px rgba(15,27,34,.18);
+  --r:10px; --r-s:7px;
+  --f-disp:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"IBM Plex Mono","SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0B1317; --surface:#131E25; --surface-2:#1A2831; --surface-3:#22333D;
+  --ink:#E7EFF2; --ink-2:#A0B2BB; --ink-3:#74868F;
+  --line:#243139; --line-2:#32454F;
+  --accent:#2BA6AF; --accent-2:#3FBDC5; --accent-on:#04191C; --accent-soft:#0F2E33;
+  --ok:#5EC28E; --ok-soft:#102C21; --ok-line:#1F5540;
+  --warn:#E2AB43; --warn-soft:#2E2209; --warn-line:#5C471A;
+  --bad:#F09086; --bad-soft:#301613; --bad-line:#5E2C27;
+  --info:#74B4E0; --info-soft:#0E2536; --info-line:#274B66;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+}}
+:root[data-theme="dark"]{
+  --ground:#0B1317; --surface:#131E25; --surface-2:#1A2831; --surface-3:#22333D;
+  --ink:#E7EFF2; --ink-2:#A0B2BB; --ink-3:#74868F;
+  --line:#243139; --line-2:#32454F;
+  --accent:#2BA6AF; --accent-2:#3FBDC5; --accent-on:#04191C; --accent-soft:#0F2E33;
+  --ok:#5EC28E; --ok-soft:#102C21; --ok-line:#1F5540;
+  --warn:#E2AB43; --warn-soft:#2E2209; --warn-line:#5C471A;
+  --bad:#F09086; --bad-soft:#301613; --bad-line:#5E2C27;
+  --info:#74B4E0; --info-soft:#0E2536; --info-line:#274B66;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--f-disp);margin:0;text-wrap:balance;letter-spacing:-.01em}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:450}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+.rail{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+.brand b{font-family:var(--f-disp);font-size:17px;font-weight:700;letter-spacing:-.02em;display:block}
+.brand span{font-size:11px;color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.nav{display:flex;flex-direction:column;gap:2px;padding:10px}
+.nav button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;background:none;border:0;border-radius:var(--r-s);cursor:pointer;color:var(--ink-2);font-weight:500;text-align:left}
+.nav button:hover{background:var(--surface-2);color:var(--ink)}
+.nav button[aria-current="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav svg{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7}
+.nav .badge{margin-left:auto;font-size:11px;font-weight:600;background:var(--bad);color:#fff;border-radius:99px;padding:1px 6px;font-family:var(--f-mono)}
+.railfoot{margin-top:auto;padding:12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-3)}
+.dot{width:7px;height:7px;border-radius:99px;background:var(--ok);flex:none}
+.dot.off{background:var(--warn)}
+main{min-width:0;padding:22px 26px 90px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.head h1{font-size:25px;font-weight:700}
+.head p{margin:3px 0 0;color:var(--ink-2);font-size:13.5px;max-width:62ch}
+.tabbar{display:none}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .rail{position:static;height:auto;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--line);padding:0 12px}
+  .brand{border:0;padding:12px 0}
+  .nav,.railfoot{display:none}
+  main{padding:16px 14px 96px}
+  .head h1{font-size:21px}
+  .tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--line);z-index:40;padding-bottom:env(safe-area-inset-bottom)}
+  .tabbar button{background:none;border:0;padding:8px 2px 9px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--ink-3);font-size:10.5px;font-weight:500;cursor:pointer;position:relative}
+  .tabbar button[aria-current="true"]{color:var(--accent)}
+  .tabbar svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .tabbar .badge{position:absolute;top:4px;right:50%;margin-right:-20px;background:var(--bad);color:#fff;font-size:10px;border-radius:99px;padding:0 5px;font-family:var(--f-mono)}
+}
+
+/* ---------- primitives ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.pad{padding:16px}
+.grid{display:grid;gap:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:26px 0 10px}
+.sechead h2{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.sechead a{font-size:12.5px;color:var(--accent);cursor:pointer;text-decoration:none;font-weight:500}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;border-radius:var(--r-s);border:1px solid var(--line-2);background:var(--surface);color:var(--ink);font-weight:550;cursor:pointer;font-size:14px}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on)}
+.btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn.ghost{border-color:transparent;background:none;color:var(--ink-2)}
+.btn.ghost:hover{background:var(--surface-2);color:var(--ink)}
+.btn.danger{color:var(--bad);border-color:var(--bad-line)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8}
+
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:600;letter-spacing:.01em;white-space:nowrap;border:1px solid}
+.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
+.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+.pill.bad{background:var(--bad-soft);color:var(--bad);border-color:var(--bad-line)}
+.pill.info{background:var(--info-soft);color:var(--info);border-color:var(--info-line)}
+.pill.mute{background:var(--surface-2);color:var(--ink-3);border-color:var(--line)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+@media (min-width:1080px){.tiles{grid-template-columns:repeat(3,1fr)}}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:15px 15px 13px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:9px;min-height:104px}
+.tile:hover{border-color:var(--accent);background:var(--accent-soft)}
+.tile .ic{width:32px;height:32px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
+.tile:hover .ic{background:var(--surface)}
+.tile svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8}
+.tile b{font-family:var(--f-disp);font-size:15.5px;font-weight:600;display:block}
+.tile span{font-size:12px;color:var(--ink-2);line-height:1.35}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.kpi{background:var(--surface);padding:13px 15px}
+.kpi dt{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin:0;min-height:2.4em}
+.kpi dd{margin:5px 0 0;font-family:var(--f-mono);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi dd small{font-size:12px;font-weight:450;color:var(--ink-3);margin-left:3px}
+.kpi.flag dd{color:var(--bad)}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface)}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--surface-2)}
+td.r,th.r{text-align:right}
+.neg{color:var(--bad)}
+.zero{color:var(--ink-3)}
+
+.list{display:flex;flex-direction:column;gap:8px}
+.item{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:var(--r-s);padding:11px 13px;display:flex;gap:12px;align-items:center;justify-content:space-between;cursor:pointer;text-align:left;width:100%}
+.item>span:first-child{min-width:0;flex:1}
+.item:hover{border-color:var(--line-2);background:var(--surface-2)}
+.item.bad{border-left-color:var(--bad)}
+.item.warn{border-left-color:var(--warn)}
+.item.info{border-left-color:var(--info)}
+.item.ok{border-left-color:var(--ok)}
+.item .t{display:block;font-weight:550;font-size:14px}
+.item .s{display:block;font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.empty{text-align:center;padding:34px 16px;color:var(--ink-3);font-size:13.5px;border:1px dashed var(--line-2);border-radius:var(--r)}
+
+/* ---------- forms ---------- */
+.scrim{position:fixed;inset:0;background:rgba(9,18,23,.55);display:grid;place-items:center;z-index:60;padding:20px;overflow:auto}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(560px,100%);box-shadow:var(--shadow);max-height:calc(100vh - 40px);display:flex;flex-direction:column}
+@media (max-width:640px){.scrim{padding:0}.sheet{border-radius:0;height:100vh;max-height:none;width:100%}}
+.sheet header{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.sheet header h2{font-size:18px;font-weight:600}
+.sheet header p{margin:3px 0 0;font-size:12.5px;color:var(--ink-2);max-width:46ch}
+.sheet .body{padding:16px 18px;overflow:auto;display:flex;flex-direction:column;gap:13px}
+.sheet footer{padding:13px 18px;border-top:1px solid var(--line);display:flex;gap:9px;justify-content:flex-end;background:var(--surface-2);border-radius:0 0 14px 14px}
+@media (max-width:640px){.sheet footer{border-radius:0;padding-bottom:calc(13px + env(safe-area-inset-bottom))}}
+.f{display:flex;flex-direction:column;gap:5px}
+.f>label{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.f>label .opt{text-transform:none;letter-spacing:0;font-weight:450;color:var(--ink-3);font-size:11.5px}
+.f input,.f select,.f textarea{width:100%;padding:10px 11px;border:1px solid var(--line-2);border-radius:var(--r-s);background:var(--surface);font-size:15px}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.f input.mono,.f input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.f .hint{font-size:12px;color:var(--ink-2)}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+@media (max-width:520px){.f2{grid-template-columns:1fr}}
+.note{border-radius:var(--r-s);padding:9px 11px;font-size:13px;display:flex;gap:8px;align-items:flex-start;border:1px solid}
+.note.info{background:var(--info-soft);border-color:var(--info-line);color:var(--info)}
+.note.ok{background:var(--ok-soft);border-color:var(--ok-line);color:var(--ok)}
+.note.warn{background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)}
+.note.bad{background:var(--bad-soft);border-color:var(--bad-line);color:var(--bad)}
+.note b{font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:6px 11px;border-radius:99px;border:1px solid var(--line-2);background:var(--surface);cursor:pointer;font-size:13px;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-on)}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px;align-items:baseline}
+.dl dt{color:var(--ink-3);font-size:12px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;white-space:nowrap}
+.dl dd{margin:0}
+.inh{color:var(--ink-3);font-size:12px;font-style:italic}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:11px 18px;border-radius:99px;font-size:14px;font-weight:500;z-index:90;box-shadow:var(--shadow);max-width:90vw}
+@media (max-width:860px){.toast{bottom:76px}}
+@media (prefers-reduced-motion:no-preference){.toast{animation:pop .22s ease-out}@keyframes pop{from{opacity:0;transform:translateX(-50%) translateY(8px)}}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><b>OCEAMIC</b><span>Qualité &amp; Stock</span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="railfoot"><span class="dot" id="dot"></span><span id="dbstate">Connexion…</span></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<nav class="tabbar" id="tabbar"></nav>
+<div id="modal"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   OCEAMIC — Qualité, Stock & Sous-traitance
+   Moteur : toute opération valide produit des lignes dans un grand livre
+   unique. Le stock n'est jamais stocké, il est recalculé.
+   ENTREES - SORTIES ± AJUSTEMENTS = STOCK ACTUEL
+   ========================================================================== */
+
+const EPS = 0.001;
+const ST_OK='OK', ST_ENCOURS='EN COURS', ST_MANQUE='DONNEES MANQUANTES',
+      ST_INSUF='STOCK INSUFFISANT', ST_EMPL='EMPLACEMENT INCOHERENT',
+      ST_JUST='A JUSTIFIER', ST_BLOQ='BLOQUE';
+const BLOQUANTS = new Set([ST_MANQUE, ST_INSUF, ST_EMPL]);
+
+const DEFAULT_PARAM = {
+  emplacements:[
+    {nom:"OCEAMIC 2", classe:"INTERNE"},
+    {nom:"SARMA", classe:"EXTERNE"},{nom:"DAMSA", classe:"EXTERNE"},
+    {nom:"COFRIGOP", classe:"EXTERNE"},{nom:"COFRIGOB", classe:"EXTERNE"},
+    {nom:"FOURSEASEN", classe:"EXTERNE"},{nom:"ATLANTIC", classe:"EXTERNE"},
+    {nom:"WILL FISHING", classe:"EXTERNE"},{nom:"KJ FISH", classe:"EXTERNE"},
+    {nom:"OCEAMIC 1", classe:"EXTERNE"}],
+  especes:["Sardine","Maquereau","Bonite","Anchois","Chinchard"],
+  fournisseurs:["Fournisseur local","Producteur Dakhla","Producteur Boujdour","Autre"],
+  origines:["Dakhla","Boujdour","Laayoune","Mauritanie","Tan Tan"],
+  etats:["ENTIER","HG","HGT","FILET","IQF","AUTRE"],
+  conservations:["FRAIS","CONGELE"],
+  qualites:["A","B","C"],
+  moules:["20/24","26/30","30/40","38/50"],
+  soustraitants:["SARMA","DAMSA","COFRIGOP","COFRIGOB","FOURSEASEN","ATLANTIC",
+                 "WILL FISHING","KJ FISH","CONGELATION","USINE SOUS-TRAITANTE"],
+  decisions:["ACCEPTER","A RECONTROLER","REFUSER","BLOQUER"],
+  typesControle:["CONTROLE MOUVEMENT","RECEPTION","STOCK","SOUS-TRAITANCE","EXPEDITION"],
+  motifs:["PERTE PROCESS","DECHET / PARURE","DESHYDRATATION","CASSE",
+          "ERREUR DE PESEE","ERREUR DE SAISIE","AUTRE"],
+  seuilHistamine:100, tempMaxFrais:4, tempMaxCongele:-18, toleranceEcart:0
+};
+
+/* ---------------------------------------------------------------- state -- */
+const S = {
+  param: JSON.parse(JSON.stringify(DEFAULT_PARAM)),
+  lots:[], operations:[], envois:[], resultats:[], controles:[],
+  view:"accueil", db:null, ready:false, search:"", filtreHisto:"tout"
+};
+let E = null;                       // moteur calculé
+
+const COLS = {lots:"lots", operations:"operations", envois:"soustraitance",
+              resultats:"resultats", controles:"qualite"};
+
+/* ------------------------------------------------------------- helpers -- */
+const $ = s => document.querySelector(s);
+const esc = v => String(v==null?"":v).replace(/[&<>"']/g,c=>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = v => { const n = typeof v==="number"?v:parseFloat(String(v).replace(",","."));
+  return Number.isFinite(n)?n:NaN; };
+const kg = v => (v==null||!Number.isFinite(v)) ? "—"
+  : v.toLocaleString("fr-FR",{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2});
+const kgz = v => (!v) ? "" : kg(v);
+const today = () => new Date().toISOString().slice(0,10);
+const dfr = d => d ? d.split("-").reverse().join("/") : "";
+const uid = p => p+"-"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const byId = (arr,id) => arr.find(x=>x.id===id);
+const pillClass = s => s===ST_OK?"ok" : s===ST_ENCOURS?"info"
+  : s===ST_JUST?"warn" : s===ST_MANQUE?"mute" : "bad";
+
+function toast(msg, kind){
+  const t = $("#toast");
+  t.innerHTML = `<div class="toast">${esc(msg)}</div>`;
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.innerHTML="", 3200);
+}
+
+/* ============================== MOTEUR ================================== */
+/* Identité effective : un lot issu de sous-traitance hérite de son parent.  */
+function parentOf(lot, lots){
+  if(lot.lotParent) return lots.find(l=>l.id===lot.lotParent) || null;
+  return null;
+}
+function effectif(lot, lots, champ){
+  if(!lot) return "";
+  if(lot[champ]) return {val:lot[champ], herite:null};
+  const p = parentOf(lot, lots);
+  if(p && p[champ]) return {val:p[champ], herite:p.id};
+  return {val:"", herite:null};
+}
+
+function compute(){
+  const lots = S.lots, param = S.param;
+  const lotById = new Map(lots.map(l=>[l.id,l]));
+  const classeDe = n => (param.emplacements.find(e=>e.nom===n)||{}).classe || "";
+
+  /* champs effectifs de chaque lot */
+  const eff = new Map();
+  for(const l of lots){
+    const g = c => effectif(l, lots, c);
+    eff.set(l.id,{
+      lotExterne:g("lotExterne"), espece:g("espece"), fournisseur:g("fournisseur"),
+      origine:g("origine"), conservation:g("conservation"), matricule:g("matricule"),
+      etat:{val:l.etat||"",herite:null}
+    });
+  }
+  const ev = (id,c) => { const e = eff.get(id); return e ? e[c].val : ""; };
+
+  /* --- 1. validité structurelle + lignes brutes ------------------------- */
+  const lignes = [];                       // {rec, src, ref, date, op, sens, lot, empl, brut}
+  const valide = new Map();
+
+  for(const o of S.operations){
+    const q = num(o.quantite);
+    let ok;
+    if(!o.date || !o.lot || !o.type) ok = false;
+    else if(o.type==="AJUSTEMENT") ok = Number.isFinite(q) && q!==0 && !!o.dest && !!o.motif;
+    else if(!Number.isFinite(q) || q<=0) ok = false;
+    else if(o.type==="RECEPTION") ok = !!o.dest;
+    else if(o.type==="CONSOMMATION") ok = !!o.source;
+    else ok = !!o.source && !!o.dest && o.source!==o.dest;
+    valide.set(o.id, ok);
+    if(!ok) continue;
+    if(o.type==="TRANSFERT" || o.type==="CONSOMMATION")
+      lignes.push({rec:o.id,src:"operations",ref:o.ref,date:o.date,op:o.type,
+                   sens:"SORTIE",lot:o.lot,empl:o.source,brut:-q});
+    if(o.type==="RECEPTION" || o.type==="TRANSFERT")
+      lignes.push({rec:o.id,src:"operations",ref:o.ref,date:o.date,op:o.type,
+                   sens:"ENTREE",lot:o.lot,empl:o.dest,brut:q});
+    if(o.type==="AJUSTEMENT")
+      lignes.push({rec:o.id,src:"operations",ref:o.ref,date:o.date,op:"AJUSTEMENT",
+                   sens:q<0?"SORTIE":"ENTREE",lot:o.lot,empl:o.dest,brut:q});
+  }
+  for(const e of S.envois){
+    const q = num(e.quantite);
+    const ok = !!e.date && !!e.soustraitant && !!e.lot && Number.isFinite(q) && q>0
+               && (e.source==="FOURNISSEUR" || !!e.emplSource);
+    valide.set(e.id, ok);
+    if(ok && e.source==="STOCK EXISTANT")
+      lignes.push({rec:e.id,src:"envois",ref:e.ref,date:e.date,op:"ENVOI SOUS-TRAITANCE",
+                   sens:"SORTIE",lot:e.lot,empl:e.emplSource,brut:-q});
+  }
+  for(const r of S.resultats){
+    const q = num(r.quantite);
+    const env = byId(S.envois, r.envoi);
+    const lotEff = r.lot || (env ? env.lot : "");
+    const ok = !!env && Number.isFinite(q) && q>0 && !!r.dest && !!lotEff;
+    valide.set(r.id, ok);
+    r._lotEff = lotEff;
+    if(ok) lignes.push({rec:r.id,src:"resultats",ref:r.ref,date:r.date||(env&&env.dateRetour)||"",
+                        op:"RETOUR SOUS-TRAITANCE",sens:"ENTREE",lot:lotEff,empl:r.dest,brut:q});
+  }
+
+  /* --- 2. disponible par (lot, emplacement), hors enregistrement courant - */
+  const brutIdx = new Map();               // "lot||empl" -> [{rec,brut}]
+  for(const l of lignes){
+    const k = l.lot+"||"+l.empl;
+    if(!brutIdx.has(k)) brutIdx.set(k, []);
+    brutIdx.get(k).push(l);
+  }
+  const dispoHors = (lot, empl, recId) => {
+    const a = brutIdx.get(lot+"||"+empl); if(!a) return 0;
+    let s = 0; for(const l of a) if(l.rec!==recId) s += l.brut;
+    return s;
+  };
+  /* stock réellement disponible maintenant (pour les formulaires) */
+  const dispoNow = (lot, empl) => stockDe(lot, empl);
+
+  /* --- 3. statuts ------------------------------------------------------- */
+  const statut = new Map(), dispo = new Map();
+
+  for(const o of S.operations){
+    if(!valide.get(o.id)){ statut.set(o.id, ST_MANQUE); continue; }
+    const q = num(o.quantite);
+    if(o.type==="RECEPTION" || (o.type==="AJUSTEMENT" && q>0)){ statut.set(o.id, ST_OK); continue; }
+    const empl = o.type==="AJUSTEMENT" ? o.dest : o.source;
+    const d = dispoHors(o.lot, empl, o.id);
+    dispo.set(o.id, d);
+    statut.set(o.id, d<=0 ? ST_EMPL : (Math.abs(q) > d+EPS ? ST_INSUF : ST_OK));
+  }
+
+  const resParEnvoi = new Map();
+  for(const r of S.resultats){
+    if(!resParEnvoi.has(r.envoi)) resParEnvoi.set(r.envoi, []);
+    resParEnvoi.get(r.envoi).push(r);
+  }
+  for(const e of S.envois){
+    const liste = resParEnvoi.get(e.id) || [];
+    e._nbRes = liste.length;
+    e._sortie = liste.reduce((s,r)=> s + (valide.get(r.id) ? num(r.quantite) : 0), 0);
+    e._ecart = liste.length ? num(e.quantite) - e._sortie : null;
+    e._rendement = (liste.length && num(e.quantite)>0) ? e._sortie/num(e.quantite) : null;
+    if(!valide.get(e.id)){ statut.set(e.id, ST_MANQUE); continue; }
+    if(e.source==="STOCK EXISTANT"){
+      const d = dispoHors(e.lot, e.emplSource, e.id);
+      dispo.set(e.id, d);
+      if(d<=0){ statut.set(e.id, ST_EMPL); continue; }
+      if(num(e.quantite) > d+EPS){ statut.set(e.id, ST_INSUF); continue; }
+    }
+    if(!liste.length){ statut.set(e.id, ST_ENCOURS); continue; }
+    if(e._sortie > num(e.quantite)+EPS){ statut.set(e.id, ST_BLOQ); continue; }
+    if(e._ecart > param.toleranceEcart+EPS && !e.justification){ statut.set(e.id, ST_JUST); continue; }
+    statut.set(e.id, ST_OK);
+  }
+  for(const r of S.resultats){
+    if(!valide.get(r.id)){ statut.set(r.id, ST_MANQUE); continue; }
+    const sp = statut.get(r.envoi);
+    statut.set(r.id, (BLOQUANTS.has(sp) || sp===ST_BLOQ) ? ST_BLOQ : ST_OK);
+  }
+
+  /* --- 4. lignes nettes + stock ---------------------------------------- */
+  const stock = new Map();                 // "lot||empl" -> kg
+  for(const l of lignes){
+    const st = statut.get(l.rec);
+    l.statut = st;
+    l.net = (l.src==="envois")
+      ? (BLOQUANTS.has(st) ? 0 : l.brut)   // EN COURS / A JUSTIFIER : la marchandise est bien partie
+      : (st===ST_OK ? l.brut : 0);
+    if(!l.net) continue;
+    const k = l.lot+"||"+l.empl;
+    stock.set(k, (stock.get(k)||0) + l.net);
+  }
+  function stockDe(lot, empl){
+    if(empl) return stock.get(lot+"||"+empl) || 0;
+    let s=0; for(const [k,v] of stock) if(k.split("||")[0]===lot) s+=v;
+    return s;
+  }
+
+  /* --- 5. qualité (aucun impact stock) --------------------------------- */
+  const derniere = new Map();              // lot -> dernier contrôle
+  for(const c of [...S.controles].sort((a,b)=> (a.date||"").localeCompare(b.date||""))){
+    const mesures = [c.temperature,c.histamine,c.qualite,c.moule,c.defauts,c.decision]
+      .some(v=> v!=="" && v!=null);
+    if(!c.date || !mesures) statut.set(c.id, ST_MANQUE);
+    else if(c.empl && stockDe(c.lot, c.empl) <= 0) statut.set(c.id, ST_EMPL);
+    else statut.set(c.id, ST_OK);
+    const al = [];
+    const h = num(c.histamine), t = num(c.temperature);
+    if(Number.isFinite(h) && h > param.seuilHistamine)
+      al.push(`Histamine ${kg(h)} PPM au-dessus du seuil de ${param.seuilHistamine} PPM`);
+    const cons = ev(c.lot,"conservation");
+    if(Number.isFinite(t) && cons==="CONGELE" && t > param.tempMaxCongele)
+      al.push(`Température ${t} °C au-dessus du seuil congelé (${param.tempMaxCongele} °C)`);
+    if(Number.isFinite(t) && cons==="FRAIS" && t > param.tempMaxFrais)
+      al.push(`Température ${t} °C au-dessus du seuil frais (${param.tempMaxFrais} °C)`);
+    if(statut.get(c.id)===ST_EMPL) al.push("Lot absent de cet emplacement — contrôle conservé, stock inchangé");
+    c._alertes = al;
+    if(c.date) derniere.set(c.lot, c);
+  }
+
+  /* --- 6. agrégats ------------------------------------------------------ */
+  const parEmpl = new Map(), parEspece = new Map(), parEtat = new Map();
+  let interne=0, externe=0, total=0;
+  for(const [k,v] of stock){
+    if(!v) continue;
+    const [lot,empl] = k.split("||");
+    parEmpl.set(empl,(parEmpl.get(empl)||0)+v);
+    const sp = ev(lot,"espece")||"(non renseigné)";
+    parEspece.set(sp,(parEspece.get(sp)||0)+v);
+    const et = (lotById.get(lot)||{}).etat || "(non renseigné)";
+    parEtat.set(et,(parEtat.get(et)||0)+v);
+    total += v;
+    if(classeDe(empl)==="INTERNE") interne += v; else externe += v;
+  }
+  const enCoursST = S.envois.reduce((s,e)=>
+    s + ((!BLOQUANTS.has(statut.get(e.id)) && !e._nbRes) ? num(e.quantite)||0 : 0), 0);
+  let bloqueQualite = 0;
+  for(const l of lots){
+    const d = derniere.get(l.id);
+    if(d && d.decision==="BLOQUER") bloqueQualite += Math.max(0, stockDe(l.id, null));
+  }
+  const entrees = lignes.filter(l=>l.net>0 && l.op!=="AJUSTEMENT").reduce((s,l)=>s+l.net,0);
+  const sorties = -lignes.filter(l=>l.net<0 && l.op!=="AJUSTEMENT").reduce((s,l)=>s+l.net,0);
+  const ajust   = lignes.filter(l=>l.op==="AJUSTEMENT").reduce((s,l)=>s+l.net,0);
+
+  return {lots, lotById, eff, ev, classeDe, lignes, valide, statut, dispo,
+          stock, stockDe, dispoNow, derniere, parEmpl, parEspece, parEtat,
+          interne, externe, total, enCoursST, bloqueQualite,
+          recon:{entrees, sorties, ajust, theorique:entrees-sorties+ajust, actuel:total}};
+}
+</script>
+
+<script>
+/* ============================== NAVIGATION ============================== */
+const IC = {
+  accueil:'<path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3v-5H7v5H4a1 1 0 0 1-1-1z"/>',
+  stock:'<rect x="3" y="4" width="14" height="4" rx="1"/><rect x="3" y="12" width="14" height="4" rx="1"/>',
+  recherche:'<circle cx="9" cy="9" r="5.5"/><path d="m13 13 4 4"/>',
+  historique:'<circle cx="10" cy="10" r="7"/><path d="M10 6v4.5l3 1.5"/>',
+  reglages:'<circle cx="10" cy="10" r="2.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4"/>',
+  reception:'<path d="M10 3v9M6.5 8.5 10 12l3.5-3.5M4 15h12"/>',
+  transfert:'<path d="M4 7h10M11 4l3 3-3 3M16 13H6M9 10l-3 3 3 3"/>',
+  conso:'<path d="M4 6h12l-1.2 9.2a1 1 0 0 1-1 .8H6.2a1 1 0 0 1-1-.8z"/><path d="M8 3h4"/>',
+  ajust:'<path d="M3 10h5M12 10h5"/><circle cx="10" cy="10" r="2"/><path d="M10 3v3M10 14v3"/>',
+  envoi:'<path d="M3 10 17 4l-4 13-3-5.5z"/>',
+  resultat:'<path d="M4 10.5 8 14l8-9"/>',
+  qualite:'<path d="M10 3 4 5.5v4c0 3.5 2.5 6.4 6 7.5 3.5-1.1 6-4 6-7.5v-4z"/>',
+  lot:'<path d="M10 3 4 6v8l6 3 6-3V6z"/><path d="M4 6l6 3 6-3M10 9v8"/>'
+};
+const VIEWS = [
+  {id:"accueil", nom:"Accueil", ic:"accueil"},
+  {id:"stock", nom:"Stock", ic:"stock"},
+  {id:"recherche", nom:"Recherche", ic:"recherche"},
+  {id:"historique", nom:"Historique", ic:"historique"},
+  {id:"reglages", nom:"Réglages", ic:"reglages"}
+];
+const svg = k => `<svg viewBox="0 0 20 20" aria-hidden="true">${IC[k]}</svg>`;
+
+function nbAnomalies(){
+  let n = 0;
+  for(const o of S.operations) if(BLOQUANTS.has(E.statut.get(o.id))) n++;
+  for(const e of S.envois) if(BLOQUANTS.has(E.statut.get(e.id)) || E.statut.get(e.id)===ST_BLOQ) n++;
+  for(const r of S.resultats) if(E.statut.get(r.id)===ST_BLOQ || E.statut.get(r.id)===ST_MANQUE) n++;
+  return n;
+}
+function renderNav(){
+  const bad = nbAnomalies();
+  $("#nav").innerHTML = VIEWS.map(v=>`
+    <button data-go="${v.id}" aria-current="${S.view===v.id}">
+      ${svg(v.ic)}<span>${v.nom}</span>
+      ${v.id==="historique"&&bad?`<span class="badge">${bad}</span>`:""}
+    </button>`).join("");
+  $("#tabbar").innerHTML = VIEWS.map(v=>`
+    <button data-go="${v.id}" aria-current="${S.view===v.id}">
+      ${svg(v.ic)}<span>${v.nom}</span>
+      ${v.id==="historique"&&bad?`<span class="badge">${bad}</span>`:""}
+    </button>`).join("");
+}
+
+/* ============================== VUES ==================================== */
+function render(){
+  E = compute();
+  renderNav();
+  const m = $("#main");
+  if(S.view==="accueil") m.innerHTML = vAccueil();
+  else if(S.view==="stock") m.innerHTML = vStock();
+  else if(S.view==="recherche") m.innerHTML = vRecherche();
+  else if(S.view==="historique") m.innerHTML = vHistorique();
+  else m.innerHTML = vReglages();
+  window.scrollTo(0,0);
+}
+
+function kpiBlock(){
+  const r = E.recon, bilan = Math.abs(r.theorique - r.actuel) < EPS;
+  return `<dl class="kpis">
+    <div class="kpi"><dt>Stock interne</dt><dd>${kg(E.interne)}<small>kg</small></dd></div>
+    <div class="kpi"><dt>Stock externe</dt><dd>${kg(E.externe)}<small>kg</small></dd></div>
+    <div class="kpi"><dt>Stock total</dt><dd>${kg(E.total)}<small>kg</small></dd></div>
+    <div class="kpi"><dt>En sous-traitance</dt><dd>${kg(E.enCoursST)}<small>kg</small></dd></div>
+    <div class="kpi${E.bloqueQualite?" flag":""}"><dt>Bloqué qualité</dt><dd>${kg(E.bloqueQualite)}<small>kg</small></dd></div>
+    <div class="kpi${bilan?"":" flag"}"><dt>Bilan grand livre</dt><dd style="font-size:15px">${bilan?"Équilibré":"À corriger"}</dd></div>
+  </dl>`;
+}
+
+function aTraiter(){
+  const items = [];
+  for(const o of S.operations){
+    const st = E.statut.get(o.id);
+    if(BLOQUANTS.has(st)) items.push({k:"bad",st,
+      t:`${o.type} · lot ${o.lot}`, s:messageOp(o,st), go:["operation",o.id]});
+  }
+  for(const e of S.envois){
+    const st = E.statut.get(e.id);
+    if(st===ST_ENCOURS) items.push({k:"info",st,t:`${e.ref} · lot ${e.lot} · ${kg(num(e.quantite))} kg chez ${e.soustraitant}`,
+      s:"Envoi enregistré, résultats pas encore connus.", go:["resultat",e.id]});
+    else if(st===ST_JUST) items.push({k:"warn",st,t:`${e.ref} · écart de ${kg(e._ecart)} kg`,
+      s:"Indiquez ce qu'est devenue cette quantité pour clôturer l'envoi.", go:["justifier",e.id]});
+    else if(BLOQUANTS.has(st)||st===ST_BLOQ) items.push({k:"bad",st,t:`${e.ref} · lot ${e.lot}`,
+      s:messageEnvoi(e,st), go:["envoi",e.id]});
+  }
+  for(const c of S.controles){
+    if((c._alertes||[]).length) items.push({k:"warn",st:"ALERTE",
+      t:`Contrôle du ${dfr(c.date)} · lot ${c.lot}`, s:c._alertes.join(" · "), go:["controle",c.id]});
+  }
+  if(!items.length) return `<div class="empty">Rien à traiter. Tous les enregistrements sont complets et cohérents.</div>`;
+  return `<div class="list">${items.map(i=>`
+    <button class="item ${i.k}" data-open="${esc(i.go[0])}" data-arg="${esc(i.go[1])}">
+      <span><span class="t">${esc(i.t)}</span><span class="s">${esc(i.s)}</span></span>
+      <span class="pill ${pillClass(i.st)}">${esc(i.st)}</span>
+    </button>`).join("")}</div>`;
+}
+
+function messageOp(o, st){
+  if(st===ST_MANQUE) return "Il manque des informations obligatoires.";
+  if(st===ST_EMPL) return `Le lot ${o.lot} n'est pas présent sur ${o.source||o.dest}.`;
+  if(st===ST_INSUF) return `Disponible : ${kg(E.dispo.get(o.id))} kg — quantité demandée : ${kg(Math.abs(num(o.quantite)))} kg.`;
+  return "";
+}
+function messageEnvoi(e, st){
+  if(st===ST_MANQUE) return "Il manque des informations obligatoires.";
+  if(st===ST_EMPL) return `Le lot ${e.lot} n'est pas présent sur ${e.emplSource}.`;
+  if(st===ST_INSUF) return `Disponible : ${kg(E.dispo.get(e.id))} kg — envoi de ${kg(num(e.quantite))} kg.`;
+  if(st===ST_BLOQ) return `Total des résultats (${kg(e._sortie)} kg) supérieur à la quantité envoyée.`;
+  return "";
+}
+
+const ACTIONS = [
+  ["reception","reception","Réception","Faire entrer une marchandise en stock"],
+  ["transfert","transfert","Transfert","Déplacer une quantité d'un lieu à un autre"],
+  ["consommation","conso","Consommation","Sortir la quantité réellement consommée"],
+  ["envoi","envoi","Envoi sous-traitance","Depuis le stock ou directement du fournisseur"],
+  ["resultat","resultat","Résultat sous-traitance","Enregistrer ce qui revient d'un envoi"],
+  ["controle","qualite","Contrôle qualité","Température, histamine, calibre — sans toucher au stock"]
+];
+
+function vAccueil(){
+  return `
+  <div class="head"><div>
+    <h1>Aujourd'hui</h1>
+    <p>Choisissez ce que vous venez de faire. Chaque écran ne demande que le strict nécessaire — le reste est repris du lot.</p>
+  </div>
+  <div class="row">
+    <button class="btn" data-open="lot">${svg("lot")}Nouveau lot</button>
+    <button class="btn" data-open="ajustement">${svg("ajust")}Ajustement</button>
+  </div></div>
+
+  ${kpiBlock()}
+
+  <div class="sechead"><h2>Saisir une opération</h2></div>
+  <div class="tiles">${ACTIONS.map(([id,ic,nom,desc])=>`
+    <button class="tile" data-open="${id}">
+      <span class="ic">${svg(ic)}</span>
+      <span><b>${nom}</b><span>${desc}</span></span>
+    </button>`).join("")}</div>
+
+  <div class="sechead"><h2>À traiter</h2><a data-go="historique">Tout l'historique</a></div>
+  ${aTraiter()}`;
+}
+
+/* ------------------------------------------------------------- stock ---- */
+function vStock(){
+  const empls = S.param.emplacements.filter(e=>E.parEmpl.get(e.nom));
+  const lignes = [];
+  for(const l of S.lots){
+    const tot = E.stockDe(l.id, null);
+    const enc = S.envois.filter(e=>e.lot===l.id && !e._nbRes && !BLOQUANTS.has(E.statut.get(e.id)))
+                        .reduce((s,e)=>s+(num(e.quantite)||0),0);
+    if(!tot && !enc) continue;
+    const d = E.derniere.get(l.id);
+    lignes.push({l, tot, enc, dec:d?d.decision:"",
+      cells: empls.map(e=>E.stockDe(l.id, e.nom))});
+  }
+  const r = E.recon, bilan = Math.abs(r.theorique-r.actuel) < EPS;
+  const synth = (titre, map) => `
+    <div class="card pad">
+      <div class="sechead" style="margin:0 0 8px"><h2>${titre}</h2></div>
+      <table><tbody>${[...map.entries()].sort((a,b)=>b[1]-a[1]).map(([k,v])=>
+        `<tr><td>${esc(k)}</td><td class="r num">${kg(v)}</td></tr>`).join("")}
+        <tr><td><b>Total</b></td><td class="r num"><b>${kg(E.total)}</b></td></tr>
+      </tbody></table>
+    </div>`;
+
+  return `
+  <div class="head"><div><h1>Stock</h1>
+    <p>Reconstruit à partir du grand livre. Un lot signalé <b>bloqué qualité</b> reste compté en stock — un contrôle ne déplace jamais de marchandise.</p>
+  </div></div>
+  ${kpiBlock()}
+
+  <div class="sechead"><h2>Par lot et par emplacement</h2></div>
+  ${lignes.length ? `<div class="tw"><table>
+    <thead><tr><th>Lot interne</th><th>Lot externe</th><th>Espèce</th>
+      ${empls.map(e=>`<th class="r">${esc(e.nom)}</th>`).join("")}
+      <th class="r">Total</th><th class="r">Chez ST</th><th>Qualité</th></tr></thead>
+    <tbody>${lignes.map(x=>`<tr>
+      <td class="mono"><b>${esc(x.l.id)}</b></td>
+      <td class="mono" style="color:var(--ink-3)">${esc(E.ev(x.l.id,"lotExterne"))}</td>
+      <td>${esc(E.ev(x.l.id,"espece"))}</td>
+      ${x.cells.map(v=>`<td class="r num ${v?(v<0?"neg":""):"zero"}">${v?kg(v):"·"}</td>`).join("")}
+      <td class="r num"><b>${kg(x.tot)}</b></td>
+      <td class="r num ${x.enc?"":"zero"}">${x.enc?kg(x.enc):"·"}</td>
+      <td>${x.dec?`<span class="pill ${x.dec==="ACCEPTER"?"ok":x.dec==="BLOQUER"||x.dec==="REFUSER"?"bad":"warn"}">${esc(x.dec)}</span>`:""}</td>
+    </tr>`).join("")}</tbody></table></div>`
+   : `<div class="empty">Aucun stock. Commencez par une réception depuis l'accueil.</div>`}
+
+  <div class="sechead"><h2>Synthèses</h2></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+    ${synth("Par espèce", E.parEspece)}
+    ${synth("Par état matière", E.parEtat)}
+    <div class="card pad">
+      <div class="sechead" style="margin:0 0 8px"><h2>Réconciliation</h2></div>
+      <table><tbody>
+        <tr><td>Entrées (hors ajustements)</td><td class="r num">${kg(r.entrees)}</td></tr>
+        <tr><td>Sorties (hors ajustements)</td><td class="r num">${kg(r.sorties)}</td></tr>
+        <tr><td>Ajustements</td><td class="r num">${kg(r.ajust)}</td></tr>
+        <tr><td><b>Stock théorique</b></td><td class="r num"><b>${kg(r.theorique)}</b></td></tr>
+        <tr><td><b>Stock actuel</b></td><td class="r num"><b>${kg(r.actuel)}</b></td></tr>
+      </tbody></table>
+      <div class="note ${bilan?"ok":"bad"}" style="margin-top:10px">
+        ${bilan?"Le grand livre est équilibré.":"Écart détecté entre le théorique et l'actuel."}
+      </div>
+    </div>
+  </div>`;
+}
+</script>
+
+<script>
+/* --------------------------------------------------------- recherche ---- */
+function resoudreLot(q){
+  q = (q||"").trim();
+  if(!q) return null;
+  const direct = S.lots.find(l=>l.id.toLowerCase()===q.toLowerCase());
+  if(direct) return direct;
+  const parExt = S.lots.find(l=>(E.ev(l.id,"lotExterne")||"").toLowerCase()===q.toLowerCase());
+  return parExt || null;
+}
+function vRecherche(){
+  const lot = resoudreLot(S.search);
+  const champ = `
+  <div class="head"><div><h1>Recherche</h1>
+    <p>Tapez un numéro de lot interne ou le numéro du fournisseur (lot externe) — les deux fonctionnent.</p>
+  </div></div>
+  <div class="card pad" style="margin-bottom:16px">
+    <div class="f"><label for="q">Lot interne ou lot externe</label>
+      <input id="q" class="mono" list="dl-lots" placeholder="255  ·  L-EXT-255" value="${esc(S.search)}" autocomplete="off">
+      <datalist id="dl-lots">${S.lots.map(l=>`<option value="${esc(l.id)}">`).join("")}
+        ${S.lots.map(l=>{const x=E.ev(l.id,"lotExterne");return x?`<option value="${esc(x)}">`:""}).join("")}</datalist>
+    </div>
+  </div>`;
+
+  if(!S.search) return champ + `<div class="empty">Saisissez un lot pour voir son identité, son stock, sa traçabilité et son historique qualité.</div>`;
+  if(!lot) return champ + `<div class="note bad">Aucun lot ne correspond à « ${esc(S.search)} ». Vérifiez le numéro, ou créez la fiche depuis l'accueil.</div>`;
+
+  const id = lot.id;
+  const par = ["lotExterne","espece","fournisseur","origine","matricule","conservation"];
+  const labels = {lotExterne:"Lot externe",espece:"Espèce",fournisseur:"Producteur / fournisseur",
+    origine:"Origine",matricule:"Matricule camion",conservation:"Conservation"};
+  const ident = par.map(c=>{
+    const e = E.eff.get(id)[c];
+    if(!e.val) return "";
+    return `<dt>${labels[c]}</dt><dd>${esc(e.val)}${e.herite?` <span class="inh">hérité du lot ${esc(e.herite)}</span>`:""}</dd>`;
+  }).join("");
+
+  const stocks = S.param.emplacements.map(e=>[e.nom, E.stockDe(id, e.nom), e.classe])
+                   .filter(x=>x[1]);
+  const total = E.stockDe(id, null);
+  const enc = S.envois.filter(e=>e.lot===id && !e._nbRes && !BLOQUANTS.has(E.statut.get(e.id)))
+                      .reduce((s,e)=>s+(num(e.quantite)||0),0);
+  const mvts = E.lignes.filter(l=>l.lot===id).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  const env = S.envois.filter(e=>e.lot===id || S.resultats.some(r=>r.envoi===e.id && r._lotEff===id));
+  const res = S.resultats.filter(r=>r._lotEff===id || (byId(S.envois,r.envoi)||{}).lot===id);
+  const ctrl = S.controles.filter(c=>c.lot===id).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const liesSet = new Set();
+  for(const r of S.resultats){
+    const src = (byId(S.envois,r.envoi)||{}).lot;
+    if(src===id && r._lotEff!==id) liesSet.add(r._lotEff);
+    if(r._lotEff===id && src && src!==id) liesSet.add(src);
+  }
+  const memeExt = S.lots.filter(l=>l.id!==id && E.ev(l.id,"lotExterne") &&
+                                   E.ev(l.id,"lotExterne")===E.ev(id,"lotExterne"));
+  const derniere = E.derniere.get(id);
+
+  const bloc = (t, corps) => corps ? `<div class="sechead"><h2>${t}</h2></div>${corps}` : "";
+
+  return champ + `
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+    <div class="card pad">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h2 class="mono" style="font-size:20px">${esc(id)}</h2>
+        ${derniere?`<span class="pill ${derniere.decision==="ACCEPTER"?"ok":derniere.decision==="BLOQUER"||derniere.decision==="REFUSER"?"bad":"warn"}">${esc(derniere.decision||"—")}</span>`:""}
+      </div>
+      <dl class="dl">${ident}
+        ${lot.etat?`<dt>État matière</dt><dd>${esc(lot.etat)}</dd>`:""}
+        ${lot.lotParent?`<dt>Lot parent</dt><dd class="mono">${esc(lot.lotParent)}</dd>`:""}
+      </dl>
+    </div>
+    <div class="card pad">
+      <div class="sechead" style="margin:0 0 8px"><h2>Stock actuel</h2></div>
+      ${stocks.length?`<table><tbody>${stocks.map(([n,v,c])=>
+        `<tr><td>${esc(n)} <span class="pill mute">${esc(c)}</span></td><td class="r num">${kg(v)}</td></tr>`).join("")}
+        <tr><td><b>Total</b></td><td class="r num"><b>${kg(total)}</b></td></tr>
+        ${enc?`<tr><td>Chez sous-traitant</td><td class="r num">${kg(enc)}</td></tr>`:""}
+      </tbody></table>`:`<p style="color:var(--ink-3);font-size:13.5px;margin:0">Aucun stock pour ce lot.</p>`}
+    </div>
+  </div>
+
+  ${bloc("Mouvements", mvts.length?`<div class="tw"><table>
+    <thead><tr><th>Date</th><th>Opération</th><th>Emplacement</th><th class="r">Déclaré</th><th class="r">En stock</th><th>Statut</th><th>Réf.</th></tr></thead>
+    <tbody>${mvts.map(l=>`<tr>
+      <td class="num">${dfr(l.date)}</td><td>${esc(l.op)}</td><td>${esc(l.empl)}</td>
+      <td class="r num">${kg(l.brut)}</td>
+      <td class="r num ${l.net?"":"neg"}">${l.net?kg(l.net):"0"}</td>
+      <td><span class="pill ${pillClass(l.statut)}">${esc(l.statut)}</span></td>
+      <td class="mono" style="color:var(--ink-3)">${esc(l.ref||"")}</td></tr>`).join("")}</tbody></table></div>`:"")}
+
+  ${bloc("Sous-traitance", env.length?`<div class="tw"><table>
+    <thead><tr><th>Réf.</th><th>Date</th><th>Sous-traitant</th><th>Source</th><th class="r">Envoyé</th><th class="r">Revenu</th><th class="r">Écart</th><th>Statut</th></tr></thead>
+    <tbody>${env.map(e=>`<tr>
+      <td class="mono">${esc(e.ref)}</td><td class="num">${dfr(e.date)}</td>
+      <td>${esc(e.soustraitant)}</td><td>${esc(e.source)}</td>
+      <td class="r num">${kg(num(e.quantite))}</td><td class="r num">${e._nbRes?kg(e._sortie):"—"}</td>
+      <td class="r num ${e._ecart>0?"neg":""}">${e._ecart!=null?kg(e._ecart):"—"}</td>
+      <td><span class="pill ${pillClass(E.statut.get(e.id))}">${esc(E.statut.get(e.id))}</span></td></tr>`).join("")}</tbody></table></div>`:"")}
+
+  ${bloc("Résultats de sous-traitance", res.length?`<div class="tw"><table>
+    <thead><tr><th>Réf. envoi</th><th>Date</th><th>Résultat</th><th>Lot obtenu</th><th class="r">Quantité</th><th>Qualité</th><th>Calibre</th><th>Destination</th></tr></thead>
+    <tbody>${res.map(r=>`<tr>
+      <td class="mono">${esc((byId(S.envois,r.envoi)||{}).ref||"")}</td>
+      <td class="num">${dfr(r.date)}</td><td>${esc(r.etat||"")}</td>
+      <td class="mono">${esc(r._lotEff)}</td><td class="r num">${kg(num(r.quantite))}</td>
+      <td>${esc(r.qualite||"")}</td><td class="mono">${esc(r.moule||"")}</td>
+      <td>${esc(r.dest)}</td></tr>`).join("")}</tbody></table></div>`:"")}
+
+  ${bloc("Historique qualité", ctrl.length?`<div class="tw"><table>
+    <thead><tr><th>Date</th><th>Emplacement</th><th class="r">Temp.</th><th class="r">Histamine</th><th>Qualité</th><th>Calibre</th><th>Défauts</th><th>Décision</th></tr></thead>
+    <tbody>${ctrl.map(c=>`<tr>
+      <td class="num">${dfr(c.date)}</td><td>${esc(c.empl||"—")}</td>
+      <td class="r num">${c.temperature!==""&&c.temperature!=null?esc(c.temperature)+" °C":"—"}</td>
+      <td class="r num">${c.histamine!==""&&c.histamine!=null?esc(c.histamine)+" PPM":"—"}</td>
+      <td>${esc(c.qualite||"—")}</td><td class="mono">${esc(c.moule||"—")}</td>
+      <td>${esc(c.defauts||"—")}</td>
+      <td>${c.decision?`<span class="pill ${c.decision==="ACCEPTER"?"ok":c.decision==="BLOQUER"||c.decision==="REFUSER"?"bad":"warn"}">${esc(c.decision)}</span>`:"—"}</td>
+    </tr>`).join("")}</tbody></table></div>`:"")}
+
+  ${bloc("Lots liés", (liesSet.size||memeExt.length)?`<div class="list">
+    ${[...liesSet].map(x=>`<button class="item" data-search="${esc(x)}">
+      <span><span class="t mono">${esc(x)}</span><span class="s">Lié par sous-traitance · ${kg(E.stockDe(x,null))} kg en stock</span></span>
+      <span class="pill mute">${esc((byId(S.lots,x)||{}).etat||"")}</span></button>`).join("")}
+    ${memeExt.map(l=>`<button class="item" data-search="${esc(l.id)}">
+      <span><span class="t mono">${esc(l.id)}</span><span class="s">Même lot externe ${esc(E.ev(l.id,"lotExterne"))} · ${kg(E.stockDe(l.id,null))} kg en stock</span></span>
+      <span class="pill mute">${esc(l.etat||"")}</span></button>`).join("")}
+  </div>`:"")}`;
+}
+
+/* -------------------------------------------------------- historique ---- */
+function vHistorique(){
+  const f = S.filtreHisto;
+  const rows = [];
+  const push = (type,rec,st,label,detail,open) =>
+    rows.push({type,rec,st,label,detail,open,date:rec.date||""});
+  if(f==="tout"||f==="operations") for(const o of S.operations)
+    push("Opération",o,E.statut.get(o.id),`${o.type} · ${o.lot}`,
+      `${o.source?o.source+" → ":""}${o.dest||""} · ${kg(num(o.quantite))} kg`,["operation",o.id]);
+  if(f==="tout"||f==="envois") for(const e of S.envois)
+    push("Sous-traitance",e,E.statut.get(e.id),`${e.ref} · ${e.lot}`,
+      `${e.soustraitant} · ${kg(num(e.quantite))} kg · ${e.source}`,["envoi",e.id]);
+  if(f==="tout"||f==="resultats") for(const r of S.resultats)
+    push("Résultat",r,E.statut.get(r.id),`${r._lotEff} · ${r.etat||"résultat"}`,
+      `${kg(num(r.quantite))} kg → ${r.dest}`,["resultatEdit",r.id]);
+  if(f==="tout"||f==="qualite") for(const c of S.controles)
+    push("Qualité",c,E.statut.get(c.id),`Contrôle · ${c.lot}`,
+      [c.temperature!==""&&c.temperature!=null?c.temperature+" °C":"",
+       c.histamine!==""&&c.histamine!=null?c.histamine+" PPM":"",
+       c.qualite,c.decision].filter(Boolean).join(" · ")||"—",["controle",c.id]);
+  rows.sort((a,b)=> (b.date||"").localeCompare(a.date||""));
+
+  const filtres = [["tout","Tout"],["operations","Opérations"],["envois","Sous-traitance"],
+                   ["resultats","Résultats"],["qualite","Qualité"]];
+  return `
+  <div class="head"><div><h1>Historique</h1>
+    <p>Tous les enregistrements, du plus récent au plus ancien. Touchez une ligne pour la corriger ou la supprimer.</p>
+  </div></div>
+  <div class="chips" style="margin-bottom:14px">${filtres.map(([k,l])=>
+    `<button class="chip" data-filtre="${k}" aria-pressed="${f===k}">${l}</button>`).join("")}</div>
+  ${rows.length?`<div class="list">${rows.map(r=>`
+    <button class="item ${BLOQUANTS.has(r.st)||r.st===ST_BLOQ?"bad":r.st===ST_JUST?"warn":r.st===ST_ENCOURS?"info":"ok"}"
+      data-open="${esc(r.open[0])}" data-arg="${esc(r.open[1])}">
+      <span><span class="t">${esc(r.label)}</span>
+        <span class="s">${esc(r.type)} · ${dfr(r.date)} · ${esc(r.detail)}</span></span>
+      <span class="pill ${pillClass(r.st)}">${esc(r.st)}</span>
+    </button>`).join("")}</div>`
+   :`<div class="empty">Aucun enregistrement pour ce filtre.</div>`}`;
+}
+
+/* ---------------------------------------------------------- réglages ---- */
+function vReglages(){
+  const listes = [
+    ["especes","Espèces"],["fournisseurs","Producteurs / fournisseurs"],
+    ["origines","Origines"],["etats","États matière"],["conservations","Conservations"],
+    ["qualites","Qualités (aide — la saisie libre reste possible)"],
+    ["moules","Calibres (aide — la saisie libre reste possible)"],
+    ["soustraitants","Sites de sous-traitance"],["decisions","Décisions qualité"],
+    ["typesControle","Types de contrôle"],["motifs","Motifs d'écart"]
+  ];
+  return `
+  <div class="head"><div><h1>Réglages</h1>
+    <p>Listes de référence et seuils d'alerte. Une valeur par ligne ; elles alimentent tous les menus de l'application.</p>
+  </div></div>
+
+  <div class="sechead"><h2>Emplacements de stock</h2></div>
+  <div class="card pad">
+    <p style="margin:0 0 10px;font-size:13px;color:var(--ink-2)">La classe ne peut valoir que <b>INTERNE</b> ou <b>EXTERNE</b>. OCEAMIC 2 est le seul emplacement interne.</p>
+    <div class="tw"><table><thead><tr><th>Emplacement</th><th>Classe</th><th class="r">Stock</th></tr></thead>
+    <tbody>${S.param.emplacements.map((e,i)=>`<tr>
+      <td><input data-empl="${i}" data-champ="nom" value="${esc(e.nom)}" style="border:0;background:none;padding:2px;width:100%"></td>
+      <td><select data-empl="${i}" data-champ="classe" style="border:0;background:none;padding:2px">
+        <option${e.classe==="INTERNE"?" selected":""}>INTERNE</option>
+        <option${e.classe==="EXTERNE"?" selected":""}>EXTERNE</option></select></td>
+      <td class="r num">${kgz(E.parEmpl.get(e.nom))||"·"}</td></tr>`).join("")}</tbody></table></div>
+    <div class="row" style="margin-top:10px"><button class="btn" data-addempl="1">+ Ajouter un emplacement</button></div>
+  </div>
+
+  <div class="sechead"><h2>Seuils d'alerte</h2></div>
+  <div class="card pad"><div class="f2">
+    <div class="f"><label>Seuil histamine (PPM)</label><input type="number" data-seuil="seuilHistamine" value="${esc(S.param.seuilHistamine)}"></div>
+    <div class="f"><label>Tolérance d'écart (kg)</label><input type="number" data-seuil="toleranceEcart" value="${esc(S.param.toleranceEcart)}"></div>
+    <div class="f"><label>Température maxi — frais (°C)</label><input type="number" data-seuil="tempMaxFrais" value="${esc(S.param.tempMaxFrais)}"></div>
+    <div class="f"><label>Température maxi — congelé (°C)</label><input type="number" data-seuil="tempMaxCongele" value="${esc(S.param.tempMaxCongele)}"></div>
+  </div></div>
+
+  <div class="sechead"><h2>Listes de référence</h2></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+    ${listes.map(([k,l])=>`<div class="card pad"><div class="f">
+      <label>${l}</label>
+      <textarea rows="${Math.max(3,S.param[k].length)}" data-liste="${k}">${esc(S.param[k].join("\n"))}</textarea>
+    </div></div>`).join("")}
+  </div>
+  <div class="row" style="margin-top:14px">
+    <button class="btn primary" data-saveparam="1">Enregistrer les réglages</button>
+    <button class="btn danger" data-purge="1">Effacer les données d'exemple</button>
+  </div>
+  <p style="font-size:12.5px;color:var(--ink-3);margin-top:14px;max-width:70ch">
+    Les données sont enregistrées côté serveur et partagées entre toutes les personnes qui ouvrent cette page.
+    Capacité : environ 5 000 enregistrements au total.
+  </p>`;
+}
+</script>
+
+<script>
+/* ============================ PERSISTANCE =============================== */
+const LOCAL = {actif:false};
+async function connect(){
+  let db = null;
+  try { db = await claude.use("db"); } catch(e){ db = null; }
+  S.db = db;
+  if(!db){
+    LOCAL.actif = true;
+    $("#dot").className = "dot off";
+    $("#dbstate").textContent = "Hors ligne — non enregistré";
+    S.ready = true; render(); return;
+  }
+  $("#dbstate").textContent = "Données partagées";
+  const p = await db.doc("config/param").get();
+  if(p.exists) S.param = Object.assign({}, DEFAULT_PARAM, p.data());
+  const sub = (col, key) => db.collection(col).onSnapshot(
+    snap => { S[key] = snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+              if(S.ready) render(); },
+    err => { if(err.code!=="unavailable") toast("Synchronisation interrompue ("+err.code+")"); });
+  for(const [key,col] of Object.entries(COLS)) sub(col, key);
+  db.doc("config/param").onSnapshot(s=>{
+    if(s.exists){ S.param = Object.assign({}, DEFAULT_PARAM, s.data()); if(S.ready) render(); }
+  }, ()=>{});
+  setTimeout(()=>{ S.ready = true; render(); }, 350);
+}
+async function save(key, obj){
+  const arr = S[key], i = arr.findIndex(x=>x.id===obj.id);
+  if(i>=0) arr[i] = obj; else arr.push(obj);
+  render();
+  if(!S.db) return;
+  const body = Object.assign({}, obj); delete body.id;
+  for(const k of Object.keys(body)) if(k.startsWith("_")) delete body[k];
+  try { await S.db.collection(COLS[key]).doc(obj.id).set(body); }
+  catch(e){
+    toast(e.code==="quota_exceeded"
+      ? "Base pleine : supprimez d'anciens enregistrements avant d'en créer."
+      : "Enregistrement non transmis ("+e.code+"). Vérifiez votre connexion.");
+  }
+}
+async function remove(key, id){
+  S[key] = S[key].filter(x=>x.id!==id); render();
+  if(S.db) try { await S.db.collection(COLS[key]).doc(id).delete(); } catch(e){}
+}
+async function saveParam(){
+  if(!S.db) { render(); return; }
+  try { await S.db.doc("config/param").set(JSON.parse(JSON.stringify(S.param))); }
+  catch(e){ toast("Réglages non transmis ("+e.code+")"); }
+}
+function nextRef(key, prefix){
+  let max = 0;
+  for(const x of S[key]){
+    const m = /(\d+)$/.exec(x.ref||""); if(m) max = Math.max(max, +m[1]);
+  }
+  return prefix + "-" + String(max+1).padStart(3,"0");
+}
+
+/* ============================ FORMULAIRES =============================== */
+let M = null;   // {kind, data, edit}
+const closeForm = () => { M = null; $("#modal").innerHTML = ""; };
+
+const opt = (arr, val, vide) =>
+  (vide?`<option value="">${vide}</option>`:"") +
+  arr.map(v=>`<option value="${esc(v)}"${v===val?" selected":""}>${esc(v)}</option>`).join("");
+const emplOpt = (val, vide) =>
+  (vide?`<option value="">${vide}</option>`:"") +
+  S.param.emplacements.map(e=>`<option value="${esc(e.nom)}"${e.nom===val?" selected":""}>${esc(e.nom)} — ${esc(e.classe)}</option>`).join("");
+const lotOpt = val => `<option value="">Choisir un lot…</option>` + S.lots.map(l=>{
+  const x = E.ev(l.id,"lotExterne"), sp = E.ev(l.id,"espece");
+  return `<option value="${esc(l.id)}"${l.id===val?" selected":""}>${esc(l.id)}${x?" · "+esc(x):""}${sp?" · "+esc(sp):""}</option>`;
+}).join("");
+
+const F_TITRES = {
+  reception:["Réception","La marchandise arrive et entre en stock à l'endroit indiqué."],
+  transfert:["Transfert","La même quantité sort d'un emplacement et entre dans un autre."],
+  consommation:["Consommation","Seule la quantité réellement consommée sort du stock."],
+  ajustement:["Ajustement d'inventaire","Corriger un écart constaté au comptage. Quantité négative = perte."],
+  envoi:["Envoi en sous-traitance","Depuis votre stock, ou directement du fournisseur au sous-traitant."],
+  resultat:["Résultat de sous-traitance","Ce qui revient d'un envoi. Un envoi peut produire plusieurs résultats."],
+  controle:["Contrôle qualité","Ne saisissez que les mesures réellement faites. Le stock n'est pas modifié."],
+  lot:["Nouveau lot","À faire une seule fois par lot. Ensuite, il suffira de le choisir."],
+  justifier:["Justifier l'écart","Indiquez ce qu'est devenue la quantité manquante."]
+};
+
+function openForm(kind, arg){
+  const d = {};
+  if(kind==="reception"||kind==="transfert"||kind==="consommation"||kind==="ajustement"){
+    Object.assign(d, {date:today(), type:kind.toUpperCase()});
+  }
+  if(kind==="operation"){ const o = byId(S.operations, arg); if(!o) return;
+    return openEdit("operation", o.type.toLowerCase(), o); }
+  if(kind==="envoi" && arg){ const e = byId(S.envois, arg); if(e) return openEdit("envoi","envoi",e); }
+  if(kind==="resultatEdit"){ const r = byId(S.resultats, arg); if(!r) return;
+    return openEdit("resultat","resultat",r); }
+  if(kind==="controle" && arg){ const c = byId(S.controles, arg); if(c) return openEdit("controle","controle",c); }
+  if(kind==="envoi") Object.assign(d, {date:today(), source:"STOCK EXISTANT"});
+  if(kind==="resultat") Object.assign(d, {date:today(), envoi:arg||"", dest:"OCEAMIC 2"});
+  if(kind==="controle") Object.assign(d, {date:today(), type:"CONTROLE MOUVEMENT"});
+  if(kind==="lot") Object.assign(d, {conservation:"CONGELE", etat:"ENTIER"});
+  if(kind==="justifier") Object.assign(d, {envoi:arg});
+  M = {kind, data:d, edit:false};
+  paint();
+}
+function openEdit(store, kind, rec){
+  M = {kind, store, data:Object.assign({}, rec), edit:true};
+  paint();
+}
+
+function champsOperation(d, type){
+  const src = type!=="RECEPTION" && type!=="AJUSTEMENT";
+  const dst = type!=="CONSOMMATION";
+  return `
+  <div class="f2">
+    <div class="f"><label for="i-date">Date</label><input id="i-date" type="date" data-k="date" value="${esc(d.date||"")}"></div>
+    <div class="f"><label for="i-qte">Quantité (kg)</label>
+      <input id="i-qte" type="number" step="0.01" data-k="quantite" inputmode="decimal" value="${esc(d.quantite??"")}" placeholder="${type==="AJUSTEMENT"?"-25":"1000"}"></div>
+  </div>
+  <div class="f"><label for="i-lot">Lot interne</label>
+    <select id="i-lot" data-k="lot">${lotOpt(d.lot)}</select>
+    <span class="hint">Le lot n'existe pas ? <a href="#" data-open="lot" style="color:var(--accent)">Créer une fiche lot</a></span></div>
+  ${src?`<div class="f"><label for="i-src">Emplacement source</label>
+    <select id="i-src" data-k="source">${emplOpt(d.source,"Choisir…")}</select></div>`:""}
+  ${dst?`<div class="f"><label for="i-dst">Emplacement ${type==="AJUSTEMENT"?"concerné":"de destination"}</label>
+    <select id="i-dst" data-k="dest">${emplOpt(d.dest,"Choisir…")}</select></div>`:""}
+  <div class="f"><label for="i-motif">${type==="AJUSTEMENT"?"Motif":"Motif / destination"} ${type==="AJUSTEMENT"?"":`<span class="opt">— facultatif</span>`}</label>
+    ${type==="AJUSTEMENT"
+      ? `<select id="i-motif" data-k="motif">${opt(S.param.motifs, d.motif, "Choisir…")}</select>`
+      : `<input id="i-motif" data-k="motif" value="${esc(d.motif||"")}" placeholder="${type==="CONSOMMATION"?"Production conserve":"Réception usine"}">`}</div>
+  <div class="f"><label for="i-obs">Observation <span class="opt">— facultatif</span></label>
+    <input id="i-obs" data-k="observation" value="${esc(d.observation||"")}"></div>`;
+}
+
+function champsEnvoi(d){
+  return `
+  <div class="f"><label>Provenance de la marchandise</label>
+    <div class="chips">
+      <button type="button" class="chip" data-set="source" data-val="STOCK EXISTANT" aria-pressed="${d.source==="STOCK EXISTANT"}">Depuis mon stock</button>
+      <button type="button" class="chip" data-set="source" data-val="FOURNISSEUR" aria-pressed="${d.source==="FOURNISSEUR"}">Direct du fournisseur</button>
+    </div>
+    <span class="hint">${d.source==="FOURNISSEUR"
+      ? "Aucun stock OCEAMIC n'est consommé et aucune réception n'est à saisir."
+      : "La quantité envoyée sera retirée de l'emplacement choisi."}</span></div>
+  <div class="f2">
+    <div class="f"><label for="i-date">Date d'envoi</label><input id="i-date" type="date" data-k="date" value="${esc(d.date||"")}"></div>
+    <div class="f"><label for="i-qte">Quantité envoyée (kg)</label>
+      <input id="i-qte" type="number" step="0.01" data-k="quantite" inputmode="decimal" value="${esc(d.quantite??"")}"></div>
+  </div>
+  <div class="f"><label for="i-st">Sous-traitant</label>
+    <select id="i-st" data-k="soustraitant">${opt(S.param.soustraitants, d.soustraitant, "Choisir…")}</select></div>
+  <div class="f"><label for="i-lot">Lot source</label>
+    <select id="i-lot" data-k="lot">${lotOpt(d.lot)}</select></div>
+  ${d.source==="STOCK EXISTANT"?`<div class="f"><label for="i-src">Emplacement source</label>
+    <select id="i-src" data-k="emplSource">${emplOpt(d.emplSource,"Choisir…")}</select></div>`:""}
+  <div class="f2">
+    <div class="f"><label for="i-q">Qualité à l'entrée <span class="opt">— facultatif</span></label>
+      <input id="i-q" list="dl-q" data-k="qualiteEntree" value="${esc(d.qualiteEntree||"")}" placeholder="A=60 B=40">
+      <datalist id="dl-q">${S.param.qualites.map(v=>`<option value="${esc(v)}">`).join("")}</datalist></div>
+    <div class="f"><label for="i-m">Calibre à l'entrée <span class="opt">— facultatif</span></label>
+      <input id="i-m" class="mono" list="dl-m" data-k="mouleEntree" value="${esc(d.mouleEntree||"")}" placeholder="20/24">
+      <datalist id="dl-m">${S.param.moules.map(v=>`<option value="${esc(v)}">`).join("")}</datalist></div>
+  </div>
+  <div class="f2">
+    <div class="f"><label for="i-h">Histamine (PPM) <span class="opt">— facultatif</span></label>
+      <input id="i-h" type="number" step="1" data-k="histamineEntree" value="${esc(d.histamineEntree??"")}"></div>
+    <div class="f"><label for="i-dr">Date de retour <span class="opt">— facultatif</span></label>
+      <input id="i-dr" type="date" data-k="dateRetour" value="${esc(d.dateRetour||"")}"></div>
+  </div>`;
+}
+
+function champsResultat(d){
+  const dispo = S.envois.filter(e=>{const s=E.statut.get(e.id); return !BLOQUANTS.has(s);});
+  return `
+  <div class="f"><label for="i-env">Envoi concerné</label>
+    <select id="i-env" data-k="envoi"><option value="">Choisir un envoi…</option>
+      ${dispo.map(e=>{const st=E.statut.get(e.id);
+        return `<option value="${esc(e.id)}"${e.id===d.envoi?" selected":""}>${esc(e.ref)} · lot ${esc(e.lot)} · ${kg(num(e.quantite))} kg · ${esc(e.soustraitant)} · ${esc(st)}</option>`;}).join("")}
+    </select></div>
+  <div class="f2">
+    <div class="f"><label for="i-date">Date du résultat</label><input id="i-date" type="date" data-k="date" value="${esc(d.date||"")}"></div>
+    <div class="f"><label for="i-qte">Quantité obtenue (kg)</label>
+      <input id="i-qte" type="number" step="0.01" data-k="quantite" inputmode="decimal" value="${esc(d.quantite??"")}"></div>
+  </div>
+  <div class="f2">
+    <div class="f"><label for="i-etat">Résultat / état</label>
+      <select id="i-etat" data-k="etat">${opt(S.param.etats, d.etat, "Choisir…")}</select></div>
+    <div class="f"><label for="i-dest">Destination</label>
+      <select id="i-dest" data-k="dest">${emplOpt(d.dest,"Choisir…")}</select></div>
+  </div>
+  <div class="f"><label for="i-lot">Lot obtenu <span class="opt">— laisser vide pour garder le lot source</span></label>
+    <select id="i-lot" data-k="lot"><option value="">Garder le lot source</option>
+      ${S.lots.map(l=>`<option value="${esc(l.id)}"${l.id===d.lot?" selected":""}>${esc(l.id)}</option>`).join("")}</select></div>
+  <div class="f2">
+    <div class="f"><label for="i-q">Qualité <span class="opt">— facultatif</span></label>
+      <input id="i-q" list="dl-q2" data-k="qualite" value="${esc(d.qualite||"")}">
+      <datalist id="dl-q2">${S.param.qualites.map(v=>`<option value="${esc(v)}">`).join("")}</datalist></div>
+    <div class="f"><label for="i-m">Calibre <span class="opt">— facultatif</span></label>
+      <input id="i-m" class="mono" list="dl-m2" data-k="moule" value="${esc(d.moule||"")}">
+      <datalist id="dl-m2">${S.param.moules.map(v=>`<option value="${esc(v)}">`).join("")}</datalist></div>
+  </div>`;
+}
+
+function champsControle(d){
+  return `
+  <div class="f2">
+    <div class="f"><label for="i-date">Date</label><input id="i-date" type="date" data-k="date" value="${esc(d.date||"")}"></div>
+    <div class="f"><label for="i-type">Type de contrôle</label>
+      <select id="i-type" data-k="type">${opt(S.param.typesControle, d.type, "Choisir…")}</select></div>
+  </div>
+  <div class="f"><label for="i-lot">Lot contrôlé</label>
+    <select id="i-lot" data-k="lot">${lotOpt(d.lot)}</select></div>
+  <div class="f"><label for="i-empl">Emplacement <span class="opt">— facultatif, sert à vérifier la cohérence</span></label>
+    <select id="i-empl" data-k="empl">${emplOpt(d.empl,"Non précisé")}</select></div>
+  <div class="f2">
+    <div class="f"><label for="i-t">Température (°C) <span class="opt">— facultatif</span></label>
+      <input id="i-t" type="number" step="0.1" data-k="temperature" inputmode="decimal" value="${esc(d.temperature??"")}"></div>
+    <div class="f"><label for="i-h">Histamine (PPM) <span class="opt">— facultatif</span></label>
+      <input id="i-h" type="number" step="1" data-k="histamine" inputmode="numeric" value="${esc(d.histamine??"")}"></div>
+  </div>
+  <div class="f2">
+    <div class="f"><label for="i-q">Qualité <span class="opt">— facultatif</span></label>
+      <input id="i-q" list="dl-q3" data-k="qualite" value="${esc(d.qualite||"")}" placeholder="A=20 B=40 C=40">
+      <datalist id="dl-q3">${S.param.qualites.map(v=>`<option value="${esc(v)}">`).join("")}</datalist></div>
+    <div class="f"><label for="i-m">Calibre <span class="opt">— facultatif</span></label>
+      <input id="i-m" class="mono" list="dl-m3" data-k="moule" value="${esc(d.moule||"")}" placeholder="20/24=14 26/30=55">
+      <datalist id="dl-m3">${S.param.moules.map(v=>`<option value="${esc(v)}">`).join("")}</datalist></div>
+  </div>
+  <div class="f"><label for="i-def">Défauts <span class="opt">— facultatif</span></label>
+    <input id="i-def" data-k="defauts" value="${esc(d.defauts||"")}"></div>
+  <div class="f2">
+    <div class="f"><label for="i-dec">Décision <span class="opt">— facultatif</span></label>
+      <select id="i-dec" data-k="decision">${opt(S.param.decisions, d.decision, "Non prononcée")}</select></div>
+    <div class="f"><label for="i-ctr">Contrôleur <span class="opt">— facultatif</span></label>
+      <input id="i-ctr" data-k="controleur" value="${esc(d.controleur||"")}"></div>
+  </div>`;
+}
+
+function champsLot(d){
+  return `
+  <div class="f2">
+    <div class="f"><label for="i-id">Lot interne <span class="opt">— clé du stock, définitive</span></label>
+      <input id="i-id" class="mono" data-k="id" value="${esc(d.id||"")}" ${M.edit?"disabled":""} placeholder="255"></div>
+    <div class="f"><label for="i-ext">Lot externe (fournisseur) <span class="opt">— facultatif</span></label>
+      <input id="i-ext" class="mono" data-k="lotExterne" value="${esc(d.lotExterne||"")}" placeholder="L-EXT-255"></div>
+  </div>
+  <div class="note info">Si le fournisseur n'a pas encore donné de numéro interne, reprenez son numéro comme lot interne — et ne le changez plus ensuite.</div>
+  <div class="f2">
+    <div class="f"><label for="i-esp">Espèce</label>
+      <select id="i-esp" data-k="espece">${opt(S.param.especes, d.espece, "Choisir…")}</select></div>
+    <div class="f"><label for="i-four">Producteur / fournisseur</label>
+      <select id="i-four" data-k="fournisseur">${opt(S.param.fournisseurs, d.fournisseur, "Choisir…")}</select></div>
+    <div class="f"><label for="i-ori">Origine</label>
+      <select id="i-ori" data-k="origine">${opt(S.param.origines, d.origine, "Choisir…")}</select></div>
+    <div class="f"><label for="i-mat">Matricule camion <span class="opt">— facultatif</span></label>
+      <input id="i-mat" class="mono" data-k="matricule" value="${esc(d.matricule||"")}"></div>
+    <div class="f"><label for="i-etat">État matière</label>
+      <select id="i-etat" data-k="etat">${opt(S.param.etats, d.etat, "Choisir…")}</select></div>
+    <div class="f"><label for="i-cons">Conservation</label>
+      <select id="i-cons" data-k="conservation">${opt(S.param.conservations, d.conservation, "Choisir…")}</select></div>
+  </div>
+  <div class="f"><label for="i-par">Lot parent <span class="opt">— facultatif : le lot dont celui-ci est issu</span></label>
+    <select id="i-par" data-k="lotParent"><option value="">Aucun</option>
+      ${S.lots.filter(l=>l.id!==d.id).map(l=>`<option value="${esc(l.id)}"${l.id===d.lotParent?" selected":""}>${esc(l.id)}</option>`).join("")}</select>
+    <span class="hint">Espèce, fournisseur, origine et conservation laissés vides sont repris du lot parent.</span></div>`;
+}
+</script>
+
+<script>
+/* --------------------------------- validation en direct ---------------- */
+function verifie(){
+  const d = M.data, k = M.kind;
+  const q = num(d.quantite);
+  const excl = M.edit ? d.id : null;
+  const dispoDe = (lot, empl) => {
+    if(!lot || !empl) return null;
+    let s = 0;
+    for(const l of E.lignes) if(l.lot===lot && l.empl===empl && l.rec!==excl)
+      s += (l.src==="envois" ? (BLOQUANTS.has(E.statut.get(l.rec))?0:l.brut)
+                             : (E.statut.get(l.rec)===ST_OK?l.brut:0));
+    return s;
+  };
+  const manque = [];
+  let note = null, bloque = false;
+
+  if(k==="lot"){
+    if(!d.id) manque.push("le numéro de lot interne");
+    else if(!/^[A-Za-z0-9_\-.~:@+]+$/.test(d.id))
+      return {bloque:true, note:{t:"bad", m:"Le numéro de lot ne peut contenir que des lettres, des chiffres et les signes - _ . ~ : @ + (pas d'espace ni de /)."}};
+    else if(!M.edit && S.lots.some(l=>l.id===d.id))
+      return {bloque:true, note:{t:"bad", m:`Le lot ${d.id} existe déjà. Ouvrez-le depuis la recherche pour le modifier.`}};
+    if(!d.espece && !d.lotParent) manque.push("l'espèce");
+    return {bloque:manque.length>0, manque,
+      note:manque.length?null:{t:"ok", m:"Ce lot pourra ensuite être choisi partout sans ressaisir son identité."}};
+  }
+
+  if(k==="reception"||k==="transfert"||k==="consommation"||k==="ajustement"){
+    const type = k.toUpperCase();
+    if(!d.date) manque.push("la date");
+    if(!d.lot) manque.push("le lot");
+    if(type==="AJUSTEMENT"){
+      if(!Number.isFinite(q)||q===0) manque.push("une quantité différente de 0");
+      if(!d.dest) manque.push("l'emplacement");
+      if(!d.motif) manque.push("le motif");
+    } else {
+      if(!Number.isFinite(q)||q<=0) manque.push("une quantité supérieure à 0");
+      if(type!=="RECEPTION" && !d.source) manque.push("l'emplacement source");
+      if(type!=="CONSOMMATION" && !d.dest) manque.push("l'emplacement de destination");
+      if(type==="TRANSFERT" && d.source && d.source===d.dest)
+        return {bloque:true, manque, note:{t:"bad", m:"La source et la destination doivent être différentes."}};
+    }
+    const sortie = type==="TRANSFERT"||type==="CONSOMMATION"||(type==="AJUSTEMENT"&&q<0);
+    if(sortie && d.lot){
+      const empl = type==="AJUSTEMENT" ? d.dest : d.source;
+      const dispo = dispoDe(d.lot, empl);
+      if(dispo!=null){
+        if(dispo<=0) { bloque = true;
+          note = {t:"bad", m:`Le lot ${d.lot} n'est pas présent sur ${empl}. Vérifiez l'emplacement.`}; }
+        else if(Number.isFinite(q) && Math.abs(q) > dispo+EPS){ bloque = true;
+          note = {t:"bad", m:`Disponible sur ${empl} : ${kg(dispo)} kg. Vous demandez ${kg(Math.abs(q))} kg.`}; }
+        else note = {t:"info", m:`Disponible sur ${empl} : <b>${kg(dispo)} kg</b>${Number.isFinite(q)?` → il restera <b>${kg(dispo-Math.abs(q))} kg</b>`:""}`};
+      }
+    } else if(type==="RECEPTION" && d.lot && d.dest && Number.isFinite(q)){
+      note = {t:"ok", m:`Après cette réception : <b>${kg(dispoDe(d.lot,d.dest)+q)} kg</b> sur ${esc(d.dest)}.`};
+    }
+    return {bloque:bloque||manque.length>0, manque, note};
+  }
+
+  if(k==="envoi"){
+    if(!d.date) manque.push("la date");
+    if(!d.soustraitant) manque.push("le sous-traitant");
+    if(!d.lot) manque.push("le lot source");
+    if(!Number.isFinite(q)||q<=0) manque.push("une quantité supérieure à 0");
+    if(d.source==="STOCK EXISTANT"){
+      if(!d.emplSource) manque.push("l'emplacement source");
+      else if(d.lot){
+        const dispo = dispoDe(d.lot, d.emplSource);
+        if(dispo<=0){ bloque=true; note={t:"bad",m:`Le lot ${d.lot} n'est pas présent sur ${d.emplSource}.`}; }
+        else if(Number.isFinite(q) && q>dispo+EPS){ bloque=true;
+          note={t:"bad",m:`Disponible sur ${d.emplSource} : ${kg(dispo)} kg. Vous envoyez ${kg(q)} kg.`}; }
+        else note={t:"info",m:`Disponible : <b>${kg(dispo)} kg</b>${Number.isFinite(q)?` → il restera <b>${kg(dispo-q)} kg</b>`:""}`};
+      }
+    } else if(d.source==="FOURNISSEUR"){
+      note = {t:"ok", m:"Livraison directe : aucun stock OCEAMIC n'est consommé, et il n'y a pas de réception à saisir."};
+    }
+    return {bloque:bloque||manque.length>0, manque, note};
+  }
+
+  if(k==="resultat"){
+    if(!d.envoi) manque.push("l'envoi concerné");
+    if(!Number.isFinite(q)||q<=0) manque.push("une quantité supérieure à 0");
+    if(!d.dest) manque.push("la destination");
+    const e = byId(S.envois, d.envoi);
+    if(e){
+      const autres = S.resultats.filter(r=>r.envoi===e.id && r.id!==d.id)
+                       .reduce((s,r)=>s+(num(r.quantite)||0),0);
+      const totalApres = autres + (Number.isFinite(q)?q:0);
+      const envoye = num(e.quantite);
+      if(totalApres > envoye+EPS){ bloque = true;
+        note = {t:"bad", m:`Total des résultats ${kg(totalApres)} kg pour ${kg(envoye)} kg envoyés. Un envoi ne peut pas rendre plus qu'il n'a reçu.`}; }
+      else if(Number.isFinite(q)){
+        const ecart = envoye - totalApres;
+        note = ecart > S.param.toleranceEcart+EPS
+          ? {t:"warn", m:`Écart de <b>${kg(ecart)} kg</b> sur ${kg(envoye)} kg envoyés. Il faudra le justifier pour clôturer l'envoi (ou ajouter un autre résultat).`}
+          : {t:"ok", m:`Rendement ${(totalApres/envoye*100).toFixed(1)} % — aucun écart à justifier.`};
+      }
+      if(!d.lot) note = note || {t:"info", m:`Le lot source ${e.lot} sera conservé.`};
+    }
+    return {bloque:bloque||manque.length>0, manque, note};
+  }
+
+  if(k==="controle"){
+    if(!d.date) manque.push("la date");
+    if(!d.lot) manque.push("le lot");
+    const mesures = ["temperature","histamine","qualite","moule","defauts","decision"]
+      .some(c=> d[c]!=="" && d[c]!=null);
+    if(!mesures) manque.push("au moins une mesure (température, histamine, qualité, calibre, défaut ou décision)");
+    const al = [];
+    const h = num(d.histamine), t = num(d.temperature);
+    if(Number.isFinite(h) && h > S.param.seuilHistamine)
+      al.push(`histamine ${kg(h)} PPM au-dessus du seuil de ${S.param.seuilHistamine} PPM`);
+    const cons = d.lot ? E.ev(d.lot,"conservation") : "";
+    if(Number.isFinite(t) && cons==="CONGELE" && t > S.param.tempMaxCongele)
+      al.push(`température ${t} °C au-dessus du seuil congelé`);
+    if(Number.isFinite(t) && cons==="FRAIS" && t > S.param.tempMaxFrais)
+      al.push(`température ${t} °C au-dessus du seuil frais`);
+    if(d.lot && d.empl && E.stockDe(d.lot, d.empl) <= 0)
+      al.push(`le lot ${d.lot} n'apparaît pas sur ${d.empl} — le contrôle sera enregistré, le stock ne bouge pas`);
+    if(al.length) note = {t:"warn", m:"Alerte : " + al.join(" ; ") + "."};
+    else if(!manque.length) note = {t:"ok", m:"Ce contrôle n'aura aucun effet sur les quantités en stock."};
+    return {bloque:manque.length>0, manque, note};
+  }
+
+  if(k==="justifier"){
+    if(!d.justification) manque.push("la justification");
+    return {bloque:manque.length>0, manque};
+  }
+  return {bloque:false, manque:[]};
+}
+
+function noteHTML(){
+  const v = verifie();
+  let h = "";
+  if(v.manque && v.manque.length)
+    h += `<div class="note info">Il reste à renseigner ${esc(v.manque.join(", "))}.</div>`;
+  if(v.note) h += `<div class="note ${v.note.t}">${v.note.m}</div>`;
+  return h;
+}
+
+function paint(){
+  if(!M) return;
+  const k = M.kind, d = M.data;
+  const [titre, sous] = F_TITRES[k] || ["",""];
+  let corps;
+  if(k==="lot") corps = champsLot(d);
+  else if(k==="envoi") corps = champsEnvoi(d);
+  else if(k==="resultat") corps = champsResultat(d);
+  else if(k==="controle") corps = champsControle(d);
+  else if(k==="justifier"){
+    const e = byId(S.envois, d.envoi) || {};
+    corps = `<div class="note warn">Envoi ${esc(e.ref||"")} — ${kg(num(e.quantite))} kg envoyés, ${kg(e._sortie)} kg revenus.
+      Écart de <b>${kg(e._ecart)} kg</b>.</div>
+      <div class="f"><label for="i-mot">Motif</label>
+        <select id="i-mot" data-k="motif">${opt(S.param.motifs, d.motif, "Choisir…")}</select></div>
+      <div class="f"><label for="i-just">Explication</label>
+        <textarea id="i-just" rows="3" data-k="justification" placeholder="Perte de process au filetage, pesée et contrôlée">${esc(d.justification||"")}</textarea></div>`;
+  }
+  else corps = champsOperation(d, k.toUpperCase());
+
+  const v = verifie();
+  $("#modal").innerHTML = `<div class="scrim" data-scrim="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(titre)}">
+    <header><div><h2>${esc(titre)}</h2><p>${esc(sous)}</p></div>
+      <button class="btn ghost" data-close="1" aria-label="Fermer">✕</button></header>
+    <div class="body">${corps}<div id="fnote">${noteHTML()}</div></div>
+    <footer>
+      ${M.edit?`<button class="btn danger" data-del="1" style="margin-right:auto">Supprimer</button>`:""}
+      <button class="btn" data-close="1">Annuler</button>
+      <button class="btn primary" data-ok="1"${v.bloque?" disabled":""}>${M.edit?"Enregistrer":"Valider"}</button>
+    </footer></div></div>`;
+}
+function refresh(){
+  if(!M) return;
+  const v = verifie();
+  const n = document.getElementById("fnote");
+  if(n) n.innerHTML = noteHTML();
+  const b = document.querySelector('[data-ok]');
+  if(b) b.disabled = v.bloque;
+}
+
+/* --------------------------------------------------- enregistrement ---- */
+async function submit(){
+  const d = M.data, k = M.kind;
+  if(verifie().bloque) return;
+  const clean = o => { const c = {}; for(const [a,b] of Object.entries(o))
+    if(!a.startsWith("_") && b!=="" && b!=null) c[a]=b; return c; };
+
+  if(k==="lot"){
+    await save("lots", clean(Object.assign({}, d)));
+    toast(M.edit ? `Lot ${d.id} enregistré` : `Lot ${d.id} créé`);
+  } else if(k==="justifier"){
+    const e = byId(S.envois, d.envoi);
+    await save("envois", clean(Object.assign({}, e, {justification:d.justification, motif:d.motif})));
+    toast("Écart justifié");
+  } else if(k==="envoi"){
+    const rec = clean(Object.assign({}, d));
+    rec.id = rec.id || uid("st"); rec.ref = rec.ref || nextRef("envois","ST");
+    rec.quantite = num(rec.quantite);
+    if(rec.source!=="STOCK EXISTANT") delete rec.emplSource;
+    await save("envois", rec);
+    toast(`${rec.ref} enregistré · ${kg(rec.quantite)} kg`);
+  } else if(k==="resultat"){
+    const rec = clean(Object.assign({}, d));
+    rec.id = rec.id || uid("res"); rec.ref = rec.ref || nextRef("resultats","RES");
+    rec.quantite = num(rec.quantite);
+    await save("resultats", rec);
+    toast(`Résultat enregistré · ${kg(rec.quantite)} kg`);
+  } else if(k==="controle"){
+    const rec = clean(Object.assign({}, d));
+    rec.id = rec.id || uid("qc"); rec.ref = rec.ref || nextRef("controles","QC");
+    await save("controles", rec);
+    toast("Contrôle qualité enregistré — stock inchangé");
+  } else {
+    const rec = clean(Object.assign({}, d));
+    rec.type = k.toUpperCase();
+    rec.id = rec.id || uid("op"); rec.ref = rec.ref || nextRef("operations","OP");
+    rec.quantite = num(rec.quantite);
+    if(rec.type==="RECEPTION"||rec.type==="AJUSTEMENT") delete rec.source;
+    if(rec.type==="CONSOMMATION") delete rec.dest;
+    await save("operations", rec);
+    toast(`${rec.type[0]+rec.type.slice(1).toLowerCase()} enregistrée · ${kg(Math.abs(rec.quantite))} kg`);
+  }
+  closeForm();
+}
+async function supprime(){
+  const map = {lot:"lots", reception:"operations", transfert:"operations",
+    consommation:"operations", ajustement:"operations", envoi:"envois",
+    resultat:"resultats", controle:"controles"};
+  const key = map[M.kind]; if(!key) return;
+  if(key==="lots"){
+    const used = E.lignes.some(l=>l.lot===M.data.id) || S.controles.some(c=>c.lot===M.data.id);
+    if(used){ toast("Ce lot est utilisé par des mouvements — supprimez-les d'abord."); return; }
+  }
+  await remove(key, M.data.id);
+  toast("Supprimé"); closeForm();
+}
+
+/* ============================== ÉVÉNEMENTS ============================== */
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("[data-go],[data-open],[data-close],[data-ok],[data-del],[data-scrim],[data-set],[data-search],[data-filtre],[data-saveparam],[data-purge],[data-addempl]");
+  if(!t) return;
+  if(t.dataset.go){ ev.preventDefault(); S.view = t.dataset.go; render(); return; }
+  if(t.dataset.open){ ev.preventDefault(); openForm(t.dataset.open, t.dataset.arg||""); return; }
+  if(t.dataset.close || (t.dataset.scrim && ev.target===t)){ closeForm(); return; }
+  if(t.dataset.ok){ t.disabled = true; await submit(); return; }
+  if(t.dataset.del){ await supprime(); return; }
+  if(t.dataset.set){ M.data[t.dataset.set] = t.dataset.val; paint(); return; }
+  if(t.dataset.search){ S.search = t.dataset.search; S.view = "recherche"; render();
+    const q = document.getElementById("q"); if(q) q.value = S.search; return; }
+  if(t.dataset.filtre){ S.filtreHisto = t.dataset.filtre; render(); return; }
+  if(t.dataset.addempl){ S.param.emplacements.push({nom:"NOUVEAU", classe:"EXTERNE"});
+    saveParam(); render(); return; }
+  if(t.dataset.saveparam){ await saveParam(); toast("Réglages enregistrés"); render(); return; }
+  if(t.dataset.purge){
+    if(!confirm("Supprimer tous les enregistrements marqués « exemple » ? Les réglages sont conservés.")) return;
+    for(const [key,col] of Object.entries(COLS)){
+      for(const r of [...S[key]]) if(r.exemple) await remove(key, r.id);
+    }
+    toast("Données d'exemple supprimées"); return;
+  }
+});
+document.addEventListener("input", ev => {
+  const t = ev.target;
+  if(t.dataset && t.dataset.k && M){
+    M.data[t.dataset.k] = t.value;
+    if(t.dataset.k==="lot" || t.dataset.k==="envoi") paint(); else refresh();
+    return;
+  }
+  if(t.id==="q"){ S.search = t.value; const m=$("#main");
+    const sc = window.scrollY; render(); window.scrollTo(0,sc);
+    const q = document.getElementById("q"); if(q){ q.value = S.search; q.focus(); } return; }
+  if(t.dataset && t.dataset.liste){ S.param[t.dataset.liste] =
+    t.value.split("\n").map(s=>s.trim()).filter(Boolean); return; }
+  if(t.dataset && t.dataset.seuil){ S.param[t.dataset.seuil] = num(t.value)||0; return; }
+  if(t.dataset && t.dataset.empl!=null && t.dataset.champ){
+    S.param.emplacements[+t.dataset.empl][t.dataset.champ] = t.value; return; }
+});
+document.addEventListener("keydown", ev => {
+  if(ev.key==="Escape" && M) closeForm();
+});
+
+/* ================================= BOOT ================================= */
+render();
+connect();
+</script>
