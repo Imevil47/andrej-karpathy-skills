@@ -10,6 +10,9 @@ type HomeSummary = Readonly<{
   blockedLots: number;
   receptionsToday: number;
   subcontractingInProgress: number;
+  runsInProgress: number;
+  consumedTodayKg: string;
+  runsWithDifferenceToJustify: number;
   byLocation: readonly Readonly<{
     locationCode: string;
     locationName: string;
@@ -55,6 +58,21 @@ export function Accueil() {
               <div className="titre">Sous-traitances en cours</div>
               <div className="valeur">{data.subcontractingInProgress}</div>
             </div>
+            <div className="indicateur">
+              <div className="titre">Runs en cours</div>
+              <div className="valeur">{data.runsInProgress}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Matière consommée aujourd'hui</div>
+              <div className="valeur">
+                {formatQuantity(data.consumedTodayKg)}
+                <span className="unite">kg</span>
+              </div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Écarts matière à justifier</div>
+              <div className="valeur">{data.runsWithDifferenceToJustify}</div>
+            </div>
           </div>
 
           <Card title="Stock par emplacement">
@@ -87,6 +105,11 @@ export function Accueil() {
               <Link to="/stock/transfert">
                 <button type="button" className="secondaire">
                   Transfert de stock
+                </button>
+              </Link>
+              <Link to="/production/nouveau">
+                <button type="button" className="secondaire">
+                  Nouveau Run
                 </button>
               </Link>
               <Link to="/tracabilite">

@@ -1,4 +1,4 @@
-# Modèle de données — OCEAMIC IMS Phase 1
+# Modèle de données — OCEAMIC IMS Phases 1 et 2
 
 Toutes les clés primaires sont des UUID. Les codes lisibles (`LOT-…`, `REC-…`) sont des
 identifiants opérationnels affichés aux utilisateurs ; les UUID ne sont jamais montrés.
@@ -282,4 +282,152 @@ species ──< raw_material_lots >── suppliers, vessels
                   ├──< lot_blocks >── quality_inspections, quality_decisions
                   └──< subcontracting_operations >── subcontractors ── locations
                                   └──< subcontracting_results >── locations
+```
+
+
+---
+
+# Phase 2 — Production
+
+## Données de référence de production
+
+### `products`
+Référence de production / commerciale. **Un produit n'est pas une espèce** : l'espèce
+est la famille de matière première, le produit est ce qui est fabriqué.
+
+| Champ | Rôle |
+|---|---|
+| `code`, `name` | Référence produit (SPSA-HO, FMHT, …), code unique |
+| `species_id` | → `species` : famille de matière première du produit |
+| `product_family` | Regroupement commercial facultatif |
+| `format`, `pieces_per_can` | Caractéristiques de conditionnement par défaut, séparées de l'identité produit |
+| `is_active` | Désactivation, jamais suppression |
+
+Le format et les pièces par boîte restent des colonnes distinctes : le même produit
+pourra plus tard exister en plusieurs formats sans casser l'historique de production.
+
+### `production_lines`
+Lignes de l'atelier (L1 à L8 en données de démonstration). `display_order` fixe l'ordre
+d'affichage. Le nombre de lignes est de la configuration, jamais une constante du code.
+
+### `production_stages`
+Étapes du process (traitement, grattage, remplissage). Table de configuration : les
+étapes futures (sertissage, stérilisation, emballage) s'ajoutent en données, sans
+migration.
+
+### `production_loss_reasons`
+Motifs opérationnels rattachés à une catégorie de disposition matière.
+
+| Champ | Rôle |
+|---|---|
+| `output_type` | `PERTE_REELLE`, `SOUS_PRODUIT`, `REWORK` ou `RECLASSEMENT` |
+
+---
+
+## `production_runs`
+**Contexte de transformation.** Un Run ne porte aucune quantité et aucune identité de
+lot : les quantités viennent des registres de consommation et de sortie.
+
+| Champ | Rôle |
+|---|---|
+| `run_code` | Code opérationnel unique (`RUN-20260908-001`) |
+| `production_date` | Journée de production |
+| `started_at`, `ended_at` | Heures réelles de début et de fin |
+| `species_id` | Dérivé du produit, jamais saisi séparément |
+| `product_id` | → `products` |
+| `format`, `pieces_per_can` | Identité de production du Run (héritées du produit si non précisées) |
+| `status` | `PLANIFIE`, `EN_COURS`, `SUSPENDU`, `TERMINE`, `ANNULE` |
+| `responsible_user_id` | Responsable du Run |
+| `difference_justification`, `justified_by`, `justified_at` | Justification de l'écart matière |
+| `cancellation_reason` | Motif obligatoire d'une annulation |
+
+Contraintes : une fin implique un début, une fin est postérieure au début, un Run
+terminé a une heure de fin, un Run annulé a un motif, et la justification est complète
+(texte + auteur + date) ou totalement absente.
+
+Index : `production_date`, `status`, `product_id`, `species_id`.
+
+## `production_run_lines`
+Quelles lignes participent au Run et pour quelle activité.
+
+| Champ | Rôle |
+|---|---|
+| `activity_type` | `GRATTAGE`, `REMPLISSAGE`, `GRATTAGE_REMPLISSAGE`, `TRAITEMENT`, `INACTIVE`, `AUTRE` |
+| `is_active_for_run` | Participation effective |
+| `started_at`, `ended_at` | Préparés pour la cadence de la Phase 3 |
+
+L'activité est configurée **par Run** : aucun modèle d'activité n'est imposé à une
+espèce. Un même opérateur peut gratter et remplir sur un process sardine, tandis que
+les lignes de grattage et de remplissage sont séparées sur un process maquereau.
+
+Contrainte : une ligne n'apparaît qu'une fois par Run.
+
+## `production_run_materials`
+**Relation plusieurs-à-plusieurs entre Runs et lots de matière première.** Un Run
+consomme plusieurs lots ; un lot alimente plusieurs Runs.
+
+| Champ | Rôle |
+|---|---|
+| `production_run_id`, `raw_material_lot_id` | Les deux côtés de la relation |
+| `source_location_id` | Emplacement réellement déstocké |
+| `quantity_kg` | `> 0` |
+| `consumed_at` | Heure réelle de la consommation |
+| `stock_movement_id` | → `stock_movements`, **unique** : chaque consommation validée possède exactement un mouvement du registre de la Phase 1 |
+| `status` | `VALIDE` ou `ANNULE` |
+| `reversal_stock_movement_id` | Mouvement d'annulation qui a restitué le stock |
+| `cancelled_at`, `cancelled_by`, `cancellation_reason` | Traçabilité de l'annulation |
+| `replaces_id` | Ligne de remplacement créée lors d'une correction |
+
+Contraintes : une ligne annulée porte obligatoirement sa date, son auteur, son motif et
+son mouvement d'annulation ; une ligne valide n'en porte aucun.
+
+Index : Run, lot, `consumed_at`, statut.
+
+## `production_outputs`
+**Registre unique des dispositions matière du Run** : sortie utile, sous-produit,
+rework, reclassement et perte réelle.
+
+| Champ | Rôle |
+|---|---|
+| `output_type` | `SORTIE_UTILE`, `SOUS_PRODUIT`, `REWORK`, `RECLASSEMENT`, `PERTE_REELLE`, `AUTRE` |
+| `quantity_kg` | `> 0` |
+| `occurred_at` | Heure réelle |
+| `production_line_id` | Ligne concernée, facultative |
+| `destination_stage_id` | Étape de destination (par exemple remplissage) |
+| `destination_location_id`, `derived_lot_id` | Destination et lot dérivé, préparés pour les modules aval |
+| `loss_reason_id`, `reason_text` | Motif ; obligatoire pour une perte réelle |
+| `status`, `cancelled_*` | Correction par annulation, jamais par modification |
+
+L'écart inexpliqué n'est **jamais** stocké ici : il est calculé, ce qui interdit de
+déguiser un écart en perte déclarée.
+
+Index : Run, type, `occurred_at`, statut, ligne.
+
+---
+
+## Vues de calcul de production
+
+| Vue | Contenu |
+|---|---|
+| `production_run_material_input` | Entrée MP du Run = somme des consommations validées |
+| `production_run_output_totals` | Une colonne par catégorie de sortie + total justifié |
+| `production_run_material_balance` | Entrée, total justifié, écart en kg et en %, statut du bilan |
+| `production_run_yield` | Rendement matière = sortie utile / entrée MP × 100 |
+| `lot_production_usage` | Traçabilité aval : quels Runs ont consommé un lot, et combien |
+
+Le seuil de tolérance de l'écart matière (0,50 %) est défini **une seule fois**, dans
+`production_run_material_balance`.
+
+## Relations de production
+
+```
+species ──< products ──< production_runs >── users (responsable)
+                              │
+                              ├──< production_run_lines >── production_lines
+                              │
+                              ├──< production_run_materials >── raw_material_lots
+                              │            └── stock_movements (1:1, registre Phase 1)
+                              │
+                              └──< production_outputs >── production_stages
+                                           └── production_loss_reasons
 ```

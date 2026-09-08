@@ -7,11 +7,18 @@ import { requiredTextSchema, uuidSchema } from '../http/schemas.ts';
 import { listUsers } from '../services/auth.ts';
 import {
   createLocation,
+  createLossReason,
+  createProduct,
+  createProductionLine,
   createSpecies,
   createSubcontractor,
   createSupplier,
   createVessel,
   listLocations,
+  listLossReasons,
+  listProductionLines,
+  listProductionStages,
+  listProducts,
   listSpecies,
   listSubcontractors,
   listSuppliers,
@@ -27,7 +34,16 @@ const includeInactiveSchema = z.object({
 });
 
 const activationSchema = z.object({
-  target: z.enum(['species', 'suppliers', 'vessels', 'locations', 'subcontractors']),
+  target: z.enum([
+    'species',
+    'suppliers',
+    'vessels',
+    'locations',
+    'subcontractors',
+    'products',
+    'production_lines',
+    'production_loss_reasons',
+  ]),
   id: uuidSchema,
 });
 
@@ -65,6 +81,73 @@ export async function registerMasterDataRoutes(
     requirePermission(request, 'masterdata:read');
     const { inactifs } = includeInactiveSchema.parse(request.query);
     return listSubcontractors(pool, inactifs);
+  });
+
+  app.get('/api/products', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listProducts(pool, inactifs);
+  });
+
+  app.get('/api/production-lines', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listProductionLines(pool, inactifs);
+  });
+
+  app.get('/api/production-stages', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listProductionStages(pool, inactifs);
+  });
+
+  app.get('/api/production-loss-reasons', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listLossReasons(pool, inactifs);
+  });
+
+  app.post('/api/products', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        speciesId: uuidSchema,
+        productFamily: z.string().trim().min(1).nullable(),
+        format: z.string().trim().min(1).nullable(),
+        piecesPerCan: z.number().int().positive().nullable(),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createProduct(pool, input, user.id);
+  });
+
+  app.post('/api/production-lines', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        area: z.string().trim().min(1).nullable(),
+        displayOrder: z.number().int().min(0),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createProductionLine(pool, input, user.id);
+  });
+
+  app.post('/api/production-loss-reasons', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        outputType: z.enum(['PERTE_REELLE', 'SOUS_PRODUIT', 'REWORK', 'RECLASSEMENT']),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createLossReason(pool, input, user.id);
   });
 
   app.get('/api/users', async (request) => {

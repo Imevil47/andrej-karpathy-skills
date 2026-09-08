@@ -21,6 +21,12 @@ export const PERMISSIONS = [
   'traceability:read',
   'audit:read',
   'users:manage',
+  // Phase 2: production
+  'production:read',
+  'production:run',
+  'production:material',
+  'production:output',
+  'production:correct',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -31,6 +37,7 @@ const READ_ONLY: readonly Permission[] = [
   'subcontracting:read',
   'quality:read',
   'traceability:read',
+  'production:read',
 ];
 
 const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
@@ -47,7 +54,16 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     'subcontracting:create',
     'subcontracting:result',
   ],
-  PRODUCTION: READ_ONLY,
+  // Production runs the transformation: runs, consumption, outputs and losses.
+  // Corrections stay available because they are reversals, fully audited, and a
+  // shift cannot wait for an administrator to fix a mistyped quantity.
+  PRODUCTION: [
+    ...READ_ONLY,
+    'production:run',
+    'production:material',
+    'production:output',
+    'production:correct',
+  ],
   LECTURE: READ_ONLY,
 };
 

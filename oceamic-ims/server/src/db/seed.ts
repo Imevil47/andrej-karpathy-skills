@@ -4,6 +4,12 @@ import { loadConfig } from '../config.ts';
 import { ROLE_CODES, type RoleCode } from '../domain/types.ts';
 import { hashPassword } from '../services/auth.ts';
 import { decideQuality } from '../services/quality.ts';
+import {
+  consumeRawMaterial,
+  createRun,
+  recordOutput,
+  startRun,
+} from '../services/production.ts';
 import { registerReception } from '../services/receptions.ts';
 import { transferStock } from '../services/stock.ts';
 import { sendToSubcontractor } from '../services/subcontracting.ts';
@@ -62,6 +68,50 @@ const LOCATIONS: readonly SeedLocation[] = [
   { code: 'KJ-FISH', name: 'KJ FISH', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true },
 ];
 
+// Production references. A product is a commercial / production reference, it
+// is never a species.
+const PRODUCTS: readonly Readonly<{
+  code: string;
+  name: string;
+  speciesCode: string;
+  productFamily: string;
+  format: string;
+  piecesPerCan: number;
+}>[] = [
+  { code: 'SPSA-HO', name: 'Sardine pilchardus huile olive', speciesCode: 'SARDINE', productFamily: 'SARDINE', format: 'CLUB', piecesPerCan: 4 },
+  { code: 'SPSA-HOEV-BIO', name: 'Sardine huile olive extra vierge bio', speciesCode: 'SARDINE', productFamily: 'SARDINE', format: 'CLUB', piecesPerCan: 3 },
+  { code: 'FMHT', name: 'Filet de maquereau huile de tournesol', speciesCode: 'MAQUEREAU', productFamily: 'MAQUEREAU', format: '1/4', piecesPerCan: 2 },
+  { code: 'FMHOEV-BIO', name: 'Filet de maquereau huile olive extra vierge bio', speciesCode: 'MAQUEREAU', productFamily: 'MAQUEREAU', format: '1/4', piecesPerCan: 2 },
+];
+
+const PRODUCTION_LINES: readonly Readonly<{ code: string; name: string; area: string }>[] = [
+  { code: 'L1', name: 'Ligne 1', area: 'Atelier A' },
+  { code: 'L2', name: 'Ligne 2', area: 'Atelier A' },
+  { code: 'L3', name: 'Ligne 3', area: 'Atelier A' },
+  { code: 'L4', name: 'Ligne 4', area: 'Atelier B' },
+  { code: 'L5', name: 'Ligne 5', area: 'Atelier B' },
+  { code: 'L6', name: 'Ligne 6', area: 'Atelier B' },
+  { code: 'L7', name: 'Ligne 7', area: 'Atelier C' },
+  { code: 'L8', name: 'Ligne 8', area: 'Atelier C' },
+];
+
+// Stages are data: later stages (sertissage, stérilisation, emballage) are added
+// here without touching the schema.
+const PRODUCTION_STAGES: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'TRAITEMENT', name: 'Traitement' },
+  { code: 'GRATTAGE', name: 'Grattage' },
+  { code: 'REMPLISSAGE', name: 'Remplissage' },
+];
+
+const LOSS_REASONS: readonly Readonly<{ code: string; name: string; outputType: string }>[] = [
+  { code: 'PR-QUAL', name: 'Matière non conforme', outputType: 'PERTE_REELLE' },
+  { code: 'PR-MANIP', name: 'Casse / manipulation', outputType: 'PERTE_REELLE' },
+  { code: 'SP-TETE', name: 'Têtes et viscères', outputType: 'SOUS_PRODUIT' },
+  { code: 'SP-ARETE', name: 'Arêtes et chutes', outputType: 'SOUS_PRODUIT' },
+  { code: 'RW-CALIB', name: 'Calibre à retraiter', outputType: 'REWORK' },
+  { code: 'RC-GRADE', name: 'Déclassement de grade', outputType: 'RECLASSEMENT' },
+];
+
 const SUPPLIERS: readonly Readonly<{ code: string; name: string; country: string }>[] = [
   { code: 'FRN-001', name: 'Pêcherie Atlantique Sud (démo)', country: 'Maroc' },
   { code: 'FRN-002', name: 'Comptoir Maritime Agadir (démo)', country: 'Maroc' },
@@ -100,6 +150,38 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
         vessel.name,
         vessel.registration,
       ]);
+    }
+    for (const product of PRODUCTS) {
+      await client.query(
+        `INSERT INTO products (code, name, species_id, product_family, format, pieces_per_can)
+         VALUES ($1, $2, (SELECT id FROM species WHERE code = $3), $4, $5, $6)`,
+        [
+          product.code,
+          product.name,
+          product.speciesCode,
+          product.productFamily,
+          product.format,
+          product.piecesPerCan,
+        ],
+      );
+    }
+    for (const [index, line] of PRODUCTION_LINES.entries()) {
+      await client.query(
+        'INSERT INTO production_lines (code, name, area, display_order) VALUES ($1, $2, $3, $4)',
+        [line.code, line.name, line.area, index + 1],
+      );
+    }
+    for (const [index, stage] of PRODUCTION_STAGES.entries()) {
+      await client.query(
+        'INSERT INTO production_stages (code, name, display_order) VALUES ($1, $2, $3)',
+        [stage.code, stage.name, index + 1],
+      );
+    }
+    for (const reason of LOSS_REASONS) {
+      await client.query(
+        'INSERT INTO production_loss_reasons (code, name, output_type) VALUES ($1, $2, $3)',
+        [reason.code, reason.name, reason.outputType],
+      );
     }
     for (const location of LOCATIONS) {
       await client.query(
@@ -290,6 +372,104 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       notes: null,
     },
     qualityUserId,
+  );
+
+  // 4. Demonstration production run on the sardine lot: consumption, useful
+  //    output towards filling, by-product and a small real loss.
+  const productionUserId = (
+    await pool.query<{ id: string }>('SELECT id FROM users WHERE username = $1', ['production'])
+  ).rows[0]?.id;
+  if (!productionUserId) {
+    throw new Error('Utilisateur de production de démonstration introuvable.');
+  }
+
+  const sardineProduct = await idOf(pool, 'products', 'SPSA-HO');
+  const lines = await pool.query<{ id: string; code: string }>(
+    "SELECT id, code FROM production_lines WHERE code IN ('L1', 'L2') ORDER BY code",
+  );
+  const fillingStage = await idOf(pool, 'production_stages', 'REMPLISSAGE');
+  const byProductReason = await idOf(pool, 'production_loss_reasons', 'SP-TETE');
+  const lossReason = await idOf(pool, 'production_loss_reasons', 'PR-MANIP');
+
+  const run = await createRun(
+    pool,
+    {
+      productionDate: new Date().toISOString().slice(0, 10),
+      productId: sardineProduct,
+      format: null,
+      piecesPerCan: null,
+      responsibleUserId: productionUserId,
+      lines: lines.rows.map((line) => ({
+        productionLineId: line.id,
+        // Same operator scrapes and fills on this sardine process.
+        activityType: 'GRATTAGE_REMPLISSAGE' as const,
+      })),
+      notes: 'Ordre de production de démonstration',
+    },
+    productionUserId,
+  );
+  await startRun(pool, run.id, productionUserId);
+
+  await consumeRawMaterial(
+    pool,
+    run.id,
+    {
+      rawMaterialLotId: sardineReception.lotId,
+      sourceLocationId: oceamic2,
+      quantityKg: '2000.000',
+      consumedAt: new Date(),
+      notes: null,
+    },
+    productionUserId,
+  );
+
+  await recordOutput(
+    pool,
+    run.id,
+    {
+      outputType: 'SORTIE_UTILE',
+      quantityKg: '1240.000',
+      occurredAt: new Date(),
+      productionLineId: lines.rows[0]?.id ?? null,
+      destinationStageId: fillingStage,
+      destinationLocationId: null,
+      lossReasonId: null,
+      reasonText: null,
+      notes: 'Sortie vers remplissage (démo)',
+    },
+    productionUserId,
+  );
+  await recordOutput(
+    pool,
+    run.id,
+    {
+      outputType: 'SOUS_PRODUIT',
+      quantityKg: '700.000',
+      occurredAt: new Date(),
+      productionLineId: null,
+      destinationStageId: null,
+      destinationLocationId: null,
+      lossReasonId: byProductReason,
+      reasonText: null,
+      notes: null,
+    },
+    productionUserId,
+  );
+  await recordOutput(
+    pool,
+    run.id,
+    {
+      outputType: 'PERTE_REELLE',
+      quantityKg: '60.000',
+      occurredAt: new Date(),
+      productionLineId: lines.rows[0]?.id ?? null,
+      destinationStageId: null,
+      destinationLocationId: null,
+      lossReasonId: lossReason,
+      reasonText: null,
+      notes: null,
+    },
+    productionUserId,
   );
 }
 

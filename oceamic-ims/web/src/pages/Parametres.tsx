@@ -2,7 +2,16 @@ import { useState } from 'react';
 import { apiPost } from '../api';
 import { Badge, Card, DataTable, Field, Message, PageHeader } from '../components/ui';
 import { label } from '../format';
-import { useLocations, useSpecies, useSubcontractors, useSuppliers, useVessels } from '../masterdata';
+import {
+  useLocations,
+  useLossReasons,
+  useProductionLines,
+  useProducts,
+  useSpecies,
+  useSubcontractors,
+  useSuppliers,
+  useVessels,
+} from '../masterdata';
 import { useResource } from '../hooks';
 
 type UserRow = Readonly<{
@@ -23,6 +32,9 @@ export function Parametres() {
   const vessels = useVessels();
   const locations = useLocations();
   const subcontractors = useSubcontractors();
+  const products = useProducts();
+  const productionLines = useProductionLines();
+  const lossReasons = useLossReasons();
   const users = useResource<readonly UserRow[]>('/api/users');
 
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +53,19 @@ export function Parametres() {
     code: '',
     name: '',
     locationId: '',
+  });
+  const [productForm, setProductForm] = useState({
+    code: '',
+    name: '',
+    speciesId: '',
+    format: '',
+    piecesPerCan: '',
+  });
+  const [lineForm, setLineForm] = useState({ code: '', name: '', area: '' });
+  const [reasonForm, setReasonForm] = useState({
+    code: '',
+    name: '',
+    outputType: 'PERTE_REELLE',
   });
 
   const run = async (action: () => Promise<unknown>, message: string, reload: () => void) => {
@@ -392,6 +417,230 @@ export function Parametres() {
               <td>{row.code}</td>
               <td>{row.name}</td>
               <td>{row.locationCode}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Produits">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/products', {
+                  code: productForm.code,
+                  name: productForm.name,
+                  speciesId: productForm.speciesId,
+                  productFamily: null,
+                  format: productForm.format === '' ? null : productForm.format,
+                  piecesPerCan:
+                    productForm.piecesPerCan === '' ? null : Number(productForm.piecesPerCan),
+                }),
+              'Produit créé.',
+              products.reload,
+            );
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={productForm.code}
+              onChange={(event) => setProductForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={productForm.name}
+              onChange={(event) => setProductForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Espèce" hint="Un produit n'est pas une espèce.">
+            <select
+              value={productForm.speciesId}
+              onChange={(event) => setProductForm((f) => ({ ...f, speciesId: event.target.value }))}
+              required
+            >
+              <option value="">Sélectionner...</option>
+              {(species.data ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Format" hint={null}>
+            <input
+              value={productForm.format}
+              onChange={(event) => setProductForm((f) => ({ ...f, format: event.target.value }))}
+            />
+          </Field>
+          <Field label="Pièces par boîte" hint={null}>
+            <input
+              value={productForm.piecesPerCan}
+              onChange={(event) =>
+                setProductForm((f) => ({ ...f, piecesPerCan: event.target.value }))
+              }
+              inputMode="numeric"
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'espece', label: 'Espèce', numeric: false },
+            { key: 'format', label: 'Format', numeric: false },
+            { key: 'pieces', label: 'Pièces / boîte', numeric: true },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(products.data ?? []).length === 0}
+          emptyText="Aucun produit."
+        >
+          {(products.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.speciesCode}</td>
+              <td>{row.format ?? '-'}</td>
+              <td className="nombre">{row.piecesPerCan ?? '-'}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Lignes de production">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/production-lines', {
+                  code: lineForm.code,
+                  name: lineForm.name,
+                  area: lineForm.area === '' ? null : lineForm.area,
+                  displayOrder: (productionLines.data ?? []).length + 1,
+                }),
+              'Ligne créée.',
+              productionLines.reload,
+            );
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={lineForm.code}
+              onChange={(event) => setLineForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={lineForm.name}
+              onChange={(event) => setLineForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Zone" hint={null}>
+            <input
+              value={lineForm.area}
+              onChange={(event) => setLineForm((f) => ({ ...f, area: event.target.value }))}
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'zone', label: 'Zone', numeric: false },
+            { key: 'actif', label: 'Active', numeric: false },
+          ]}
+          isEmpty={(productionLines.data ?? []).length === 0}
+          emptyText="Aucune ligne de production."
+        >
+          {(productionLines.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.area ?? '-'}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Motifs de perte et de sous-produit">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/production-loss-reasons', reasonForm),
+              'Motif créé.',
+              lossReasons.reload,
+            );
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={reasonForm.code}
+              onChange={(event) => setReasonForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={reasonForm.name}
+              onChange={(event) => setReasonForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Catégorie" hint={null}>
+            <select
+              value={reasonForm.outputType}
+              onChange={(event) => setReasonForm((f) => ({ ...f, outputType: event.target.value }))}
+            >
+              <option value="PERTE_REELLE">Perte réelle</option>
+              <option value="SOUS_PRODUIT">Sous-produit</option>
+              <option value="REWORK">Rework</option>
+              <option value="RECLASSEMENT">Reclassement</option>
+            </select>
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'categorie', label: 'Catégorie', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(lossReasons.data ?? []).length === 0}
+          emptyText="Aucun motif."
+        >
+          {(lossReasons.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{label(row.outputType)}</td>
               <td>{row.isActive ? 'Oui' : 'Non'}</td>
             </tr>
           ))}

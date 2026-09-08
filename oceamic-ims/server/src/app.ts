@@ -10,6 +10,7 @@ import { registerAuthRoutes } from './routes/auth.ts';
 import { registerHomeRoutes } from './routes/home.ts';
 import { registerLotRoutes } from './routes/lots.ts';
 import { registerMasterDataRoutes } from './routes/masterdata.ts';
+import { registerProductionRoutes } from './routes/production.ts';
 import { registerQualityRoutes } from './routes/quality.ts';
 import { registerReceptionRoutes } from './routes/receptions.ts';
 import { registerStockRoutes } from './routes/stock.ts';
@@ -69,6 +70,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<FastifyIn
   await registerReceptionRoutes(app, dependencies);
   await registerStockRoutes(app, dependencies);
   await registerLotRoutes(app, dependencies);
+  await registerProductionRoutes(app, dependencies);
   await registerSubcontractingRoutes(app, dependencies);
   await registerQualityRoutes(app, dependencies);
   await registerTraceabilityRoutes(app, dependencies);

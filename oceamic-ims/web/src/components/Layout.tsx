@@ -26,8 +26,18 @@ const NAVIGATION: readonly NavigationGroup[] = [
   },
   {
     title: null,
+    entries: [{ to: '/lots', label: 'Lots MP', permission: 'stock:read' }],
+  },
+  {
+    title: 'Production',
     entries: [
-      { to: '/lots', label: 'Lots MP', permission: 'stock:read' },
+      { to: '/production', label: 'Runs de production', permission: 'production:read' },
+      { to: '/production/nouveau', label: 'Nouveau Run', permission: 'production:run' },
+    ],
+  },
+  {
+    title: null,
+    entries: [
       { to: '/sous-traitance', label: 'Sous-traitance', permission: 'subcontracting:read' },
     ],
   },

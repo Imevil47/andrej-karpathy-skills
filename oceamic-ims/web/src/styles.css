@@ -382,6 +382,32 @@ button.lien {
   font-weight: 600;
 }
 
+/* --- Onglets ---------------------------------------------------------- */
+.onglets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--bordure);
+  margin-bottom: 18px;
+}
+.onglets button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 14px;
+  color: var(--texte-doux);
+  font-weight: 600;
+}
+.onglets button:hover:not(:disabled) {
+  color: var(--texte);
+  filter: none;
+}
+.onglets button.actif {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 /* --- Connexion -------------------------------------------------------- */
 .page-connexion {
   min-height: 100vh;

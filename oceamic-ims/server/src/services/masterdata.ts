@@ -193,14 +193,27 @@ export async function createLocation(pool: pg.Pool, input: LocationInput, actorI
   });
 }
 
-export type ActivationTarget = 'species' | 'suppliers' | 'vessels' | 'locations' | 'subcontractors';
+export type ActivationTarget =
+  | 'species'
+  | 'suppliers'
+  | 'vessels'
+  | 'locations'
+  | 'subcontractors'
+  | 'products'
+  | 'production_lines'
+  | 'production_loss_reasons';
 
+// The table name never comes from the request: it is looked up in this map,
+// keyed by a validated union.
 const ACTIVATION_TABLES: Readonly<Record<ActivationTarget, string>> = {
   species: 'species',
   suppliers: 'suppliers',
   vessels: 'vessels',
   locations: 'locations',
   subcontractors: 'subcontractors',
+  products: 'products',
+  production_lines: 'production_lines',
+  production_loss_reasons: 'production_loss_reasons',
 };
 
 export async function setActivation(
@@ -334,6 +347,224 @@ export async function createSubcontractor(
       userId: actorId,
       action: 'MASTERDATA_CREATION',
       entityType: 'subcontractors',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+// --- Phase 2: production master data ---------------------------------------
+
+export type ProductRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  speciesId: string;
+  speciesCode: string;
+  productFamily: string | null;
+  format: string | null;
+  piecesPerCan: number | null;
+  isActive: boolean;
+}>;
+
+export async function listProducts(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly ProductRow[]> {
+  const result = await pool.query<ProductRow>(
+    `SELECT p.id AS "id", p.code AS "code", p.name AS "name",
+            p.species_id AS "speciesId", s.code AS "speciesCode",
+            p.product_family AS "productFamily", p.format AS "format",
+            p.pieces_per_can AS "piecesPerCan", p.is_active AS "isActive"
+       FROM products p
+       JOIN species s ON s.id = p.species_id
+      WHERE ($1::boolean IS TRUE OR p.is_active IS TRUE)
+      ORDER BY p.code`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type ProductInput = Readonly<{
+  code: string;
+  name: string;
+  speciesId: string;
+  productFamily: string | null;
+  format: string | null;
+  piecesPerCan: number | null;
+}>;
+
+export async function createProduct(pool: pg.Pool, input: ProductInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM products WHERE code = $1', [input.code]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le produit ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO products (code, name, species_id, product_family, format, pieces_per_can)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [
+        input.code.toUpperCase(),
+        input.name,
+        input.speciesId,
+        input.productFamily,
+        input.format,
+        input.piecesPerCan,
+      ],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le produit n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'products',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type ProductionLineRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  area: string | null;
+  displayOrder: number;
+  isActive: boolean;
+}>;
+
+export async function listProductionLines(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly ProductionLineRow[]> {
+  const result = await pool.query<ProductionLineRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", area AS "area",
+            display_order AS "displayOrder", is_active AS "isActive"
+       FROM production_lines
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY display_order, code`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type ProductionLineInput = Readonly<{
+  code: string;
+  name: string;
+  area: string | null;
+  displayOrder: number;
+}>;
+
+export async function createProductionLine(
+  pool: pg.Pool,
+  input: ProductionLineInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM production_lines WHERE code = $1', [
+      input.code,
+    ]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`La ligne ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO production_lines (code, name, area, display_order) VALUES ($1, $2, $3, $4) RETURNING id',
+      [input.code.toUpperCase(), input.name, input.area, input.displayOrder],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("La ligne de production n'a pas pu être créée.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'production_lines',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type ProductionStageRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  displayOrder: number;
+  isActive: boolean;
+}>;
+
+export async function listProductionStages(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly ProductionStageRow[]> {
+  const result = await pool.query<ProductionStageRow>(
+    `SELECT id AS "id", code AS "code", name AS "name",
+            display_order AS "displayOrder", is_active AS "isActive"
+       FROM production_stages
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY display_order, code`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type LossReasonRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  outputType: string;
+  isActive: boolean;
+}>;
+
+export async function listLossReasons(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly LossReasonRow[]> {
+  const result = await pool.query<LossReasonRow>(
+    `SELECT id AS "id", code AS "code", name AS "name",
+            output_type AS "outputType", is_active AS "isActive"
+       FROM production_loss_reasons
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY output_type, name`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type LossReasonInput = Readonly<{ code: string; name: string; outputType: string }>;
+
+export async function createLossReason(pool: pg.Pool, input: LossReasonInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query(
+      'SELECT id FROM production_loss_reasons WHERE code = $1',
+      [input.code],
+    );
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le motif ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO production_loss_reasons (code, name, output_type) VALUES ($1, $2, $3) RETURNING id',
+      [input.code.toUpperCase(), input.name, input.outputType],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le motif n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'production_loss_reasons',
       entityId: id,
       oldValues: null,
       newValues: { ...input },

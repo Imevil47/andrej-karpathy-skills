@@ -1,4 +1,4 @@
-# Règles métier — OCEAMIC IMS Phase 1
+# Règles métier — OCEAMIC IMS Phases 1 et 2
 
 Ce document décrit le comportement attendu du système. Chaque règle est appliquée côté
 serveur (service, transaction ou contrainte de base) et non seulement dans l'interface.
@@ -347,3 +347,222 @@ référence.
 
 Chaque entrée contient l'auteur, la date, l'action, l'entité concernée et les valeurs
 utiles au format `JSONB`. Aucun mot de passe, jeton ou secret n'est écrit dans l'audit.
+
+
+---
+
+# Phase 2 — Production
+
+## 17. Modèle conceptuel de production
+
+| Concept | Signification | Table |
+|---|---|---|
+| Ordre de production (Run) | Contexte de transformation | `production_runs` |
+| Consommation | Quel lot a été consommé, et combien | `production_run_materials` |
+| Sortie de production | Matière générée par le Run | `production_outputs` |
+| Perte / sous-produit / rework / reclassement | Disposition explicite de la matière | `production_outputs` (typé) |
+| Bilan matière | Réconciliation calculée | `production_run_material_balance` |
+| Rendement | Indicateur calculé | `production_run_yield` |
+
+Un Run ne contient **ni quantité ni identité de lot**. Un lot de matière première reste
+la seule identité de la matière ; le Run ne la duplique jamais.
+
+## 18. Relation Run ↔ lot
+
+La relation est **plusieurs-à-plusieurs** :
+
+- un Run consomme plusieurs lots (LOT-A 3 000 kg + LOT-B 2 500 kg + LOT-C 500 kg) ;
+- un lot alimente plusieurs Runs (LOT-A → RUN-001 2 000 kg, RUN-002 1 500 kg).
+
+Chaque consommation est une ligne datée : l'opérateur n'a jamais à consolider
+manuellement plusieurs prises de matière.
+
+## 19. Entrée matière
+
+```
+Entrée MP du Run = Σ quantités des consommations VALIDÉES
+```
+
+Cette quantité n'est jamais saisie. L'écran ne propose aucun champ « Entrée MP » :
+la ressaisie d'une valeur déjà connue par les consommations est structurellement
+impossible.
+
+## 20. Intégration au stock
+
+La production **n'a pas d'inventaire propre**. Une consommation crée un mouvement
+`CONSOMMATION` du registre `stock_movements` de la Phase 1, avec
+`reference_type = 'PRODUCTION'` et l'identifiant du Run. Le stock n'est jamais
+décrémenté ailleurs.
+
+Une consommation validée exécute, dans **une seule transaction** :
+
+1. validation du Run (un Run terminé ou annulé n'accepte plus de saisie) ;
+2. validation du lot ;
+3. contrôle du blocage qualité ;
+4. contrôle du stock disponible, sous verrou (lot + emplacement) ;
+5. création du mouvement de stock ;
+6. création de la ligne de consommation ;
+7. mise à jour du statut dérivé du lot ;
+8. écriture de l'audit.
+
+Un échec à n'importe quelle étape annule l'ensemble : ni ligne de consommation
+orpheline, ni mouvement partiel.
+
+## 21. Lots bloqués en production
+
+Le blocage qualité de la Phase 1 s'applique tel quel : `CONSOMMATION` fait partie des
+opérations interdites sur un lot bloqué. La production ne dispose d'aucune vérité
+qualité parallèle et d'aucun contournement.
+
+```
+Opération impossible.
+Ce lot est bloqué par le service Qualité.
+```
+
+## 22. Stock insuffisant et concurrence
+
+La règle et le message de la Phase 1 s'appliquent sans modification. Le verrou de
+transaction pris sur le couple (lot, emplacement) sérialise deux consommations
+simultanées : elles ne peuvent pas créer ensemble un stock négatif. Un test automatisé
+le vérifie en lançant deux consommations en parallèle.
+
+## 23. Catégories de sortie
+
+Toute matière quittant la transformation est déclarée dans un registre unique et typé.
+Ces catégories ne sont **pas** équivalentes :
+
+| Catégorie | Signification |
+|---|---|
+| `SORTIE_UTILE` | Matière utile pour la suite du flux prévu |
+| `SOUS_PRODUIT` | Matière séparée du flux principal, potentiellement valorisable |
+| `REWORK` | Matière destinée à réintégrer un process de production |
+| `RECLASSEMENT` | Matière toujours utilisable, orientée vers un autre grade ou une autre destination |
+| `PERTE_REELLE` | Matière définitivement perdue pour le flux prévu, motif obligatoire |
+| `AUTRE` | Disposition marginale, à documenter |
+
+Un reclassement ne devient jamais automatiquement une perte : sa catégorie et sa
+destination sont conservées telles quelles.
+
+Le rework est enregistré comme une catégorie distincte, jamais additionné à la sortie
+utile. Les colonnes `derived_lot_id` et `destination_location_id` existent pour que la
+généalogie d'un rework consommé par un Run ultérieur reste possible sans refonte.
+
+**Un seul registre, pas deux tables.** Les listes « types de sortie » et « types de
+perte » de la spécification se recouvrent presque entièrement (sous-produit, rework,
+reclassement figurent dans les deux). Deux tables auraient signifié deux sources pour
+la même catégorie et deux sommes dans le bilan. Les deux écrans opérationnels restent
+distincts — « Enregistrer une sortie » et « Déclarer une perte » — mais écrivent dans
+le même registre.
+
+## 24. Bilan matière
+
+```
+Écart matière = Entrée MP
+              − (Sortie utile + Sous-produits + Rework + Reclassement + Pertes réelles + Autre)
+```
+
+L'écart est **calculé**, jamais saisi et jamais enregistré comme une perte. Il est
+également exprimé en pourcentage de l'entrée matière.
+
+Statut dérivé du bilan, jamais choisi par un utilisateur :
+
+| Statut | Condition |
+|---|---|
+| `EQUILIBRE` | Écart exactement nul |
+| `A_CONTROLER` | Écart ≤ 0,50 % de l'entrée matière |
+| `ECART_A_JUSTIFIER` | Écart > 0,50 %, ou sorties déclarées sans entrée matière |
+
+Le seuil de 0,50 % est défini une seule fois, dans la vue
+`production_run_material_balance`.
+
+## 25. Rendement matière
+
+```
+Rendement matière = Sortie utile / Entrée MP × 100
+```
+
+Exemple : 6 100 kg de sortie utile pour 10 000 kg consommés donnent 61,00 %.
+
+Le dénominateur est la consommation validée, jamais un poids d'entrée ressaisi. Le
+numérateur ne compte **que** la sortie utile : sous-produits, rework, reclassements,
+pertes réelles et écart inexpliqué en sont exclus. Le calcul est fait en base ; aucun
+écran ne permet de saisir un rendement.
+
+Le rendement attendu par produit, calibre ou type de traitement n'est pas encore
+paramétré : la formule vit dans une vue dédiée, à laquelle des standards pourront être
+rattachés plus tard sans migration des données existantes.
+
+## 26. Clôture d'un Run
+
+Un Run ne se termine pas à l'aveugle. La clôture est refusée lorsque :
+
+- aucune matière première n'a été consommée ;
+- le bilan matière est en `ECART_A_JUSTIFIER` et l'écart n'a pas été justifié.
+
+C'est l'option la plus sûre parmi celles proposées par la spécification : la
+justification est un enregistrement daté et signé (`difference_justification`,
+`justified_by`, `justified_at`), audité, et non une simple case cochée. Une fois
+justifié, l'écart reste visible dans le bilan avec son auteur et sa date.
+
+Un Run terminé ou annulé n'accepte plus aucune nouvelle saisie de consommation, de
+sortie ou de perte.
+
+## 27. Annulation d'un Run
+
+Un Run validé n'est jamais supprimé. L'annulation :
+
+1. crée un mouvement d'annulation pour **chaque** consommation encore valide, ce qui
+   restitue la matière première à son emplacement d'origine ;
+2. annule les sorties encore valides ;
+3. passe le Run en `ANNULE` avec un motif obligatoire ;
+4. écrit l'audit.
+
+L'historique complet reste consultable.
+
+## 28. Correction d'une consommation
+
+Une consommation validée n'est jamais modifiée. La correction :
+
+1. crée un mouvement d'annulation qui restitue la quantité initiale ;
+2. marque la ligne d'origine `ANNULE` avec son auteur et son motif ;
+3. crée, si une quantité corrigée est fournie, une nouvelle ligne de consommation ;
+4. relie les deux lignes (`replaces_id`) et écrit l'audit.
+
+Exemple : 2 000 kg saisis, 1 800 kg réels. L'original reste visible en `ANNULE`, la
+consommation effective devient 1 800 kg, le stock est recalculé en conséquence, et
+l'audit conserve les deux opérations. La même logique s'applique aux sorties et aux
+pertes validées.
+
+## 29. Traçabilité de production
+
+La traçabilité relie les lots d'entrée à l'événement de transformation :
+
+- **Amont** : depuis un Run, l'onglet « Traçabilité » liste tous les lots consommés,
+  leur emplacement source et la quantité prise sur chacun.
+- **Aval** : depuis la « Situation du lot », la section « Runs consommateurs » liste
+  tous les Runs qui ont consommé ce lot, avec la quantité, la date et le produit.
+
+La vue `lot_production_usage` est la source unique de ces deux lectures. La recherche
+globale atteint également les codes de Run.
+
+## 30. Audit de production
+
+Sont tracés : création, démarrage, clôture et annulation d'un Run, consommation de
+matière, correction de consommation, création et annulation d'une sortie ou d'une
+perte, et justification d'un écart matière. Chaque entrée conserve l'auteur, la date et
+les valeurs utiles.
+
+## 31. Rôles de production
+
+| Permission | ADMIN | PRODUCTION | STOCK | QUALITE | LECTURE |
+|---|:--:|:--:|:--:|:--:|:--:|
+| Consultation production | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Créer / démarrer / terminer / annuler un Run | ✓ | ✓ | | | |
+| Consommer de la matière première | ✓ | ✓ | | | |
+| Enregistrer sorties et pertes | ✓ | ✓ | | | |
+| Corriger une consommation ou une sortie | ✓ | ✓ | | | |
+| Justifier un écart matière | ✓ | ✓ | | | |
+
+Le rôle STOCK voit l'usage de son stock en production mais ne saisit aucun
+enregistrement de production. Le rôle QUALITE consulte les Runs et la généalogie
+matière ; les contrôles qualité en cours de process viendront plus tard.

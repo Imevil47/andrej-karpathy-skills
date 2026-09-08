@@ -1,6 +1,6 @@
 import type { DatabaseClient } from '../db/pool.ts';
 
-export type CodePrefix = 'LOT' | 'REC' | 'MVT' | 'ST' | 'INS';
+export type CodePrefix = 'LOT' | 'REC' | 'MVT' | 'ST' | 'INS' | 'RUN';
 
 const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   LOT: 3,
@@ -8,6 +8,7 @@ const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   MVT: 5,
   ST: 3,
   INS: 3,
+  RUN: 3,
 };
 
 /**

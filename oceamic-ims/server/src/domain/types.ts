@@ -43,6 +43,7 @@ export const REFERENCE_TYPES = [
   'AJUSTEMENT',
   'FRACTIONNEMENT',
   'ANNULATION',
+  'PRODUCTION',
 ] as const;
 export type ReferenceType = (typeof REFERENCE_TYPES)[number];
 
@@ -87,4 +88,66 @@ export const OPERATIONS_BLOCKED_BY_QUALITY: readonly MovementType[] = [
 
 export function isBlockedByQuality(movementType: MovementType): boolean {
   return OPERATIONS_BLOCKED_BY_QUALITY.includes(movementType);
+}
+
+// --- Phase 2: production -------------------------------------------------
+
+export const RUN_STATUSES = ['PLANIFIE', 'EN_COURS', 'SUSPENDU', 'TERMINE', 'ANNULE'] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+
+export const RUN_LINE_ACTIVITIES = [
+  'GRATTAGE',
+  'REMPLISSAGE',
+  'GRATTAGE_REMPLISSAGE',
+  'TRAITEMENT',
+  'INACTIVE',
+  'AUTRE',
+] as const;
+export type RunLineActivity = (typeof RUN_LINE_ACTIVITIES)[number];
+
+// Every material disposition of a run. The unexplained difference is not part
+// of this list: it is calculated, never declared.
+export const OUTPUT_TYPES = [
+  'SORTIE_UTILE',
+  'SOUS_PRODUIT',
+  'REWORK',
+  'RECLASSEMENT',
+  'PERTE_REELLE',
+  'AUTRE',
+] as const;
+export type OutputType = (typeof OUTPUT_TYPES)[number];
+
+// Categories that carry a reason and are declared on the "Déclarer une perte"
+// screen. They are stored in the same ledger as the useful output.
+export const LOSS_OUTPUT_TYPES = [
+  'PERTE_REELLE',
+  'SOUS_PRODUIT',
+  'REWORK',
+  'RECLASSEMENT',
+] as const;
+export type LossOutputType = (typeof LOSS_OUTPUT_TYPES)[number];
+
+// Only the useful output counts towards material yield.
+export const YIELD_OUTPUT_TYPES: readonly OutputType[] = ['SORTIE_UTILE'];
+
+export const RECORD_STATUSES = ['VALIDE', 'ANNULE'] as const;
+export type RecordStatus = (typeof RECORD_STATUSES)[number];
+
+export const BALANCE_STATUSES = ['EQUILIBRE', 'A_CONTROLER', 'ECART_A_JUSTIFIER'] as const;
+export type BalanceStatus = (typeof BALANCE_STATUSES)[number];
+
+/** A run whose material difference is beyond tolerance must be justified. */
+export function requiresDifferenceJustification(balanceStatus: BalanceStatus): boolean {
+  return balanceStatus === 'ECART_A_JUSTIFIER';
+}
+
+/** Statuses in which a run still accepts consumption, outputs and losses. */
+export const RUN_STATUSES_ACCEPTING_ENTRIES: readonly RunStatus[] = [
+  'PLANIFIE',
+  'EN_COURS',
+  'SUSPENDU',
+];
+
+export function runAcceptsEntries(status: RunStatus): boolean {
+  return RUN_STATUSES_ACCEPTING_ENTRIES.includes(status);
 }

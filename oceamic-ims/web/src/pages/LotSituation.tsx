@@ -92,6 +92,15 @@ type LotSituationPayload = Readonly<{
     differenceKg: string;
   }>[];
   children: readonly Readonly<{ id: string; lotCode: string; status: string; stockKg: string }>[];
+  productionRuns: readonly Readonly<{
+    runId: string;
+    runCode: string;
+    productionDate: string;
+    runStatus: string;
+    productCode: string;
+    productName: string;
+    consumedKg: string;
+  }>[];
 }>;
 
 /**
@@ -417,6 +426,38 @@ export function LotSituation() {
               <td className="nombre">{formatQuantity(row.quantitySentKg)}</td>
               <td className="nombre">{formatQuantity(row.resultsKg)}</td>
               <td className="nombre">{formatQuantity(row.differenceKg)}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Runs consommateurs">
+        <DataTable
+          columns={[
+            { key: 'run', label: 'Run', numeric: false },
+            { key: 'date', label: 'Date', numeric: false },
+            { key: 'produit', label: 'Produit', numeric: false },
+            { key: 'statut', label: 'Statut', numeric: false },
+            { key: 'quantite', label: 'Quantité consommée (kg)', numeric: true },
+          ]}
+          isEmpty={data.productionRuns.length === 0}
+          emptyText="Ce lot n'a été consommé par aucun ordre de production."
+        >
+          {data.productionRuns.map((row) => (
+            <tr key={row.runId}>
+              <td>
+                <Link to={`/production/${row.runId}`}>
+                  <strong>{row.runCode}</strong>
+                </Link>
+              </td>
+              <td>{formatDate(row.productionDate)}</td>
+              <td>
+                {row.productCode} — {row.productName}
+              </td>
+              <td>
+                <Badge value={row.runStatus} />
+              </td>
+              <td className="nombre">{formatQuantity(row.consumedKg)}</td>
             </tr>
           ))}
         </DataTable>

@@ -12,6 +12,14 @@ import { hashPassword } from '../../src/services/auth.ts';
 
 const TABLES_IN_TRUNCATION_ORDER = [
   'audit_log',
+  'production_outputs',
+  'production_run_materials',
+  'production_run_lines',
+  'production_runs',
+  'production_loss_reasons',
+  'production_stages',
+  'production_lines',
+  'products',
   'subcontracting_results',
   'subcontracting_operations',
   'lot_blocks',
@@ -39,6 +47,13 @@ export type Fixtures = Readonly<{
   damsaId: string;
   sarmaLocationId: string;
   sarmaSubcontractorId: string;
+  productSardineId: string;
+  productThonId: string;
+  lineL1Id: string;
+  lineL2Id: string;
+  fillingStageId: string;
+  lossReasonId: string;
+  byProductReasonId: string;
 }>;
 
 export type TestContext = Readonly<{
@@ -104,10 +119,44 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     [sarmaLocationId],
   );
 
+  const speciesSardineId = species.rows.find((row) => row.code === 'SARDINE')?.id ?? '';
+  const speciesThonId = species.rows.find((row) => row.code === 'THON')?.id ?? '';
+
+  const products = await pool.query<{ id: string; code: string }>(
+    `INSERT INTO products (code, name, species_id, format, pieces_per_can)
+     VALUES ('SPSA-HO', 'Sardine huile olive', $1, 'CLUB', 4),
+            ('THON-NAT', 'Thon naturel', $2, '1/4', 1)
+     RETURNING id, code`,
+    [speciesSardineId, speciesThonId],
+  );
+  const lines = await pool.query<{ id: string; code: string }>(
+    `INSERT INTO production_lines (code, name, display_order)
+     VALUES ('L1', 'Ligne 1', 1), ('L2', 'Ligne 2', 2)
+     RETURNING id, code`,
+  );
+  const stages = await pool.query<{ id: string; code: string }>(
+    `INSERT INTO production_stages (code, name, display_order)
+     VALUES ('REMPLISSAGE', 'Remplissage', 1)
+     RETURNING id, code`,
+  );
+  const reasons = await pool.query<{ id: string; code: string }>(
+    `INSERT INTO production_loss_reasons (code, name, output_type)
+     VALUES ('PR-MANIP', 'Casse / manipulation', 'PERTE_REELLE'),
+            ('SP-TETE', 'Têtes et viscères', 'SOUS_PRODUIT')
+     RETURNING id, code`,
+  );
+
   return {
     users: users as Record<RoleCode, string>,
-    speciesSardineId: species.rows.find((row) => row.code === 'SARDINE')?.id ?? '',
-    speciesThonId: species.rows.find((row) => row.code === 'THON')?.id ?? '',
+    productSardineId: products.rows.find((row) => row.code === 'SPSA-HO')?.id ?? '',
+    productThonId: products.rows.find((row) => row.code === 'THON-NAT')?.id ?? '',
+    lineL1Id: lines.rows.find((row) => row.code === 'L1')?.id ?? '',
+    lineL2Id: lines.rows.find((row) => row.code === 'L2')?.id ?? '',
+    fillingStageId: stages.rows[0]?.id ?? '',
+    lossReasonId: reasons.rows.find((row) => row.code === 'PR-MANIP')?.id ?? '',
+    byProductReasonId: reasons.rows.find((row) => row.code === 'SP-TETE')?.id ?? '',
+    speciesSardineId,
+    speciesThonId,
     supplierId: supplier.rows[0]?.id ?? '',
     oceamic2Id: locations.rows.find((row) => row.code === 'OCEAMIC-2')?.id ?? '',
     damsaId: locations.rows.find((row) => row.code === 'DAMSA')?.id ?? '',

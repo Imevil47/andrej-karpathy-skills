@@ -6,6 +6,9 @@ import { Connexion } from './pages/Connexion';
 import { LotSituation } from './pages/LotSituation';
 import { Lots } from './pages/Lots';
 import { Parametres } from './pages/Parametres';
+import { ProductionRunNouveau } from './pages/ProductionRunNouveau';
+import { ProductionRunSituation } from './pages/ProductionRunSituation';
+import { ProductionRuns } from './pages/ProductionRuns';
 import { QualiteControles } from './pages/QualiteControles';
 import { QualiteLotsBloques } from './pages/QualiteLotsBloques';
 import { ReceptionNouvelle } from './pages/ReceptionNouvelle';
@@ -40,6 +43,9 @@ export function App() {
           <Route path="/stock/transfert" element={<StockTransfert />} />
           <Route path="/lots" element={<Lots />} />
           <Route path="/lots/:id" element={<LotSituation />} />
+          <Route path="/production" element={<ProductionRuns />} />
+          <Route path="/production/nouveau" element={<ProductionRunNouveau />} />
+          <Route path="/production/:id" element={<ProductionRunSituation />} />
           <Route path="/sous-traitance" element={<SousTraitance />} />
           <Route path="/sous-traitance/nouvelle" element={<SousTraitanceNouvelle />} />
           <Route path="/sous-traitance/:id" element={<SousTraitanceDetail />} />

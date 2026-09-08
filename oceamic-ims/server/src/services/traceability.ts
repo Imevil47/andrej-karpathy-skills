@@ -96,6 +96,16 @@ export type LotChildRow = Readonly<{
   stockKg: string;
 }>;
 
+export type LotRunUsageRow = Readonly<{
+  runId: string;
+  runCode: string;
+  productionDate: string;
+  runStatus: string;
+  productCode: string;
+  productName: string;
+  consumedKg: string;
+}>;
+
 export type LotSituation = Readonly<{
   lot: LotIdentityRow;
   stockByLocation: readonly LotStockRow[];
@@ -106,6 +116,7 @@ export type LotSituation = Readonly<{
   blocks: readonly LotBlockRow[];
   subcontracting: readonly LotSubcontractingRow[];
   children: readonly LotChildRow[];
+  productionRuns: readonly LotRunUsageRow[];
 }>;
 
 /**
@@ -148,8 +159,16 @@ export async function lotSituation(pool: pg.Pool, lotId: string): Promise<LotSit
     throw notFoundError('Lot matière première', lotId);
   }
 
-  const [stockByLocation, receptions, inspections, decisions, blocks, subcontracting, children] =
-    await Promise.all([
+  const [
+    stockByLocation,
+    receptions,
+    inspections,
+    decisions,
+    blocks,
+    subcontracting,
+    children,
+    productionRuns,
+  ] = await Promise.all([
       pool.query<LotStockRow>(
         `SELECT loc.code            AS "locationCode",
                 loc.name            AS "locationName",
@@ -256,6 +275,20 @@ export async function lotSituation(pool: pg.Pool, lotId: string): Promise<LotSit
           ORDER BY c.lot_code`,
         [lotId],
       ),
+      // Forward traceability: every production run that consumed this lot.
+      pool.query<LotRunUsageRow>(
+        `SELECT production_run_id AS "runId",
+                run_code          AS "runCode",
+                production_date   AS "productionDate",
+                run_status        AS "runStatus",
+                product_code      AS "productCode",
+                product_name      AS "productName",
+                consumed_kg       AS "consumedKg"
+           FROM lot_production_usage
+          WHERE raw_material_lot_id = $1
+          ORDER BY production_date DESC, run_code DESC`,
+        [lotId],
+      ),
     ]);
 
   const movements = await listMovements(pool, {
@@ -275,11 +308,12 @@ export async function lotSituation(pool: pg.Pool, lotId: string): Promise<LotSit
     blocks: blocks.rows,
     subcontracting: subcontracting.rows,
     children: children.rows,
+    productionRuns: productionRuns.rows,
   };
 }
 
 export type SearchHit = Readonly<{
-  kind: 'LOT' | 'RECEPTION' | 'SOUS_TRAITANCE' | 'MOUVEMENT';
+  kind: 'LOT' | 'RECEPTION' | 'SOUS_TRAITANCE' | 'MOUVEMENT' | 'RUN';
   label: string;
   detail: string;
   lotId: string;
@@ -316,6 +350,10 @@ export async function search(pool: pg.Pool, term: string): Promise<readonly Sear
      SELECT 'MOUVEMENT', m.movement_code, m.movement_type, m.raw_material_lot_id
        FROM stock_movements m
       WHERE m.movement_code ILIKE '%' || $1 || '%'
+     UNION ALL
+     SELECT 'RUN', u.run_code, u.product_name, u.raw_material_lot_id
+       FROM lot_production_usage u
+      WHERE u.run_code ILIKE '%' || $1 || '%'
       LIMIT 50`,
     [term],
   );
