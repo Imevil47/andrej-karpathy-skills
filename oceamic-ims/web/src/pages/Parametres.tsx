@@ -6,16 +6,25 @@ import {
   useCadenceStandards,
   useDowntimeCategories,
   useEmployees,
+  useEquipment,
+  useFillingMedia,
+  useFillingSpecs,
   useLocations,
   useLossReasons,
+  useMarkingVerificationItems,
   useProductionLines,
   useProducts,
+  useSeamingParameters,
+  useSeamingSpecs,
   useSpecies,
+  useSterilizationPrograms,
   useSubcontractors,
   useSuppliers,
   useVessels,
 } from '../masterdata';
 import { useResource } from '../hooks';
+
+const EQUIPMENT_TYPES = ['SERTISSEUSE', 'AUTOCLAVE', 'REMPLISSEUSE', 'AUTRE'] as const;
 
 type UserRow = Readonly<{
   id: string;
@@ -41,6 +50,13 @@ export function Parametres() {
   const employees = useEmployees();
   const cadenceStandards = useCadenceStandards();
   const downtimeCategories = useDowntimeCategories();
+  const equipment = useEquipment();
+  const fillingMedia = useFillingMedia();
+  const fillingSpecs = useFillingSpecs();
+  const seamingParameters = useSeamingParameters();
+  const seamingSpecs = useSeamingSpecs();
+  const sterilizationPrograms = useSterilizationPrograms();
+  const markingItems = useMarkingVerificationItems();
   const users = useResource<readonly UserRow[]>('/api/users');
 
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +104,41 @@ export function Parametres() {
     measurementUnit: 'BOITES',
     standardCadence: '',
   });
+  const [equipmentForm, setEquipmentForm] = useState({
+    code: '',
+    name: '',
+    equipmentType: 'AUTOCLAVE',
+  });
+  const [fillingMediumForm, setFillingMediumForm] = useState({ code: '', name: '' });
+  const [fillingSpecForm, setFillingSpecForm] = useState({
+    productId: '',
+    format: '',
+    minWeightG: '',
+    maxWeightG: '',
+    targetNetWeightG: '',
+  });
+  const [seamingParameterForm, setSeamingParameterForm] = useState({
+    code: '',
+    name: '',
+    defaultUnit: 'MM',
+  });
+  const [seamingSpecForm, setSeamingSpecForm] = useState({
+    seamingParameterId: '',
+    productId: '',
+    minValue: '',
+    maxValue: '',
+    targetValue: '',
+    unit: 'MM',
+  });
+  const [sterilizationProgramForm, setSterilizationProgramForm] = useState({
+    code: '',
+    name: '',
+    productId: '',
+    targetF0: '',
+    minimumF0: '',
+    maximumF0: '',
+  });
+  const [markingItemForm, setMarkingItemForm] = useState({ code: '', name: '' });
 
   const run = async (action: () => Promise<unknown>, message: string, reload: () => void) => {
     setError(null);
@@ -899,6 +950,570 @@ export function Parametres() {
           emptyText="Aucune catégorie."
         >
           {(downtimeCategories.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Équipements">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/equipment', {
+                  code: equipmentForm.code,
+                  name: equipmentForm.name,
+                  equipmentType: equipmentForm.equipmentType,
+                  locationId: null,
+                }),
+              'Équipement créé.',
+              equipment.reload,
+            ).then(() => setEquipmentForm({ code: '', name: '', equipmentType: 'AUTOCLAVE' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={equipmentForm.code}
+              onChange={(event) => setEquipmentForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={equipmentForm.name}
+              onChange={(event) => setEquipmentForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Type" hint={null}>
+            <select
+              value={equipmentForm.equipmentType}
+              onChange={(event) => setEquipmentForm((f) => ({ ...f, equipmentType: event.target.value }))}
+            >
+              {EQUIPMENT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {label(type)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'type', label: 'Type', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(equipment.data ?? []).length === 0}
+          emptyText="Aucun équipement."
+        >
+          {(equipment.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{label(row.equipmentType)}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Milieux de couverture">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/filling-media', fillingMediumForm),
+              'Milieu de couverture créé.',
+              fillingMedia.reload,
+            ).then(() => setFillingMediumForm({ code: '', name: '' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={fillingMediumForm.code}
+              onChange={(event) => setFillingMediumForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={fillingMediumForm.name}
+              onChange={(event) => setFillingMediumForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(fillingMedia.data ?? []).length === 0}
+          emptyText="Aucun milieu de couverture."
+        >
+          {(fillingMedia.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Spécifications de remplissage">
+        <p style={{ color: 'var(--texte-doux)', marginTop: 0 }}>
+          Poids min/max appliqués aux contrôles poids. Le format le plus spécifique s'applique.
+        </p>
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/filling-specs', {
+                  productId: fillingSpecForm.productId,
+                  format: fillingSpecForm.format === '' ? null : fillingSpecForm.format,
+                  piecesPerCan: null,
+                  targetNetWeightG:
+                    fillingSpecForm.targetNetWeightG === '' ? null : fillingSpecForm.targetNetWeightG,
+                  minWeightG: fillingSpecForm.minWeightG,
+                  maxWeightG: fillingSpecForm.maxWeightG,
+                  targetFishWeightG: null,
+                  targetMediumWeightG: null,
+                  validFrom: null,
+                  validTo: null,
+                }),
+              'Spécification créée.',
+              fillingSpecs.reload,
+            );
+          }}
+        >
+          <Field label="Produit" hint={null}>
+            <select
+              value={fillingSpecForm.productId}
+              onChange={(event) => setFillingSpecForm((f) => ({ ...f, productId: event.target.value }))}
+              required
+            >
+              <option value="">Sélectionner...</option>
+              {(products.data ?? []).map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.code}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Format" hint="Laisser vide pour tous les formats.">
+            <input
+              value={fillingSpecForm.format}
+              onChange={(event) => setFillingSpecForm((f) => ({ ...f, format: event.target.value }))}
+            />
+          </Field>
+          <Field label="Poids min (g)" hint={null}>
+            <input
+              value={fillingSpecForm.minWeightG}
+              onChange={(event) => setFillingSpecForm((f) => ({ ...f, minWeightG: event.target.value }))}
+              inputMode="decimal"
+              required
+            />
+          </Field>
+          <Field label="Poids max (g)" hint={null}>
+            <input
+              value={fillingSpecForm.maxWeightG}
+              onChange={(event) => setFillingSpecForm((f) => ({ ...f, maxWeightG: event.target.value }))}
+              inputMode="decimal"
+              required
+            />
+          </Field>
+          <Field label="Poids net visé (g)" hint="Facultatif.">
+            <input
+              value={fillingSpecForm.targetNetWeightG}
+              onChange={(event) =>
+                setFillingSpecForm((f) => ({ ...f, targetNetWeightG: event.target.value }))
+              }
+              inputMode="decimal"
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'produit', label: 'Produit', numeric: false },
+            { key: 'format', label: 'Format', numeric: false },
+            { key: 'min', label: 'Min (g)', numeric: true },
+            { key: 'max', label: 'Max (g)', numeric: true },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(fillingSpecs.data ?? []).length === 0}
+          emptyText="Aucune spécification."
+        >
+          {(fillingSpecs.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.productCode}</td>
+              <td>{row.format ?? 'Tous'}</td>
+              <td className="nombre">{row.minWeightG}</td>
+              <td className="nombre">{row.maxWeightG}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Paramètres de sertissage">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/seaming-parameters', seamingParameterForm),
+              'Paramètre créé.',
+              seamingParameters.reload,
+            ).then(() => setSeamingParameterForm({ code: '', name: '', defaultUnit: 'MM' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={seamingParameterForm.code}
+              onChange={(event) => setSeamingParameterForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint="Ex : Crochet corps, Épaisseur, Serrage.">
+            <input
+              value={seamingParameterForm.name}
+              onChange={(event) => setSeamingParameterForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Unité par défaut" hint={null}>
+            <input
+              value={seamingParameterForm.defaultUnit}
+              onChange={(event) =>
+                setSeamingParameterForm((f) => ({ ...f, defaultUnit: event.target.value }))
+              }
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'unite', label: 'Unité', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(seamingParameters.data ?? []).length === 0}
+          emptyText="Aucun paramètre."
+        >
+          {(seamingParameters.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.defaultUnit}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Spécifications de sertissage">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/seaming-specifications', {
+                  seamingParameterId: seamingSpecForm.seamingParameterId,
+                  productId: seamingSpecForm.productId === '' ? null : seamingSpecForm.productId,
+                  format: null,
+                  minValue: seamingSpecForm.minValue === '' ? null : seamingSpecForm.minValue,
+                  maxValue: seamingSpecForm.maxValue === '' ? null : seamingSpecForm.maxValue,
+                  targetValue: seamingSpecForm.targetValue === '' ? null : seamingSpecForm.targetValue,
+                  unit: seamingSpecForm.unit,
+                  validFrom: null,
+                  validTo: null,
+                }),
+              'Spécification créée.',
+              seamingSpecs.reload,
+            );
+          }}
+        >
+          <Field label="Paramètre" hint={null}>
+            <select
+              value={seamingSpecForm.seamingParameterId}
+              onChange={(event) =>
+                setSeamingSpecForm((f) => ({ ...f, seamingParameterId: event.target.value }))
+              }
+              required
+            >
+              <option value="">Sélectionner...</option>
+              {(seamingParameters.data ?? []).map((parameter) => (
+                <option key={parameter.id} value={parameter.id}>
+                  {parameter.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Produit" hint="Laisser vide pour tous les produits.">
+            <select
+              value={seamingSpecForm.productId}
+              onChange={(event) => setSeamingSpecForm((f) => ({ ...f, productId: event.target.value }))}
+            >
+              <option value="">Tous les produits</option>
+              {(products.data ?? []).map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.code}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Min" hint={null}>
+            <input
+              value={seamingSpecForm.minValue}
+              onChange={(event) => setSeamingSpecForm((f) => ({ ...f, minValue: event.target.value }))}
+              inputMode="decimal"
+            />
+          </Field>
+          <Field label="Max" hint={null}>
+            <input
+              value={seamingSpecForm.maxValue}
+              onChange={(event) => setSeamingSpecForm((f) => ({ ...f, maxValue: event.target.value }))}
+              inputMode="decimal"
+            />
+          </Field>
+          <Field label="Unité" hint={null}>
+            <input
+              value={seamingSpecForm.unit}
+              onChange={(event) => setSeamingSpecForm((f) => ({ ...f, unit: event.target.value }))}
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'parametre', label: 'Paramètre', numeric: false },
+            { key: 'produit', label: 'Produit', numeric: false },
+            { key: 'min', label: 'Min', numeric: true },
+            { key: 'max', label: 'Max', numeric: true },
+            { key: 'unite', label: 'Unité', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(seamingSpecs.data ?? []).length === 0}
+          emptyText="Aucune spécification."
+        >
+          {(seamingSpecs.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.parameterName}</td>
+              <td>{row.productCode ?? 'Tous'}</td>
+              <td className="nombre">{row.minValue ?? '-'}</td>
+              <td className="nombre">{row.maxValue ?? '-'}</td>
+              <td>{row.unit}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Programmes de stérilisation">
+        <p style={{ color: 'var(--texte-doux)', marginTop: 0 }}>
+          Barème validé par OCEAMIC : ces limites ne sont jamais codées en dur dans l'écran de stérilisation.
+        </p>
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/sterilization-programs', {
+                  code: sterilizationProgramForm.code,
+                  name: sterilizationProgramForm.name,
+                  productId:
+                    sterilizationProgramForm.productId === '' ? null : sterilizationProgramForm.productId,
+                  format: null,
+                  targetTemperatureC: null,
+                  targetPressureBar: null,
+                  targetF0: sterilizationProgramForm.targetF0 === '' ? null : sterilizationProgramForm.targetF0,
+                  minimumF0:
+                    sterilizationProgramForm.minimumF0 === '' ? null : sterilizationProgramForm.minimumF0,
+                  maximumF0:
+                    sterilizationProgramForm.maximumF0 === '' ? null : sterilizationProgramForm.maximumF0,
+                  holdingTimeSeconds: null,
+                  validFrom: null,
+                  validTo: null,
+                }),
+              'Programme créé.',
+              sterilizationPrograms.reload,
+            );
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={sterilizationProgramForm.code}
+              onChange={(event) =>
+                setSterilizationProgramForm((f) => ({ ...f, code: event.target.value }))
+              }
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={sterilizationProgramForm.name}
+              onChange={(event) =>
+                setSterilizationProgramForm((f) => ({ ...f, name: event.target.value }))
+              }
+              required
+            />
+          </Field>
+          <Field label="Produit" hint="Laisser vide pour tous les produits.">
+            <select
+              value={sterilizationProgramForm.productId}
+              onChange={(event) =>
+                setSterilizationProgramForm((f) => ({ ...f, productId: event.target.value }))
+              }
+            >
+              <option value="">Tous les produits</option>
+              {(products.data ?? []).map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.code}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="F0 minimum" hint={null}>
+            <input
+              value={sterilizationProgramForm.minimumF0}
+              onChange={(event) =>
+                setSterilizationProgramForm((f) => ({ ...f, minimumF0: event.target.value }))
+              }
+              inputMode="decimal"
+            />
+          </Field>
+          <Field label="F0 cible" hint={null}>
+            <input
+              value={sterilizationProgramForm.targetF0}
+              onChange={(event) =>
+                setSterilizationProgramForm((f) => ({ ...f, targetF0: event.target.value }))
+              }
+              inputMode="decimal"
+            />
+          </Field>
+          <Field label="F0 maximum" hint={null}>
+            <input
+              value={sterilizationProgramForm.maximumF0}
+              onChange={(event) =>
+                setSterilizationProgramForm((f) => ({ ...f, maximumF0: event.target.value }))
+              }
+              inputMode="decimal"
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'produit', label: 'Produit', numeric: false },
+            { key: 'f0min', label: 'F0 min', numeric: true },
+            { key: 'f0max', label: 'F0 max', numeric: true },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(sterilizationPrograms.data ?? []).length === 0}
+          emptyText="Aucun programme."
+        >
+          {(sterilizationPrograms.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.productCode ?? 'Tous'}</td>
+              <td className="nombre">{row.minimumF0 ?? '-'}</td>
+              <td className="nombre">{row.maximumF0 ?? '-'}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Points de vérification marquage">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/marking-verification-items', markingItemForm),
+              'Point de vérification créé.',
+              markingItems.reload,
+            ).then(() => setMarkingItemForm({ code: '', name: '' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={markingItemForm.code}
+              onChange={(event) => setMarkingItemForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint="Ex : Code lisible, Lot correct.">
+            <input
+              value={markingItemForm.name}
+              onChange={(event) => setMarkingItemForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(markingItems.data ?? []).length === 0}
+          emptyText="Aucun point de vérification."
+        >
+          {(markingItems.data ?? []).map((row) => (
             <tr key={row.id}>
               <td>{row.code}</td>
               <td>{row.name}</td>

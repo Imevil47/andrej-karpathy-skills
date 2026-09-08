@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AppDependencies } from '../app.ts';
 import { requirePermission } from '../http/context.ts';
 import { cadenceHomeSummary } from '../services/cadenceQueries.ts';
+import { phase4HomeSummary } from '../services/processQueries.ts';
 import { productionHomeSummary } from '../services/productionQueries.ts';
 import { countReceptionsToday } from '../services/receptions.ts';
 import { stockSummary } from '../services/stockQueries.ts';
@@ -19,7 +20,7 @@ export async function registerHomeRoutes(
   app.get('/api/home/summary', async (request) => {
     requirePermission(request, 'stock:read');
 
-    const [summary, receptionsToday, blocked, subcontracting, production, cadence] =
+    const [summary, receptionsToday, blocked, subcontracting, production, cadence, phase4] =
       await Promise.all([
         stockSummary(pool),
         countReceptionsToday(pool),
@@ -29,6 +30,7 @@ export async function registerHomeRoutes(
         ),
         productionHomeSummary(pool),
         cadenceHomeSummary(pool),
+        phase4HomeSummary(pool),
       ]);
 
     return {
@@ -44,6 +46,10 @@ export async function registerHomeRoutes(
       controlRoundsToday: cadence.controlRoundsToday,
       incompleteControlRounds: cadence.incompleteControlRounds,
       activeDowntimeCount: cadence.activeDowntimeCount,
+      weightControlsToCorrect: phase4.weightControlsToCorrect,
+      activeSterilizationCycles: phase4.activeSterilizationCycles,
+      ccpToVerify: phase4.ccpToVerify,
+      openDeviations: phase4.openDeviations,
       byLocation: summary.byLocation,
     };
   });

@@ -20,6 +20,30 @@ const TABLES_IN_TRUNCATION_ORDER = [
   'downtime_categories',
   'cadence_standards',
   'employees',
+  'process_corrective_actions',
+  'process_deviations',
+  'cooling_measurements',
+  'cooling_events',
+  'ccp_controls',
+  'sterilization_measurements',
+  'production_run_holds',
+  'sterilization_cycle_loads',
+  'sterilization_cycles',
+  'sterilization_programs',
+  'marking_event_checks',
+  'marking_events',
+  'marking_verification_items',
+  'seaming_measurements',
+  'seaming_controls',
+  'seaming_specifications',
+  'seaming_parameters',
+  'seaming_operations',
+  'filling_weight_samples',
+  'filling_weight_controls',
+  'product_filling_specs',
+  'filling_operations',
+  'filling_media',
+  'equipment',
   'production_outputs',
   'production_run_materials',
   'production_run_lines',
@@ -65,6 +89,16 @@ export type Fixtures = Readonly<{
   employeeNumbers: readonly string[];
   cadenceStandardId: string;
   downtimeCategoryId: string;
+  autoclave1Id: string;
+  autoclave2Id: string;
+  sertisseuse1Id: string;
+  fillingMediumId: string;
+  fillingSpecId: string;
+  seamingParameterEpaisseurId: string;
+  seamingParameterCrochetId: string;
+  seamingSpecEpaisseurId: string;
+  sterilizationProgramId: string;
+  markingItemIds: readonly string[];
 }>;
 
 export type TestContext = Readonly<{
@@ -175,6 +209,47 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
      RETURNING id`,
   );
 
+  const equipment = await pool.query<{ id: string; code: string }>(
+    `INSERT INTO equipment (code, name, equipment_type)
+     VALUES ('AUTOCLAVE-1', 'Autoclave 1', 'AUTOCLAVE'),
+            ('AUTOCLAVE-2', 'Autoclave 2', 'AUTOCLAVE'),
+            ('SERT-1', 'Sertisseuse 1', 'SERTISSEUSE')
+     RETURNING id, code`,
+  );
+  const fillingMedium = await pool.query<{ id: string }>(
+    `INSERT INTO filling_media (code, name) VALUES ('HUILE_OLIVE', 'Huile olive') RETURNING id`,
+  );
+  const fillingSpec = await pool.query<{ id: string }>(
+    `INSERT INTO product_filling_specs (product_id, format, min_weight_g, max_weight_g)
+     VALUES ($1, 'CLUB', 120, 130)
+     RETURNING id`,
+    [productSardineId],
+  );
+  const seamingParameters = await pool.query<{ id: string; code: string }>(
+    `INSERT INTO seaming_parameters (code, name, default_unit)
+     VALUES ('EPAISSEUR', 'Épaisseur', 'MM'), ('CROCHET_CORPS', 'Crochet corps', 'MM')
+     RETURNING id, code`,
+  );
+  const seamingParameterEpaisseurId =
+    seamingParameters.rows.find((row) => row.code === 'EPAISSEUR')?.id ?? '';
+  const seamingSpec = await pool.query<{ id: string }>(
+    `INSERT INTO seaming_specifications (seaming_parameter_id, product_id, min_value, max_value, unit)
+     VALUES ($1, $2, 0.090, 0.110, 'MM')
+     RETURNING id`,
+    [seamingParameterEpaisseurId, productSardineId],
+  );
+  const sterilizationProgram = await pool.query<{ id: string }>(
+    `INSERT INTO sterilization_programs (code, name, product_id, target_f0, minimum_f0, maximum_f0)
+     VALUES ('STE-TEST', 'Barème test', $1, 8, 6, 12)
+     RETURNING id`,
+    [productSardineId],
+  );
+  const markingItems = await pool.query<{ id: string }>(
+    `INSERT INTO marking_verification_items (code, name)
+     VALUES ('CODE_LISIBLE', 'Code lisible'), ('CODE_CORRECT', 'Code correct')
+     RETURNING id`,
+  );
+
   return {
     employeeNumbers: employees.rows.map((row) => row.employee_number),
     cadenceStandardId: cadenceStandard.rows[0]?.id ?? '',
@@ -194,6 +269,16 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     damsaId: locations.rows.find((row) => row.code === 'DAMSA')?.id ?? '',
     sarmaLocationId,
     sarmaSubcontractorId: subcontractor.rows[0]?.id ?? '',
+    autoclave1Id: equipment.rows.find((row) => row.code === 'AUTOCLAVE-1')?.id ?? '',
+    autoclave2Id: equipment.rows.find((row) => row.code === 'AUTOCLAVE-2')?.id ?? '',
+    sertisseuse1Id: equipment.rows.find((row) => row.code === 'SERT-1')?.id ?? '',
+    fillingMediumId: fillingMedium.rows[0]?.id ?? '',
+    fillingSpecId: fillingSpec.rows[0]?.id ?? '',
+    seamingParameterEpaisseurId,
+    seamingParameterCrochetId: seamingParameters.rows.find((row) => row.code === 'CROCHET_CORPS')?.id ?? '',
+    seamingSpecEpaisseurId: seamingSpec.rows[0]?.id ?? '',
+    sterilizationProgramId: sterilizationProgram.rows[0]?.id ?? '',
+    markingItemIds: markingItems.rows.map((row) => row.id),
   };
 }
 

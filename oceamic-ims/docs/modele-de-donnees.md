@@ -1,4 +1,4 @@
-# Modèle de données — OCEAMIC IMS Phases 1, 2 et 3
+# Modèle de données — OCEAMIC IMS Phases 1, 2, 3 et 4
 
 Toutes les clés primaires sont des UUID. Les codes lisibles (`LOT-…`, `REC-…`) sont des
 identifiants opérationnels affichés aux utilisateurs ; les UUID ne sont jamais montrés.
@@ -621,4 +621,285 @@ production_runs ──< production_run_lines ──< production_run_employee_ass
        │                                            └── cadence_standards (via snapshot)
        │
        └──< downtime_events >── downtime_categories
+```
+
+---
+
+# Phase 4 — Remplissage, sertissage, marquage, stérilisation, CCP et refroidissement
+
+Chaque table de cette phase porte, directement ou par sa chaîne de tables parentes, une
+référence à `production_runs`. Il n'existe aucune opération de remplissage, de
+sertissage, de marquage ou de stérilisation détachée d'un Run (section 3 de la
+spécification).
+
+## Équipement
+
+### `equipment`
+Fondation réutilisable pour les autoclaves, sertisseuses et remplisseuses — jamais un
+champ texte libre. `equipment_type` contraint à `SERTISSEUSE`, `AUTOCLAVE`,
+`REMPLISSEUSE`, `AUTRE`. `location_id` facultatif. Cette table n'est **pas** une GMAO :
+aucun historique de maintenance, aucune notion de panne n'y est portée ; elle est conçue
+pour être réutilisée telle quelle par un futur module maintenance.
+
+---
+
+## Remplissage
+
+### `filling_media`
+Milieu de couverture, donnée de référence configurable (huile d'olive, huile de
+tournesol, sauce tomate, saumure, eau, …). Jamais codé en dur dans un composant
+d'interface.
+
+### `product_filling_specs`
+Standard de poids configurable et historique, jamais codé en dur (section 8).
+
+| Champ | Rôle |
+|---|---|
+| `product_id`, `format`, `pieces_per_can` | Portée de la spécification ; `format` et `pieces_per_can` facultatifs (`NULL` = toutes les valeurs) |
+| `target_net_weight_g` | Poids net visé, informatif |
+| `min_weight_g`, `max_weight_g` | Limites critiques, obligatoires |
+| `target_fish_weight_g`, `target_medium_weight_g` | Répartition poisson / milieu visée, informative |
+| `valid_from`, `valid_to` | Fenêtre de validité, facultative |
+
+### `filling_operations`
+Le contexte de production du remplissage (section 6).
+
+| Champ | Rôle |
+|---|---|
+| `production_run_id` | Toujours renseigné |
+| `production_line_id`, `filling_medium_id` | Facultatifs |
+| `format`, `pieces_per_can` | Identité de conditionnement de l'opération |
+| `status` | `PLANIFIE`, `EN_COURS`, `TERMINE`, `ANNULE` |
+
+### `filling_weight_controls`
+Un événement d'échantillonnage (section 9), rattaché à un Run **et** à une opération de
+remplissage. Le nombre d'échantillons est **configurable** (`sample_size`), jamais codé
+en dur à 20 (section 11).
+
+Les limites du standard trouvé au moment du contrôle sont **figées** sur la ligne
+(`min_weight_g_snapshot`, `max_weight_g_snapshot`, `target_net_weight_g_snapshot`) : un
+changement ultérieur de `product_filling_specs` ne réécrit jamais ce contrôle
+(section 54).
+
+### `filling_weight_samples`
+Une pesée individuelle par ligne (section 10) — jamais des colonnes
+`weight_1..weight_20`.
+
+| Champ | Rôle |
+|---|---|
+| `weight_control_id`, `sample_number` | Contexte et position de l'échantillon |
+| `measured_weight_g` | Poids mesuré, saisi |
+| `min_weight_g`, `max_weight_g` | **Copie** des limites du contrôle au moment de la saisie |
+| `status` | **Colonne générée** : `SOUS_POIDS`, `CONFORME` ou `SURPOIDS`, dérivée uniquement de `measured_weight_g` comparé à `min_weight_g`/`max_weight_g` sur la même ligne |
+| `deviation_g` | **Colonne générée** : écart signé par rapport à la limite franchie, `0` si conforme |
+| `record_status`, `cancelled_*`, `replaces_id` | Politique de correction par annulation-remplacement (section 58) |
+
+`min_weight_g`/`max_weight_g` sont dupliqués depuis le contrôle parent à l'insertion : PostgreSQL
+interdit à une colonne générée de lire une autre table, donc `status` ne peut être un
+calcul fiable et automatique qu'en restant sur la même ligne — exactement le même
+raisonnement que `cadence_per_hour` en Phase 3. La classification est ainsi
+structurellement impossible à saisir manuellement (section 12).
+
+Un index unique partiel garantit **au plus une pesée valide par numéro de boîte**
+(`WHERE record_status = 'VALIDE'`).
+
+---
+
+## Sertissage
+
+### `seaming_parameters`
+Paramètre de sertissage mesurable, donnée de référence configurable (crochet corps,
+crochet couvercle, épaisseur, serrage, …).
+
+### `seaming_specifications`
+Limites configurables et historiques par paramètre, produit et format (section 24) —
+mêmes principes que `product_filling_specs`.
+
+### `seaming_operations`
+Le contexte de production du sertissage (section 20), rattaché au Run et,
+facultativement, à une opération de remplissage et à une machine.
+
+### `seaming_controls`
+Une inspection qualité du sertissage (section 22).
+
+> **Écart volontaire par rapport à une lecture littérale de la spécification** : cette
+> table ne porte **aucune colonne `result`**. Le résultat global d'un contrôle dépend de
+> toutes les mesures qui lui sont rattachées, et PostgreSQL ne peut pas générer une
+> colonne à partir des lignes d'une autre table — exactement le raisonnement qui garde
+> `controlled_employee_count` hors de `line_controls` en Phase 3. `result` se lit
+> toujours en direct depuis la vue `seaming_control_result`, jamais stocké, jamais
+> saisi manuellement (section 16 appliquée par analogie).
+
+### `seaming_measurements`
+Une mesure par ligne (section 23), jamais une colonne par paramètre possible.
+
+| Champ | Rôle |
+|---|---|
+| `seaming_control_id`, `seaming_parameter_id`, `sample_number` | Contexte de la mesure |
+| `measured_value`, `unit` | Valeur mesurée et son unité |
+| `specification_id`, `min_value_snapshot`, `max_value_snapshot`, `target_value_snapshot` | Spécification trouvée, **figée** sur la ligne (section 54) |
+| `status` | **Colonne générée**, `NON_CONFORME` si une limite figée est franchie, `CONFORME` sinon, `NULL` si aucune limite n'est définie |
+| `record_status`, `cancelled_*`, `replaces_id` | Correction par annulation-remplacement (section 58) |
+
+---
+
+## Marquage
+
+### `marking_verification_items`
+Points de vérification configurables (code lisible, code correct, date correcte, lot
+correct, produit correct, …) — section 26 : « utiliser des points de contrôle
+configurables plutôt qu'un champ fixe par vérification possible ».
+
+### `marking_events`
+Le codage traçable appliqué avant stérilisation (section 25), rattaché au Run et,
+facultativement, à une opération de sertissage. `status` : `A_VERIFIER`, `VERIFIE`,
+`NON_CONFORME` — un événement non vérifié ne porte ni vérificateur ni date de
+vérification (contrainte `marking_verification_is_documented`).
+
+### `marking_event_checks`
+Résultat pass/fail par point de vérification configuré, pour un marquage donné. Le
+statut global du marquage est `VERIFIE` si tous les points cochés sont passés,
+`NON_CONFORME` dès qu'un seul échoue.
+
+---
+
+## Stérilisation
+
+### `sterilization_programs`
+Le barème validé par OCEAMIC (section 30) : température, pression, F0 cible/min/max et
+temps de palier cibles. Jamais codé en dur dans l'écran de stérilisation.
+
+### `sterilization_cycles`
+L'événement thermique (section 27), une des entités les plus importantes de la
+Phase 4.
+
+> **Écart volontaire par rapport à la liste de champs suggérée** : cette table ne porte
+> **aucune colonne `production_run_id`**. La section 29 demande explicitement de ne
+> jamais supposer qu'un cycle ne contiendra toujours qu'un seul Run, et de préférer une
+> table de relation — la relation au Run vit donc exclusivement dans
+> `sterilization_cycle_loads` ci-dessous. Une colonne unique aurait soit dupliqué cette
+> relation, soit fini par ne plus refléter un cycle chargeant plusieurs Runs.
+
+Les limites critiques du programme sont **figées** au démarrage du chargement
+(`target_f0_snapshot`, `minimum_f0_snapshot`, `maximum_f0_snapshot`,
+`target_temperature_c_snapshot`, `target_pressure_bar_snapshot`,
+`holding_time_seconds_snapshot`) : un changement ultérieur du programme ne réécrit
+jamais la décision CCP déjà évaluée d'un cycle (section 54).
+
+`status` : `PLANIFIE`, `EN_CHARGEMENT`, `EN_COURS`, `TERMINE`, `A_VERIFIER`, `BLOQUE`,
+`ANNULE` (section 40).
+
+### `sterilization_cycle_loads`
+Quels Runs un cycle stérilise (section 29) — conçu, dès l'origine, pour ne jamais
+supposer qu'une seule ligne existe. `quantity_units` et `basket_reference` sont
+facultatifs.
+
+### `sterilization_measurements`
+Mesure de procédé (section 33), distincte d'une décision CCP (section 31).
+
+| Champ | Rôle |
+|---|---|
+| `temperature_c`, `pressure_bar`, `f0_value`, `phase` | Au moins une valeur mesurée requise |
+| `source_type` | `MANUEL`, `EQUIPEMENT`, `IMPORT` — Phase 4 ne produit que `MANUEL` : aucune intégration n'est simulée (section 52) |
+| `source_reference`, `imported_at` | Préparés pour une future intégration, sans jamais écraser une saisie manuelle (section 53) |
+| `record_status`, `cancelled_*`, `replaces_id` | Correction par annulation-remplacement (section 58) |
+
+### `ccp_controls`
+La décision critique de sécurité alimentaire (section 32), structurellement séparée des
+mesures de procédé ci-dessus.
+
+| Champ | Rôle |
+|---|---|
+| `ccp_type` | Ex. « F0 minimum », « température minimale » |
+| `result` | `CONFORME`, `NON_CONFORME`, `DEVIATION`, `A_VERIFIER` |
+| `decision` | `LIBERE`, `RETENU`, `A_VERIFIER` |
+| `controller_user_id` | Toujours une utilisatrice titulaire de `ccp:validate` (Qualité/Admin) — jamais un utilisateur Production seul (section 36) |
+
+---
+
+## Déviations et actions correctives
+
+### `process_deviations`
+Un écart documenté (section 37), rattaché à un Run et/ou à un cycle de stérilisation
+(au moins l'un des deux, contrainte `deviations_has_scope`). `severity` :
+`MINEURE`, `MAJEURE`, `CRITIQUE`. `status` : `OUVERTE`, `EN_ANALYSE`,
+`ACTION_REQUISE`, `CLOTUREE`, `ANNULEE`.
+
+### `process_corrective_actions`
+Suivi léger d'action corrective (section 38) — pas un CAPA complet. `status` :
+`OUVERTE`, `EN_COURS`, `TERMINEE`, `ANNULEE` ; une action `TERMINEE` porte
+obligatoirement sa date de clôture.
+
+---
+
+## Refroidissement
+
+### `cooling_events`
+Le processus de refroidissement post-stérilisation (section 42), table séparée du cycle
+lui-même. `result` facultatif : `CONFORME`, `NON_CONFORME`, `A_VERIFIER`.
+
+### `cooling_measurements`
+Une mesure par ligne si plusieurs relevés ont lieu pendant le refroidissement
+(section 43) — `parameter` reste un champ texte libre : aucune spécification de
+refroidissement n'est demandée par la Phase 4, donc aucun statut n'est calculé
+automatiquement ici (à la différence des pesées et des mesures de sertissage).
+
+---
+
+## Retenue de Run
+
+### `production_run_holds`
+Réutilise le **cycle de vie du blocage qualité** de la Phase 1 (`ACTIF` → `LEVE`,
+motif, audité) plutôt que d'inventer une vérité indépendante (section 41).
+
+| Champ | Rôle |
+|---|---|
+| `production_run_id` | Toujours renseigné |
+| `sterilization_cycle_id`, `process_deviation_id` | Origine de la retenue, facultatifs |
+| `status` | `ACTIF`, `LEVE` |
+| `released_at`, `released_by`, `release_reason` | Obligatoires dès que `status = 'LEVE'` |
+
+Un index unique partiel garantit **au plus une retenue active par Run**
+(`run_holds_one_active_per_run`), exactement comme `lot_blocks_one_active_per_lot` en
+Phase 1. Une décision CCP `RETENU` ouvre automatiquement une retenue sur chaque Run
+chargé dans le cycle ; la levée reste un acte délibéré et distinct
+(`quality:release`), jamais un effet de bord d'une nouvelle décision CCP.
+
+---
+
+## Vues de calcul de la Phase 4
+
+| Vue | Contenu |
+|---|---|
+| `filling_weight_control_summary` | Moyenne, min, max, répartition sous-poids / conforme / surpoids, pourcentages, statut du contrôle |
+| `seaming_control_result` | Nombre de mesures, nombre non conformes, résultat global du contrôle |
+| `sterilization_cycle_ccp_status` | Dernière décision et dernier résultat CCP d'un cycle, indicateur de décision retenue |
+| `sterilization_cycle_summary` | Couverture des mesures, F0 maximum mesuré, déviations ouvertes, avancement du refroidissement, indicateur de données critiques manquantes |
+| `run_hold_status` | Runs actuellement retenus par une décision CCP défavorable |
+
+Ces vues sont la **seule** source des chiffres de classification, de couverture et de
+statut de la Phase 4, à l'écran comme dans les réponses API.
+
+## Relations de la Phase 4
+
+```
+production_runs ──< filling_operations ──< filling_weight_controls ──< filling_weight_samples
+       │                    │                        └── product_filling_specs (via snapshot)
+       │                    └── filling_media
+       │
+       ├──< seaming_operations ──< seaming_controls ──< seaming_measurements
+       │            │                                        └── seaming_specifications (via snapshot)
+       │            └── equipment (machine)
+       │
+       ├──< marking_events ──< marking_event_checks >── marking_verification_items
+       │
+       ├──< sterilization_cycle_loads >── sterilization_cycles ──< sterilization_measurements
+       │                                          │            ├──< ccp_controls
+       │                                          │            └──< cooling_events ──< cooling_measurements
+       │                                          ├── equipment (autoclave)
+       │                                          └── sterilization_programs (via snapshot)
+       │
+       ├──< process_deviations ──< process_corrective_actions
+       │
+       └──< production_run_holds
 ```

@@ -36,6 +36,9 @@ const NAVIGATION: readonly NavigationGroup[] = [
       { to: '/production/controles', label: 'Contrôles horaires', permission: 'production:read' },
       { to: '/production/cadence', label: 'Cadence', permission: 'production:read' },
       { to: '/production/arrets', label: 'Arrêts', permission: 'production:read' },
+      { to: '/production/remplissage', label: 'Remplissage', permission: 'production:read' },
+      { to: '/production/sertissage', label: 'Sertissage', permission: 'production:read' },
+      { to: '/production/sterilisation', label: 'Stérilisation', permission: 'production:read' },
     ],
   },
   {
@@ -48,7 +51,11 @@ const NAVIGATION: readonly NavigationGroup[] = [
     title: 'Qualité',
     entries: [
       { to: '/qualite/controles', label: 'Contrôles', permission: 'quality:read' },
+      { to: '/qualite/controles-poids', label: 'Contrôles poids', permission: 'production:read' },
+      { to: '/qualite/controles-sertissage', label: 'Contrôles sertissage', permission: 'production:read' },
+      { to: '/qualite/ccp', label: 'CCP', permission: 'production:read' },
       { to: '/qualite/lots-bloques', label: 'Lots bloqués', permission: 'quality:read' },
+      { to: '/qualite/deviations', label: 'Déviations', permission: 'production:read' },
     ],
   },
   {

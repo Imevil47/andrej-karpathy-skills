@@ -1,4 +1,4 @@
-# Règles métier — OCEAMIC IMS Phases 1, 2 et 3
+# Règles métier — OCEAMIC IMS Phases 1, 2, 3 et 4
 
 Ce document décrit le comportement attendu du système. Chaque règle est appliquée côté
 serveur (service, transaction ou contrainte de base) et non seulement dans l'interface.
@@ -844,3 +844,307 @@ produits finis, palettes, expédition, remplissage, sertissage, stérilisation, 
 emballage, GMAO/maintenance, SPC avancé, prédiction et prévision par IA, tableaux de
 bord complexes. Les tables de contrôle de cadence et d'arrêt sont conçues comme la
 donnée source d'un futur module d'OEE, sans en porter le calcul.
+
+
+---
+
+# Phase 4 — Remplissage, sertissage, marquage, stérilisation, CCP et refroidissement
+
+## 52. Modèle conceptuel du procédé aval
+
+| Concept | Signification | Table |
+|---|---|---|
+| Opération de remplissage | Contexte de production du remplissage | `filling_operations` |
+| Contrôle poids | Un événement d'échantillonnage | `filling_weight_controls` |
+| Pesée | Une boîte réellement mesurée | `filling_weight_samples` |
+| Opération de sertissage | Contexte de production du sertissage | `seaming_operations` |
+| Contrôle sertissage | Inspection qualité d'un sertissage | `seaming_controls` |
+| Marquage | Application/vérification traçable d'un code produit | `marking_events` |
+| Cycle de stérilisation | Événement thermique | `sterilization_cycles` |
+| Programme de stérilisation | Spécification de procédé contrôlée | `sterilization_programs` |
+| Contrôle CCP | Décision critique de sécurité alimentaire | `ccp_controls` |
+| Déviation | Écart documenté par rapport au procédé attendu | `process_deviations` |
+| Refroidissement | Procédé de refroidissement post-stérilisation | `cooling_events` |
+
+Ces concepts ne sont jamais fusionnés dans une même table. Chaque opération et chaque
+contrôle reste rattaché à un Run existant : il n'existe aucun enregistrement de
+remplissage, de sertissage, de marquage ou de stérilisation détaché d'un Run
+(section 3).
+
+## 53. Configuration, jamais codée en dur
+
+Milieux de couverture, spécifications de remplissage, paramètres et spécifications de
+sertissage, programmes de stérilisation et points de vérification de marquage sont des
+données de référence configurables. Aucun seuil, aucune liste de milieux ou de
+paramètres n'est écrit dans le code de l'application : toute évolution passe par
+Paramètres, jamais par une migration.
+
+## 54. Formule de classification d'une pesée
+
+```
+mesure < poids min      → SOUS_POIDS
+poids min ≤ mesure ≤ poids max → CONFORME
+mesure > poids max      → SURPOIDS
+```
+
+Le statut est une **colonne générée** en base à partir de la pesée et des limites
+copiées sur la même ligne : le contrôleur ne le choisit jamais (section 12). Une
+tolérance autour de min/max n'est **jamais** introduite automatiquement : Min et Max
+restent les valeurs exactes configurées, tant qu'aucune tolérance n'est explicitement
+ajoutée comme champ distinct (section 13).
+
+Un contrôle poids ne peut s'ouvrir que si une spécification de remplissage active
+correspond au produit (et, si renseignés, au format et aux pièces par boîte) : sans
+limite configurée, il n'y a rien à comparer, et aucune limite par défaut n'est
+inventée (section 8).
+
+## 55. Résumé d'un contrôle poids
+
+```
+Poids moyen, poids minimum mesuré, poids maximum mesuré
+Nombre sous-poids, nombre conformes, nombre surpoids
+% sous-poids, % conforme, % surpoids
+```
+
+Ces valeurs sont **calculées** par la vue `filling_weight_control_summary`, jamais
+saisies (section 14).
+
+## 56. Statut d'un contrôle poids
+
+Règle de conception explicitement documentée, cohérente avec la priorité de la
+spécification : le sous-poids est le risque critique (section 15).
+
+| Statut | Condition |
+|---|---|
+| `INCOMPLET` | Moins d'échantillons enregistrés que la taille configurée |
+| `NON_CONFORME` | Au moins une boîte sous-poids |
+| `A_CORRIGER` | Aucune boîte sous-poids, mais au moins une surpoids |
+| `CONFORME` | Toutes les boîtes enregistrées dans la plage, et assez d'échantillons |
+
+Le sous-poids déclenche toujours `NON_CONFORME`, jamais `A_CORRIGER` : c'est le risque
+opérationnel prioritaire. Le surpoids reste visible (coût matière) sans être traité
+comme le même niveau de risque. Ce statut de contrôle poids **n'est pas** automatiquement
+un blocage qualité de lot : seule une règle explicitement configurée pourrait déclencher
+une décision Qualité (section 16).
+
+## 57. Résultat d'un contrôle sertissage
+
+```
+Aucune mesure enregistrée        → INCOMPLET
+Au moins une mesure NON_CONFORME → NON_CONFORME
+Toutes les mesures CONFORME      → CONFORME
+```
+
+Comme pour le contrôle poids, ce résultat est **calculé** (vue `seaming_control_result`),
+jamais stocké ni saisi manuellement. Une mesure devient `NON_CONFORME` dès qu'elle
+franchit la limite figée au moment de la mesure ; la mesure d'origine reste
+intégralement conservée, jamais ajustée pour « corriger » le résultat (section 23).
+
+## 58. Correspondance d'une spécification (remplissage et sertissage)
+
+Même règle déterministe qu'en Phase 3 pour les standards de cadence : le plus
+spécifique gagne, jamais un choix arbitraire.
+
+- **Remplissage** : `product_id` obligatoire, `format` et `pieces_per_can` facultatifs
+  (`NULL` = toutes les valeurs) ; spécificité `format` (2) + `pieces_per_can` (1).
+- **Sertissage** : `seaming_parameter_id` obligatoire, `product_id` et `format`
+  facultatifs ; spécificité `product_id` (2) + `format` (1).
+
+Dans les deux cas : une dimension renseignée sur la spécification doit correspondre
+exactement au contexte pour que la spécification s'applique ; la fenêtre de validité
+(`valid_from`/`valid_to`), si renseignée, doit couvrir la date du contrôle ; en cas
+d'égalité de spécificité, la spécification créée la plus récemment gagne.
+
+## 59. Historique des spécifications
+
+Un changement ultérieur d'une spécification de remplissage, de sertissage ou d'un
+programme de stérilisation n'affecte **jamais** un contrôle déjà enregistré : chaque
+contrôle poids, chaque mesure de sertissage et chaque cycle de stérilisation porte sa
+propre copie figée des limites appliquées au moment de la mesure (`*_snapshot`). Les
+colonnes générées de classification lisent ces copies, jamais la table de référence en
+direct (section 54).
+
+## 60. Marquage et sa vérification
+
+Le marquage est codé (`marking_events`, statut initial `A_VERIFIER`) puis vérifié contre
+une liste **configurable** de points de contrôle (`marking_verification_items`), plutôt
+qu'un champ fixe par vérification possible (section 26). Le statut global devient
+`VERIFIE` si tous les points cochés lors de la vérification sont passés, `NON_CONFORME`
+dès qu'un seul échoue. Un marquage non vérifié ne porte ni vérificateur ni date de
+vérification.
+
+## 61. Programme de stérilisation
+
+Le barème validé par OCEAMIC — température, pression, F0 cible/minimum/maximum, temps de
+palier — est une donnée de configuration, jamais codée en dur dans l'écran de
+stérilisation (section 30/35). Un cycle **fige** les limites du programme au moment de
+son chargement : un changement ultérieur du programme n'affecte jamais un cycle déjà en
+cours ou terminé.
+
+## 62. Relation cycle ↔ Run
+
+Un cycle de stérilisation ne porte **aucune colonne Run directe** : la relation passe
+exclusivement par `sterilization_cycle_loads`, une table de relation qui admet
+structurellement plusieurs Runs par cycle (section 29). Rien dans le reste du système
+n'assume qu'un cycle ne contient qu'un seul Run.
+
+## 63. F0
+
+Le système enregistre un F0 mesuré ou calculé en amont et fourni par une donnée de
+procédé autorisée (`sterilization_measurements.f0_value`). **Aucun algorithme de calcul
+du F0 n'est implémenté** dans cette phase : la spécification interdit d'en inventer un
+sans les paramètres de procédé validés par OCEAMIC (section 34). Le F0 maximum mesuré
+d'un cycle est une valeur lue (`MAX(f0_value)`), jamais une moyenne ni une extrapolation.
+
+## 64. Mesure de procédé et donnée d'équipement
+
+`sterilization_measurements.source_type` distingue `MANUEL`, `EQUIPEMENT` et `IMPORT`.
+Tant qu'aucune intégration directe avec un autoclave n'existe, seul `MANUEL` est produit
+par cette phase — l'interface l'affiche explicitement comme « Saisie manuelle », jamais
+comme si elle provenait d'un capteur (section 52). `source_reference` et `imported_at`
+préparent une intégration future sans qu'aucune saisie manuelle existante ne soit
+jamais écrasée (section 53).
+
+## 65. Décision CCP
+
+Une décision CCP (`ccp_controls`) est structurellement séparée des mesures de procédé
+(section 31) : `result` (`CONFORME`, `NON_CONFORME`, `DEVIATION`, `A_VERIFIER`) et
+`decision` (`LIBERE`, `RETENU`, `A_VERIFIER`) sont deux jugements distincts d'une même
+observation. Seule une utilisatrice titulaire de la permission `ccp:validate`
+(QUALITE ou ADMIN) peut enregistrer une décision CCP : un utilisateur PRODUCTION ne peut
+jamais, à lui seul, déclarer une mesure hors limite conforme (section 36). Les limites
+critiques opposables viennent exclusivement du programme figé sur le cycle
+(`*_snapshot`), jamais d'une constante du code (section 35).
+
+## 66. Clôture d'un cycle de stérilisation
+
+Un cycle ne se termine jamais silencieusement (section 39) :
+
+1. si aucune mesure de procédé ou aucun contrôle CCP n'a été enregistré, la clôture
+   échoue et le cycle passe `A_VERIFIER`, avec le message :
+
+   ```
+   Cycle incomplet.
+   Des données CCP obligatoires sont manquantes.
+   ```
+
+2. si toutes les données requises sont présentes et que la dernière décision CCP est
+   `RETENU`, le cycle passe `BLOQUE` : le procédé est physiquement terminé
+   (`ended_at` renseigné) mais le matériel reste retenu ;
+3. sinon, le cycle passe `TERMINE`.
+
+Un cycle `A_VERIFIER` ou `BLOQUE` n'est **jamais** traité comme équivalent à une
+libération : voir la règle suivante.
+
+## 67. Statut du procédé ≠ disposition qualité
+
+Un cycle de stérilisation peut être opérationnellement `TERMINE` tandis que le matériel
+associé reste `BLOQUE` par une décision Qualité (section 56 de la spécification). Ces
+deux notions ne sont **jamais** confondues : achever le procédé ne libère jamais
+automatiquement la matière.
+
+## 68. Retenue d'un Run
+
+Une décision CCP `RETENU` ouvre automatiquement une retenue sur **chaque** Run chargé
+dans le cycle (`production_run_holds`, statut `ACTIF`), en réutilisant le cycle de vie
+du blocage qualité de la Phase 1 (`ACTIF` → `LEVE`, motif, audité) plutôt que d'inventer
+une vérité indépendante (section 41). Une décision CCP `LIBERE` ultérieure **ne lève
+jamais** automatiquement une retenue existante : la levée est un acte délibéré, distinct,
+réservé à `quality:release` — exactement la même permission que la libération d'un lot
+en Phase 1. Un futur module Phase 5 de création de lot fini pourra hériter de cette
+retenue via la vue `run_hold_status` plutôt que de réimplémenter la règle.
+
+## 69. Refroidissement
+
+Le refroidissement (`cooling_events`) est un procédé séparé de la stérilisation
+elle-même, jamais fusionné dans le cycle (section 42). Aucune spécification de
+refroidissement n'est demandée par la Phase 4 : `cooling_measurements.status`, quand il
+est renseigné, est saisi tel quel plutôt que dérivé automatiquement — à la différence
+des pesées et des mesures de sertissage, qui disposent toutes deux d'une spécification
+configurée à comparer.
+
+## 70. Déviations et actions correctives
+
+Une déviation (`process_deviations`) est rattachée à un Run et/ou à un cycle de
+stérilisation (section 37). Ses actions correctives (`process_corrective_actions`)
+restent volontairement légères — pas un CAPA complet (section 38). Créer une action
+corrective fait passer une déviation encore ouverte au statut `ACTION_REQUISE` ; la
+clôturer exige une date de clôture, jamais implicite.
+
+## 71. Politique de correction du procédé aval
+
+Une pesée, une mesure de sertissage, une mesure de stérilisation ou une décision CCP
+déjà validée n'est **jamais** modifiée en place (section 58) : la ligne d'origine passe
+`ANNULE` (`cancelled_at`, `cancelled_by`, `cancellation_reason` obligatoires), et une
+ligne de remplacement est créée si une valeur corrigée est fournie
+(`replaces_id`). C'est la même politique d'annulation-remplacement déjà utilisée pour
+les consommations de production (Phase 2) et les contrôles de cadence (Phase 3). Les
+vues de calcul ne comptent jamais une ligne `ANNULE`.
+
+## 72. Généalogie du procédé
+
+```
+Production Run
+   ↓
+Opération de remplissage → Contrôles poids
+   ↓
+Opération de sertissage → Contrôles sertissage
+   ↓
+Marquage
+   ↓
+Cycle de stérilisation → Contrôles CCP
+   ↓
+Refroidissement
+```
+
+Depuis un Run, l'utilisateur retrouve l'ensemble de cette chaîne sans recherche
+manuelle d'identifiant (sections 44/70/74) : `runProcessGenealogy` interroge chaque
+table par la clé étrangère qui la relie déjà au Run (directement, ou via
+`sterilization_cycle_loads` pour la stérilisation), sans liaison saisie séparément.
+Depuis un cycle de stérilisation, `sterilization_cycle_loads` retrouve symétriquement
+le ou les Runs source. La vue du process (`runProcessOverview`) affiche l'état le plus
+récent de chaque étape (section 46) — un simple tableau, jamais un diagramme BPMN.
+
+## 73. Audit du procédé aval
+
+Sont tracés : création et clôture d'une opération de remplissage, création d'un
+contrôle poids et de chaque pesée, correction de pesée, création d'une opération et
+d'un contrôle de sertissage, correction de mesure de sertissage, création et
+vérification d'un marquage, création d'un cycle de stérilisation et de ses
+chargements, démarrage et clôture d'un cycle, mesures de procédé et leur correction,
+décisions CCP et leur correction, ouverture et levée d'une retenue de Run, création et
+changement de statut d'une déviation, création et clôture d'une action corrective,
+création de données de référence (équipements, milieux, spécifications, programmes,
+points de vérification). Chaque entrée conserve l'auteur, la date et les valeurs
+utiles.
+
+## 74. Rôles du procédé aval
+
+| Permission | ADMIN | PRODUCTION | QUALITE | STOCK | LECTURE |
+|---|:--:|:--:|:--:|:--:|:--:|
+| Consultation (remplissage, sertissage, stérilisation, CCP, déviations) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Gérer une opération de remplissage | ✓ | ✓ | | | |
+| Effectuer un contrôle poids | ✓ | | ✓ | | |
+| Exploiter une opération de sertissage | ✓ | ✓ | | | |
+| Effectuer un contrôle sertissage | ✓ | | ✓ | | |
+| Enregistrer un marquage | ✓ | ✓ | | | |
+| Vérifier un marquage | ✓ | | ✓ | | |
+| Exploiter un cycle de stérilisation, saisir les mesures de procédé | ✓ | ✓ | | | |
+| Valider une décision CCP | ✓ | | ✓ | | |
+| Créer/gérer une déviation et ses actions correctives | ✓ | | ✓ | | |
+| Lever une retenue de Run | ✓ | | ✓ (`quality:release`) | | |
+| Configurer équipements, spécifications, programmes, points de vérification | ✓ | | | | |
+
+Un utilisateur PRODUCTION exploite les opérations et saisit les mesures de procédé ;
+QUALITE contrôle ce qui en sort et seule elle valide les décisions critiques de
+sécurité alimentaire — jamais l'inverse, et jamais un utilisateur PRODUCTION seul.
+
+## 75. Hors périmètre de la Phase 4
+
+Explicitement non construits : stock de produits finis, lot de produit fini,
+emballage, cartons, étiquettes, palettes, entrepôt PF, chargement de conteneur,
+expédition, gestion clients, CAPA complète, GMAO/maintenance complète, moteur de stock
+d'ingrédients, gestion de récupération d'huile, OEE avancé, SPC, IA, prévision. La
+Phase 4 rend cependant possible la création d'un futur lot de produit fini
+(Phase 5) à partir d'une chaîne aval validée, sans créer prématurément d'inventaire de
+produits finis (section 76).

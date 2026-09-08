@@ -76,6 +76,24 @@ const BADGE_TONES: Readonly<Record<string, string>> = {
   COMPLET: 'succes',
   INCOMPLET: 'avertissement',
   SOUS_STANDARD: 'alerte',
+  // Phase 4: filling, seaming, marking, sterilization, CCP, deviations
+  SOUS_POIDS: 'alerte',
+  SURPOIDS: 'avertissement',
+  A_CORRIGER: 'avertissement',
+  A_VERIFIER: 'avertissement',
+  VERIFIE: 'succes',
+  TERMINE: 'succes',
+  TERMINEE: 'succes',
+  EN_CHARGEMENT: 'info',
+  DEVIATION: 'alerte',
+  RETENU: 'alerte',
+  OUVERTE: 'avertissement',
+  EN_ANALYSE: 'info',
+  ACTION_REQUISE: 'avertissement',
+  CLOTUREE: 'succes',
+  MINEURE: 'info',
+  MAJEURE: 'avertissement',
+  CRITIQUE: 'alerte',
 };
 
 export function Badge({ value }: { value: string | null }) {

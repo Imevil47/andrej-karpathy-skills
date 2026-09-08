@@ -163,11 +163,85 @@ const TABS = [
   'Contrôles horaires',
   'Cadence',
   'Arrêts',
+  'Remplissage',
+  'Sertissage',
+  'Stérilisation',
   'Sorties',
   'Pertes',
   'Bilan matière',
   'Traçabilité',
 ] as const;
+
+type ProcessOverview = Readonly<{
+  fillingStatus: string | null;
+  seamingStatus: string | null;
+  markingStatus: string | null;
+  sterilizationStatus: string | null;
+  coolingStatus: string | null;
+  hasActiveHold: boolean;
+}>;
+
+type FillingOperationRow = Readonly<{
+  id: string;
+  operationCode: string;
+  productCode: string;
+  format: string | null;
+  status: string;
+  startedAt: string;
+  lastControlAt: string | null;
+  lastControlStatus: string | null;
+}>;
+
+type WeightControlSummaryRow = Readonly<{
+  id: string;
+  controlCode: string;
+  controlledAt: string;
+  sampleCount: number;
+  sampleSize: number;
+  underweightCount: number;
+  overweightCount: number;
+  controlStatus: string;
+}>;
+
+type SeamingOperationRow = Readonly<{
+  id: string;
+  operationCode: string;
+  machineCode: string | null;
+  status: string;
+  startedAt: string;
+}>;
+
+type SeamingControlSummaryRow = Readonly<{
+  id: string;
+  controlledAt: string;
+  result: string;
+  nonConformeCount: number;
+}>;
+
+type MarkingEventRow = Readonly<{
+  id: string;
+  markingCode: string;
+  status: string;
+  markedAt: string;
+}>;
+
+type SterilizationCycleSummaryRow = Readonly<{
+  id: string;
+  cycleCode: string;
+  autoclaveCode: string;
+  status: string;
+  startedAt: string;
+  latestCcpDecision: string | null;
+}>;
+
+type RunGenealogy = Readonly<{
+  fillingOperations: readonly FillingOperationRow[];
+  weightControls: readonly WeightControlSummaryRow[];
+  seamingOperations: readonly SeamingOperationRow[];
+  seamingControls: readonly SeamingControlSummaryRow[];
+  markingEvents: readonly MarkingEventRow[];
+  sterilizationCycles: readonly SterilizationCycleSummaryRow[];
+}>;
 
 const LOSS_TYPES = ['PERTE_REELLE', 'SOUS_PRODUIT', 'REWORK', 'RECLASSEMENT'] as const;
 
@@ -198,6 +272,8 @@ export function ProductionRunSituation() {
   const cadenceHistory = useResource<readonly RunCadenceRow[]>(
     `/api/cadence${buildQuery({ run: id ?? null })}`,
   );
+  const processOverview = useResource<ProcessOverview>(`/api/production/runs/${id}/vue-process`);
+  const genealogy = useResource<RunGenealogy>(`/api/production/runs/${id}/genealogie`);
 
   const [tab, setTab] = useState<(typeof TABS)[number]>('Vue générale');
   const [actionError, setActionError] = useState<string | null>(null);
@@ -390,6 +466,39 @@ export function ProductionRunSituation() {
                 : []),
             ]}
           />
+        </Card>
+      ) : null}
+
+      {tab === 'Vue générale' && processOverview.data ? (
+        <Card title="Vue du process">
+          {processOverview.data.hasActiveHold ? (
+            <div className="message erreur">
+              Ce Run est retenu par une décision CCP défavorable : voir l'onglet Stérilisation.
+            </div>
+          ) : null}
+          <DataTable
+            columns={[
+              { key: 'etape', label: 'Étape', numeric: false },
+              { key: 'statut', label: 'Statut', numeric: false },
+            ]}
+            isEmpty={false}
+            emptyText=""
+          >
+            {(
+              [
+                ['Remplissage', processOverview.data.fillingStatus],
+                ['Sertissage', processOverview.data.seamingStatus],
+                ['Marquage', processOverview.data.markingStatus],
+                ['Stérilisation', processOverview.data.sterilizationStatus],
+                ['Refroidissement', processOverview.data.coolingStatus],
+              ] as const
+            ).map(([stage, status]) => (
+              <tr key={stage}>
+                <td>{stage}</td>
+                <td>{status ? <Badge value={status} /> : <span style={{ color: 'var(--texte-doux)' }}>En attente</span>}</td>
+              </tr>
+            ))}
+          </DataTable>
         </Card>
       ) : null}
 
@@ -925,6 +1034,185 @@ export function ProductionRunSituation() {
                       Terminer
                     </button>
                   ) : null}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        </Card>
+      ) : null}
+
+      {tab === 'Remplissage' ? (
+        <Card title="Remplissage">
+          <div className="ligne-boutons" style={{ marginTop: 0, marginBottom: 16 }}>
+            <Link to="/production/remplissage">
+              <button type="button" className="secondaire">
+                Gérer le remplissage
+              </button>
+            </Link>
+          </div>
+          <DataTable
+            columns={[
+              { key: 'operation', label: 'Opération', numeric: false },
+              { key: 'produit', label: 'Produit', numeric: false },
+              { key: 'format', label: 'Format', numeric: false },
+              { key: 'debut', label: 'Début', numeric: false },
+              { key: 'statut', label: 'Statut', numeric: false },
+            ]}
+            isEmpty={(genealogy.data?.fillingOperations ?? []).length === 0}
+            emptyText="Aucune opération de remplissage pour ce Run."
+          >
+            {(genealogy.data?.fillingOperations ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>{row.operationCode}</td>
+                <td>{row.productCode}</td>
+                <td>{row.format ?? '-'}</td>
+                <td>{formatDateTime(row.startedAt)}</td>
+                <td>
+                  <Badge value={row.status} />
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+
+          <h3 style={{ marginTop: 24 }}>Contrôles poids</h3>
+          <DataTable
+            columns={[
+              { key: 'controle', label: 'Contrôle', numeric: false },
+              { key: 'date', label: 'Date', numeric: false },
+              { key: 'echantillons', label: 'Échantillons', numeric: true },
+              { key: 'sous', label: 'Sous-poids', numeric: true },
+              { key: 'sur', label: 'Surpoids', numeric: true },
+              { key: 'resultat', label: 'Résultat', numeric: false },
+            ]}
+            isEmpty={(genealogy.data?.weightControls ?? []).length === 0}
+            emptyText="Aucun contrôle poids pour ce Run."
+          >
+            {(genealogy.data?.weightControls ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <Link to={`/qualite/controles-poids/${row.id}`}>{row.controlCode}</Link>
+                </td>
+                <td>{formatDateTime(row.controlledAt)}</td>
+                <td className="nombre">
+                  {row.sampleCount} / {row.sampleSize}
+                </td>
+                <td className="nombre">{row.underweightCount}</td>
+                <td className="nombre">{row.overweightCount}</td>
+                <td>
+                  <Badge value={row.controlStatus} />
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        </Card>
+      ) : null}
+
+      {tab === 'Sertissage' ? (
+        <Card title="Sertissage">
+          <div className="ligne-boutons" style={{ marginTop: 0, marginBottom: 16 }}>
+            <Link to="/production/sertissage">
+              <button type="button" className="secondaire">
+                Gérer le sertissage
+              </button>
+            </Link>
+          </div>
+          <DataTable
+            columns={[
+              { key: 'operation', label: 'Opération', numeric: false },
+              { key: 'machine', label: 'Machine', numeric: false },
+              { key: 'debut', label: 'Début', numeric: false },
+              { key: 'statut', label: 'Statut', numeric: false },
+            ]}
+            isEmpty={(genealogy.data?.seamingOperations ?? []).length === 0}
+            emptyText="Aucune opération de sertissage pour ce Run."
+          >
+            {(genealogy.data?.seamingOperations ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>{row.operationCode}</td>
+                <td>{row.machineCode ?? '-'}</td>
+                <td>{formatDateTime(row.startedAt)}</td>
+                <td>
+                  <Badge value={row.status} />
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+
+          <h3 style={{ marginTop: 24 }}>Contrôles sertissage</h3>
+          <DataTable
+            columns={[
+              { key: 'date', label: 'Date', numeric: false },
+              { key: 'resultat', label: 'Résultat', numeric: false },
+            ]}
+            isEmpty={(genealogy.data?.seamingControls ?? []).length === 0}
+            emptyText="Aucun contrôle sertissage pour ce Run."
+          >
+            {(genealogy.data?.seamingControls ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <Link to={`/qualite/controles-sertissage/${row.id}`}>{formatDateTime(row.controlledAt)}</Link>
+                </td>
+                <td>
+                  <Badge value={row.result} />
+                  {row.nonConformeCount > 0 ? ` — ${row.nonConformeCount} hors spécification` : ''}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+
+          <h3 style={{ marginTop: 24 }}>Marquage</h3>
+          <DataTable
+            columns={[
+              { key: 'code', label: 'Code', numeric: false },
+              { key: 'date', label: 'Date', numeric: false },
+              { key: 'statut', label: 'Statut', numeric: false },
+            ]}
+            isEmpty={(genealogy.data?.markingEvents ?? []).length === 0}
+            emptyText="Aucun marquage pour ce Run."
+          >
+            {(genealogy.data?.markingEvents ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>{row.markingCode}</td>
+                <td>{formatDateTime(row.markedAt)}</td>
+                <td>
+                  <Badge value={row.status} />
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        </Card>
+      ) : null}
+
+      {tab === 'Stérilisation' ? (
+        <Card title="Stérilisation">
+          <div className="ligne-boutons" style={{ marginTop: 0, marginBottom: 16 }}>
+            <Link to="/production/sterilisation">
+              <button type="button" className="secondaire">
+                Gérer la stérilisation
+              </button>
+            </Link>
+          </div>
+          <DataTable
+            columns={[
+              { key: 'cycle', label: 'Cycle', numeric: false },
+              { key: 'autoclave', label: 'Autoclave', numeric: false },
+              { key: 'debut', label: 'Début', numeric: false },
+              { key: 'ccp', label: 'CCP', numeric: false },
+              { key: 'statut', label: 'Statut', numeric: false },
+            ]}
+            isEmpty={(genealogy.data?.sterilizationCycles ?? []).length === 0}
+            emptyText="Aucun cycle de stérilisation pour ce Run."
+          >
+            {(genealogy.data?.sterilizationCycles ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <Link to={`/production/sterilisation/${row.id}`}>{row.cycleCode}</Link>
+                </td>
+                <td>{row.autoclaveCode}</td>
+                <td>{formatDateTime(row.startedAt)}</td>
+                <td>{row.latestCcpDecision ? <Badge value={row.latestCcpDecision} /> : '-'}</td>
+                <td>
+                  <Badge value={row.status} />
                 </td>
               </tr>
             ))}

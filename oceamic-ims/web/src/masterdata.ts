@@ -141,3 +141,101 @@ export function useDowntimeCategories() {
 export function useCadenceStandards() {
   return useResource<readonly CadenceStandard[]>('/api/cadence-standards');
 }
+
+// --- Phase 4: filling, seaming, marking, sterilization -----------------------
+
+export type Equipment = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  equipmentType: string;
+  locationId: string | null;
+  locationCode: string | null;
+  isActive: boolean;
+}>;
+
+export type FillingMedium = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
+
+export type FillingSpec = Readonly<{
+  id: string;
+  productId: string;
+  productCode: string;
+  format: string | null;
+  piecesPerCan: number | null;
+  targetNetWeightG: string | null;
+  minWeightG: string;
+  maxWeightG: string;
+  targetFishWeightG: string | null;
+  targetMediumWeightG: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export type SeamingParameter = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  defaultUnit: string;
+  isActive: boolean;
+}>;
+
+export type SeamingSpec = Readonly<{
+  id: string;
+  seamingParameterId: string;
+  parameterName: string;
+  productId: string | null;
+  productCode: string | null;
+  format: string | null;
+  minValue: string | null;
+  maxValue: string | null;
+  targetValue: string | null;
+  unit: string;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export type SterilizationProgram = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  productId: string | null;
+  productCode: string | null;
+  format: string | null;
+  targetTemperatureC: string | null;
+  targetPressureBar: string | null;
+  targetF0: string | null;
+  minimumF0: string | null;
+  maximumF0: string | null;
+  holdingTimeSeconds: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export type MarkingVerificationItem = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
+
+export function useEquipment(equipmentType?: string) {
+  return useResource<readonly Equipment[]>(
+    equipmentType ? `/api/equipment?type=${equipmentType}` : '/api/equipment',
+  );
+}
+export function useFillingMedia() {
+  return useResource<readonly FillingMedium[]>('/api/filling-media');
+}
+export function useFillingSpecs() {
+  return useResource<readonly FillingSpec[]>('/api/filling-specs');
+}
+export function useSeamingParameters() {
+  return useResource<readonly SeamingParameter[]>('/api/seaming-parameters');
+}
+export function useSeamingSpecs() {
+  return useResource<readonly SeamingSpec[]>('/api/seaming-specifications');
+}
+export function useSterilizationPrograms() {
+  return useResource<readonly SterilizationProgram[]>('/api/sterilization-programs');
+}
+export function useMarkingVerificationItems() {
+  return useResource<readonly MarkingVerificationItem[]>('/api/marking-verification-items');
+}

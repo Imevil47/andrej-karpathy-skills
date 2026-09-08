@@ -1,31 +1,51 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDependencies } from '../app.ts';
-import { CADENCE_ACTIVITIES, LOCATION_TYPES, MEASUREMENT_UNITS, STOCK_TYPES } from '../domain/types.ts';
+import {
+  CADENCE_ACTIVITIES,
+  EQUIPMENT_TYPES,
+  LOCATION_TYPES,
+  MEASUREMENT_UNITS,
+  STOCK_TYPES,
+} from '../domain/types.ts';
 import { requirePermission } from '../http/context.ts';
-import { requiredTextSchema, uuidSchema } from '../http/schemas.ts';
+import { decimalSchema, requiredTextSchema, uuidSchema } from '../http/schemas.ts';
 import { listUsers } from '../services/auth.ts';
 import {
   createCadenceStandard,
   createDowntimeCategory,
   createEmployee,
+  createEquipment,
+  createFillingMedium,
+  createFillingSpec,
   createLocation,
   createLossReason,
+  createMarkingVerificationItem,
   createProduct,
   createProductionLine,
+  createSeamingParameter,
+  createSeamingSpec,
   createSpecies,
+  createSterilizationProgram,
   createSubcontractor,
   createSupplier,
   createVessel,
   listCadenceStandards,
   listDowntimeCategories,
   listEmployees,
+  listEquipment,
+  listFillingMedia,
+  listFillingSpecs,
   listLocations,
   listLossReasons,
+  listMarkingVerificationItems,
   listProductionLines,
   listProductionStages,
   listProducts,
+  listSeamingParameters,
+  listSeamingSpecs,
   listSpecies,
+  listSterilizationPrograms,
   listSubcontractors,
   listSuppliers,
   listVessels,
@@ -52,9 +72,21 @@ const activationSchema = z.object({
     'employees',
     'cadence_standards',
     'downtime_categories',
+    'equipment',
+    'filling_media',
+    'product_filling_specs',
+    'seaming_parameters',
+    'seaming_specifications',
+    'sterilization_programs',
+    'marking_verification_items',
   ]),
   id: uuidSchema,
 });
+
+const weightGramsSchema = z
+  .string()
+  .regex(/^\d{1,6}(\.\d{1,2})?$/, 'Poids invalide.')
+  .refine((value) => Number(value) > 0, 'Le poids doit être strictement positif.');
 
 export async function registerMasterDataRoutes(
   app: FastifyInstance,
@@ -299,6 +331,156 @@ export async function registerMasterDataRoutes(
       .parse(request.body);
     reply.status(201);
     return createCadenceStandard(pool, input, user.id);
+  });
+
+  app.get('/api/equipment', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const query = z
+      .object({ inactifs: includeInactiveSchema.shape.inactifs, type: z.enum(EQUIPMENT_TYPES).nullish() })
+      .parse(request.query);
+    return listEquipment(pool, query.inactifs, query.type ?? null);
+  });
+
+  app.post('/api/equipment', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        equipmentType: z.enum(EQUIPMENT_TYPES),
+        locationId: uuidSchema.nullable(),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createEquipment(pool, input, user.id);
+  });
+
+  app.get('/api/filling-media', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listFillingMedia(pool, inactifs);
+  });
+
+  app.post('/api/filling-media', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({ code: requiredTextSchema, name: requiredTextSchema })
+      .parse(request.body);
+    reply.status(201);
+    return createFillingMedium(pool, input, user.id);
+  });
+
+  app.get('/api/filling-specs', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listFillingSpecs(pool, inactifs);
+  });
+
+  app.post('/api/filling-specs', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        productId: uuidSchema,
+        format: z.string().trim().min(1).nullable(),
+        piecesPerCan: z.number().int().positive().nullable(),
+        targetNetWeightG: decimalSchema,
+        minWeightG: weightGramsSchema,
+        maxWeightG: weightGramsSchema,
+        targetFishWeightG: decimalSchema,
+        targetMediumWeightG: decimalSchema,
+        validFrom: z.iso.date().nullish().transform((value) => value ?? null),
+        validTo: z.iso.date().nullish().transform((value) => value ?? null),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createFillingSpec(pool, input, user.id);
+  });
+
+  app.get('/api/seaming-parameters', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listSeamingParameters(pool, inactifs);
+  });
+
+  app.post('/api/seaming-parameters', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        defaultUnit: requiredTextSchema,
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createSeamingParameter(pool, input, user.id);
+  });
+
+  app.get('/api/seaming-specifications', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listSeamingSpecs(pool, inactifs);
+  });
+
+  app.post('/api/seaming-specifications', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        seamingParameterId: uuidSchema,
+        productId: uuidSchema.nullable(),
+        format: z.string().trim().min(1).nullable(),
+        minValue: decimalSchema,
+        maxValue: decimalSchema,
+        targetValue: decimalSchema,
+        unit: requiredTextSchema,
+        validFrom: z.iso.date().nullish().transform((value) => value ?? null),
+        validTo: z.iso.date().nullish().transform((value) => value ?? null),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createSeamingSpec(pool, input, user.id);
+  });
+
+  app.get('/api/sterilization-programs', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listSterilizationPrograms(pool, inactifs);
+  });
+
+  app.post('/api/sterilization-programs', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        productId: uuidSchema.nullable(),
+        format: z.string().trim().min(1).nullable(),
+        targetTemperatureC: decimalSchema,
+        targetPressureBar: decimalSchema,
+        targetF0: decimalSchema,
+        minimumF0: decimalSchema,
+        maximumF0: decimalSchema,
+        holdingTimeSeconds: z.number().int().positive().nullable(),
+        validFrom: z.iso.date().nullish().transform((value) => value ?? null),
+        validTo: z.iso.date().nullish().transform((value) => value ?? null),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createSterilizationProgram(pool, input, user.id);
+  });
+
+  app.get('/api/marking-verification-items', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listMarkingVerificationItems(pool, inactifs);
+  });
+
+  app.post('/api/marking-verification-items', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({ code: requiredTextSchema, name: requiredTextSchema })
+      .parse(request.body);
+    reply.status(201);
+    return createMarkingVerificationItem(pool, input, user.id);
   });
 
   app.post('/api/masterdata/:target/:id/activation', async (request) => {

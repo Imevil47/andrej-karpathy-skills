@@ -31,6 +31,16 @@ export const PERMISSIONS = [
   'workforce:manage',
   'cadence:control',
   'downtime:record',
+  // Phase 4: filling, seaming, marking, sterilization, CCP, deviations
+  'filling:manage',
+  'weight:control',
+  'seaming:operate',
+  'seaming:control',
+  'marking:record',
+  'marking:verify',
+  'sterilization:operate',
+  'ccp:validate',
+  'deviation:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -47,7 +57,23 @@ const READ_ONLY: readonly Permission[] = [
 const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
   ADMIN: PERMISSIONS,
   // Quality inspects, decides, blocks and releases. It does not run logistics.
-  QUALITE: [...READ_ONLY, 'quality:inspect', 'quality:decide', 'quality:release', 'audit:read'],
+  QUALITE: [
+    ...READ_ONLY,
+    'quality:inspect',
+    'quality:decide',
+    'quality:release',
+    'audit:read',
+    // Weight, seaming and marking are Quality inspections of a Production
+    // process, the same way quality:inspect covers raw material (section 59).
+    'weight:control',
+    'seaming:control',
+    'marking:verify',
+    // CCP validation and deviation management stay Quality/Admin-only: an
+    // ordinary Production user can never authorize a critical-limit decision
+    // on their own (section 36).
+    'ccp:validate',
+    'deviation:manage',
+  ],
   // Stock runs receptions, movements and subcontracting logistics, but can
   // never release a quality block and can never adjust stock on its own.
   STOCK: [
@@ -73,6 +99,15 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     'workforce:manage',
     'cadence:control',
     'downtime:record',
+    // Production runs the filling, seaming and sterilization operations and
+    // records the process measurements taken on the floor (section 59). The
+    // quality inspection of what came out of each of these operations -
+    // weight controls, seaming controls, marking verification, CCP decisions -
+    // stays with Quality.
+    'filling:manage',
+    'seaming:operate',
+    'marking:record',
+    'sterilization:operate',
   ],
   LECTURE: READ_ONLY,
 };

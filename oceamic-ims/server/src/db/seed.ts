@@ -17,9 +17,26 @@ import {
   startControlRound,
 } from '../services/cadence.ts';
 import { endDowntime, startDowntime } from '../services/downtime.ts';
+import { createDeviation, createCorrectiveAction } from '../services/deviations.ts';
+import {
+  createFillingOperation,
+  recordWeightSample,
+  startWeightControl,
+} from '../services/filling.ts';
+import { createMarkingEvent, verifyMarkingEvent } from '../services/marking.ts';
 import { registerReception } from '../services/receptions.ts';
+import { createSeamingControl, createSeamingOperation, recordSeamingMeasurement } from '../services/seaming.ts';
 import { transferStock } from '../services/stock.ts';
 import { sendToSubcontractor } from '../services/subcontracting.ts';
+import {
+  beginSterilizationCycle,
+  closeSterilizationCycle,
+  createSterilizationCycle,
+  endCoolingEvent,
+  recordCcpControl,
+  recordSterilizationMeasurement,
+  startCoolingEvent,
+} from '../services/sterilization.ts';
 import { assignEmployeeToLine } from '../services/workforce.ts';
 import { createPool, withTransaction } from './pool.ts';
 
@@ -152,6 +169,38 @@ const VESSELS: readonly Readonly<{ code: string; name: string; registration: str
   { code: 'BAT-002', name: 'Nour El Bahr (démo)', registration: 'AG-3378' },
 ];
 
+// Phase 4: filling, seaming, sterilization and marking demonstration data.
+const EQUIPMENT: readonly Readonly<{ code: string; name: string; equipmentType: string }>[] = [
+  { code: 'AUTOCLAVE-1', name: 'Autoclave 1', equipmentType: 'AUTOCLAVE' },
+  { code: 'AUTOCLAVE-2', name: 'Autoclave 2', equipmentType: 'AUTOCLAVE' },
+  { code: 'SERT-1', name: 'Sertisseuse 1', equipmentType: 'SERTISSEUSE' },
+  { code: 'SERT-2', name: 'Sertisseuse 2', equipmentType: 'SERTISSEUSE' },
+  { code: 'REMPL-1', name: 'Remplisseuse 1', equipmentType: 'REMPLISSEUSE' },
+];
+
+const FILLING_MEDIA: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'HUILE_OLIVE', name: "Huile d'olive" },
+  { code: 'HUILE_TOURNESOL', name: 'Huile de tournesol' },
+  { code: 'SAUCE_TOMATE', name: 'Sauce tomate' },
+  { code: 'SAUMURE', name: 'Saumure' },
+  { code: 'EAU', name: 'Eau' },
+];
+
+const SEAMING_PARAMETERS: readonly Readonly<{ code: string; name: string; defaultUnit: string }>[] = [
+  { code: 'CROCHET_CORPS', name: 'Crochet corps', defaultUnit: 'MM' },
+  { code: 'CROCHET_COUVERCLE', name: 'Crochet couvercle', defaultUnit: 'MM' },
+  { code: 'EPAISSEUR', name: 'Épaisseur', defaultUnit: 'MM' },
+  { code: 'SERRAGE', name: 'Serrage', defaultUnit: 'POURCENT' },
+];
+
+const MARKING_VERIFICATION_ITEMS: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'CODE_LISIBLE', name: 'Code lisible' },
+  { code: 'CODE_CORRECT', name: 'Code correct' },
+  { code: 'DATE_CORRECTE', name: 'Date correcte' },
+  { code: 'LOT_CORRECT', name: 'Lot correct' },
+  { code: 'PRODUIT_CORRECT', name: 'Produit correct' },
+];
+
 async function insertReferenceData(pool: pg.Pool): Promise<void> {
   await withTransaction(pool, async (client) => {
     for (const role of ROLE_CODES) {
@@ -244,6 +293,63 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
     await client.query(
       `INSERT INTO cadence_standards (product_id, activity_type, measurement_unit, standard_cadence)
        VALUES ((SELECT id FROM products WHERE code = 'SPSA-HO'), 'GRATTAGE_REMPLISSAGE', 'BOITES', 120)`,
+    );
+
+    for (const item of EQUIPMENT) {
+      await client.query('INSERT INTO equipment (code, name, equipment_type) VALUES ($1, $2, $3)', [
+        item.code,
+        item.name,
+        item.equipmentType,
+      ]);
+    }
+    for (const medium of FILLING_MEDIA) {
+      await client.query('INSERT INTO filling_media (code, name) VALUES ($1, $2)', [
+        medium.code,
+        medium.name,
+      ]);
+    }
+    for (const parameter of SEAMING_PARAMETERS) {
+      await client.query(
+        'INSERT INTO seaming_parameters (code, name, default_unit) VALUES ($1, $2, $3)',
+        [parameter.code, parameter.name, parameter.defaultUnit],
+      );
+    }
+    for (const item of MARKING_VERIFICATION_ITEMS) {
+      await client.query('INSERT INTO marking_verification_items (code, name) VALUES ($1, $2)', [
+        item.code,
+        item.name,
+      ]);
+    }
+
+    // Filling specification for the demo sardine product: the exact 120 g /
+    // 130 g reference used by the Phase 4 acceptance scenario.
+    await client.query(
+      `INSERT INTO product_filling_specs (product_id, format, target_net_weight_g, min_weight_g, max_weight_g)
+       VALUES ((SELECT id FROM products WHERE code = 'SPSA-HO'), 'CLUB', 125, 120, 130)`,
+    );
+
+    // Seaming specification: only "Épaisseur" is configured for the demo
+    // product, deliberately narrow so the demo measurement below falls
+    // outside it and shows a real NON_CONFORME control.
+    await client.query(
+      `INSERT INTO seaming_specifications (seaming_parameter_id, product_id, min_value, max_value, target_value, unit)
+       VALUES ((SELECT id FROM seaming_parameters WHERE code = 'EPAISSEUR'),
+               (SELECT id FROM products WHERE code = 'SPSA-HO'), 0.090, 0.110, 0.100, 'MM')`,
+    );
+    await client.query(
+      `INSERT INTO seaming_specifications (seaming_parameter_id, product_id, min_value, max_value, target_value, unit)
+       VALUES ((SELECT id FROM seaming_parameters WHERE code = 'CROCHET_CORPS'),
+               (SELECT id FROM products WHERE code = 'SPSA-HO'), 1.00, 1.30, 1.15, 'MM')`,
+    );
+
+    // Sterilization program: OCEAMIC's validated scheduled process for the
+    // demo product (illustrative figures only).
+    await client.query(
+      `INSERT INTO sterilization_programs (code, name, product_id, target_temperature_c,
+                                           target_pressure_bar, target_f0, minimum_f0, maximum_f0,
+                                           holding_time_seconds)
+       VALUES ('STE-SPSA-HO', 'Barème SPSA-HO', (SELECT id FROM products WHERE code = 'SPSA-HO'),
+               121.10, 1.80, 8.00, 6.00, 12.00, 2400)`,
     );
   });
 }
@@ -615,6 +721,221 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
     productionUserId,
   );
   await endDowntime(pool, downtime.id, new Date(), productionUserId);
+
+  // 6. Phase 4: filling, weight control, seaming, marking, sterilization,
+  //    CCP, cooling and a deviation, all on the same demonstration Run so the
+  //    full downstream genealogy (raw material -> ... -> cooling) is real and
+  //    traceable end to end.
+  const demoLineL1 = lines.rows.find((line) => line.code === 'L1')?.id;
+  if (!demoLineL1) {
+    throw new Error('Ligne L1 de démonstration introuvable.');
+  }
+
+  const fillingOperation = await createFillingOperation(
+    pool,
+    {
+      productionRunId: run.id,
+      productionLineId: demoLineL1,
+      format: 'CLUB',
+      piecesPerCan: null,
+      fillingMediumId: await idOf(pool, 'filling_media', 'HUILE_OLIVE'),
+      notes: 'Remplissage de démonstration',
+    },
+    productionUserId,
+  );
+
+  // 20-can weight control against the 120 g / 130 g demo specification:
+  // exactly 2 sous-poids, 17 conformes, 1 surpoids (Phase 4 acceptance
+  // scenario, section 71).
+  const weightControl = await startWeightControl(
+    pool,
+    fillingOperation.id,
+    { sampleSize: 20, controlledAt: new Date() },
+    qualityUserId,
+  );
+  const demoWeights = [
+    118, 119, 121, 122, 123, 124, 125, 125, 126, 126, 127, 127, 128, 128, 129, 129, 124, 123, 122, 132,
+  ];
+  for (const [index, weight] of demoWeights.entries()) {
+    await recordWeightSample(
+      pool,
+      weightControl.id,
+      { sampleNumber: index + 1, measuredWeightG: weight.toFixed(2) },
+      qualityUserId,
+    );
+  }
+
+  // Seaming: one control with two measurements, one of which is deliberately
+  // out of the configured specification so the demo control shows a real
+  // NON_CONFORME result (Phase 4 acceptance scenario, section 72) without
+  // losing the original out-of-range measurement.
+  const seamingOperation = await createSeamingOperation(
+    pool,
+    {
+      productionRunId: run.id,
+      fillingOperationId: fillingOperation.id,
+      machineId: await idOf(pool, 'equipment', 'SERT-1'),
+      productionLineId: demoLineL1,
+      notes: 'Sertissage de démonstration',
+    },
+    productionUserId,
+  );
+  const seamingControl = await createSeamingControl(
+    pool,
+    seamingOperation.id,
+    { machineId: await idOf(pool, 'equipment', 'SERT-1'), controlledAt: new Date(), notes: null },
+    qualityUserId,
+  );
+  await recordSeamingMeasurement(
+    pool,
+    seamingControl.id,
+    {
+      seamingParameterId: await idOf(pool, 'seaming_parameters', 'CROCHET_CORPS'),
+      sampleNumber: 1,
+      measuredValue: '1.15',
+      unit: 'MM',
+      productId: sardineProduct,
+      format: 'CLUB',
+    },
+    qualityUserId,
+  );
+  await recordSeamingMeasurement(
+    pool,
+    seamingControl.id,
+    {
+      seamingParameterId: await idOf(pool, 'seaming_parameters', 'EPAISSEUR'),
+      sampleNumber: 1,
+      measuredValue: '0.115',
+      unit: 'MM',
+      productId: sardineProduct,
+      format: 'CLUB',
+    },
+    qualityUserId,
+  );
+
+  // Marking: coded and verified against the configured check items.
+  const markingEvent = await createMarkingEvent(
+    pool,
+    {
+      productionRunId: run.id,
+      seamingOperationId: seamingOperation.id,
+      markedAt: new Date(),
+      markingCode: `${run.runCode}-L1`,
+      lotCodePrinted: run.runCode,
+      machineId: null,
+      notes: null,
+    },
+    productionUserId,
+  );
+  const markingItems = await pool.query<{ id: string }>('SELECT id FROM marking_verification_items');
+  await verifyMarkingEvent(
+    pool,
+    markingEvent.id,
+    { checks: markingItems.rows.map((item) => ({ itemId: item.id, passed: true, notes: null })) },
+    qualityUserId,
+  );
+
+  // Sterilization: a complete cycle (loaded, run, measured, CCP-validated,
+  // closed) followed by its cooling phase - the full chain from section 27
+  // through section 42.
+  const sterilizationCycle = await createSterilizationCycle(
+    pool,
+    {
+      autoclaveId: await idOf(pool, 'equipment', 'AUTOCLAVE-1'),
+      sterilizationProgramId: await idOf(pool, 'sterilization_programs', 'STE-SPSA-HO'),
+      startedAt: new Date(Date.now() - 45 * 60 * 1000),
+      operatorUserId: productionUserId,
+      notes: 'Cycle de démonstration',
+      loads: [
+        {
+          productionRunId: run.id,
+          quantityUnits: 480,
+          basketReference: 'PANIER-A1',
+          notes: null,
+        },
+      ],
+    },
+    productionUserId,
+  );
+  await beginSterilizationCycle(pool, sterilizationCycle.id, productionUserId);
+  await recordSterilizationMeasurement(
+    pool,
+    sterilizationCycle.id,
+    {
+      measuredAt: new Date(Date.now() - 20 * 60 * 1000),
+      temperatureC: '121.30',
+      pressureBar: '1.82',
+      f0Value: null,
+      phase: 'PALIER',
+      sourceType: 'MANUEL',
+    },
+    productionUserId,
+  );
+  await recordSterilizationMeasurement(
+    pool,
+    sterilizationCycle.id,
+    {
+      measuredAt: new Date(),
+      temperatureC: null,
+      pressureBar: null,
+      f0Value: '8.40',
+      phase: 'FIN_PALIER',
+      sourceType: 'MANUEL',
+    },
+    productionUserId,
+  );
+  await recordCcpControl(
+    pool,
+    sterilizationCycle.id,
+    {
+      controlledAt: new Date(),
+      ccpType: 'F0_MINIMUM',
+      result: 'CONFORME',
+      decision: 'LIBERE',
+      notes: 'F0 mesuré conforme au barème (démo).',
+    },
+    qualityUserId,
+  );
+  await closeSterilizationCycle(pool, sterilizationCycle.id, productionUserId);
+
+  const coolingEvent = await startCoolingEvent(
+    pool,
+    sterilizationCycle.id,
+    { startedAt: new Date(), coolingMethod: 'EAU_CHLOREE', waterTemperatureC: '18.00' },
+    productionUserId,
+  );
+  await endCoolingEvent(
+    pool,
+    coolingEvent.id,
+    { endedAt: new Date(), finalProductTemperatureC: '32.00', result: 'CONFORME' },
+    productionUserId,
+  );
+
+  // A demonstration deviation with its corrective action, raised from the
+  // out-of-spec seaming measurement above.
+  const deviation = await createDeviation(
+    pool,
+    {
+      productionRunId: run.id,
+      sterilizationCycleId: null,
+      processStage: 'SERTISSAGE',
+      detectedAt: new Date(),
+      deviationType: 'MESURE_HORS_SPECIFICATION',
+      description: 'Épaisseur de sertissage hors spécification sur le contrôle de démonstration.',
+      severity: 'MINEURE',
+    },
+    qualityUserId,
+  );
+  await createCorrectiveAction(
+    pool,
+    deviation.id,
+    {
+      actionDescription: 'Réglage de la sertisseuse SERT-1 et recontrôle.',
+      responsibleUserId: productionUserId,
+      dueAt: null,
+    },
+    qualityUserId,
+  );
 }
 
 export async function seedDatabase(pool: pg.Pool): Promise<boolean> {

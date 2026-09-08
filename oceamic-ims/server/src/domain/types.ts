@@ -198,3 +198,84 @@ export function performanceStatus(performancePercent: number | null): Performanc
   }
   return 'SOUS_STANDARD';
 }
+
+// --- Phase 4: filling, seaming, marking, sterilization, CCP, cooling -------
+
+export const EQUIPMENT_TYPES = ['SERTISSEUSE', 'AUTOCLAVE', 'REMPLISSEUSE', 'AUTRE'] as const;
+export type EquipmentType = (typeof EQUIPMENT_TYPES)[number];
+
+export const FILLING_OPERATION_STATUSES = ['PLANIFIE', 'EN_COURS', 'TERMINE', 'ANNULE'] as const;
+export type FillingOperationStatus = (typeof FILLING_OPERATION_STATUSES)[number];
+
+// A sample's classification (section 12): always derived from the measured
+// weight against the limits in force at the time, never chosen by the
+// controller. UNDERWEIGHT is the operationally critical case (section 15).
+export const WEIGHT_SAMPLE_STATUSES = ['SOUS_POIDS', 'CONFORME', 'SURPOIDS'] as const;
+export type WeightSampleStatus = (typeof WEIGHT_SAMPLE_STATUSES)[number];
+
+export const WEIGHT_CONTROL_STATUSES = ['CONFORME', 'A_CORRIGER', 'NON_CONFORME', 'INCOMPLET'] as const;
+export type WeightControlStatus = (typeof WEIGHT_CONTROL_STATUSES)[number];
+
+export const SEAMING_OPERATION_STATUSES = ['PLANIFIE', 'EN_COURS', 'TERMINE', 'ANNULE'] as const;
+export type SeamingOperationStatus = (typeof SEAMING_OPERATION_STATUSES)[number];
+
+export const SEAMING_CONTROL_RESULTS = ['CONFORME', 'NON_CONFORME', 'INCOMPLET'] as const;
+export type SeamingControlResult = (typeof SEAMING_CONTROL_RESULTS)[number];
+
+export const MARKING_STATUSES = ['A_VERIFIER', 'VERIFIE', 'NON_CONFORME'] as const;
+export type MarkingStatus = (typeof MARKING_STATUSES)[number];
+
+export const STERILIZATION_CYCLE_STATUSES = [
+  'PLANIFIE',
+  'EN_CHARGEMENT',
+  'EN_COURS',
+  'TERMINE',
+  'A_VERIFIER',
+  'BLOQUE',
+  'ANNULE',
+] as const;
+export type SterilizationCycleStatus = (typeof STERILIZATION_CYCLE_STATUSES)[number];
+
+// Statuses in which a cycle still accepts loads, measurements and CCP data.
+export const STERILIZATION_STATUSES_ACCEPTING_ENTRIES: readonly SterilizationCycleStatus[] = [
+  'PLANIFIE',
+  'EN_CHARGEMENT',
+  'EN_COURS',
+  'A_VERIFIER',
+];
+
+export function sterilizationCycleAcceptsEntries(status: SterilizationCycleStatus): boolean {
+  return STERILIZATION_STATUSES_ACCEPTING_ENTRIES.includes(status);
+}
+
+// A measurement is either typed in by hand or, in the future, produced by
+// connected equipment. Never pretend one is the other (section 52).
+export const MEASUREMENT_SOURCE_TYPES = ['MANUEL', 'EQUIPEMENT', 'IMPORT'] as const;
+export type MeasurementSourceType = (typeof MEASUREMENT_SOURCE_TYPES)[number];
+
+export const CCP_RESULTS = ['CONFORME', 'NON_CONFORME', 'DEVIATION', 'A_VERIFIER'] as const;
+export type CcpResult = (typeof CCP_RESULTS)[number];
+
+export const CCP_DECISIONS = ['LIBERE', 'RETENU', 'A_VERIFIER'] as const;
+export type CcpDecision = (typeof CCP_DECISIONS)[number];
+
+export const DEVIATION_SEVERITIES = ['MINEURE', 'MAJEURE', 'CRITIQUE'] as const;
+export type DeviationSeverity = (typeof DEVIATION_SEVERITIES)[number];
+
+export const DEVIATION_STATUSES = [
+  'OUVERTE',
+  'EN_ANALYSE',
+  'ACTION_REQUISE',
+  'CLOTUREE',
+  'ANNULEE',
+] as const;
+export type DeviationStatus = (typeof DEVIATION_STATUSES)[number];
+
+export const CORRECTIVE_ACTION_STATUSES = ['OUVERTE', 'EN_COURS', 'TERMINEE', 'ANNULEE'] as const;
+export type CorrectiveActionStatus = (typeof CORRECTIVE_ACTION_STATUSES)[number];
+
+export const COOLING_RESULTS = ['CONFORME', 'NON_CONFORME', 'A_VERIFIER'] as const;
+export type CoolingResult = (typeof COOLING_RESULTS)[number];
+
+export const RUN_HOLD_STATUSES = ['ACTIF', 'LEVE'] as const;
+export type RunHoldStatus = (typeof RUN_HOLD_STATUSES)[number];

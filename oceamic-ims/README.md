@@ -1,4 +1,4 @@
-# OCEAMIC IMS — Phases 1, 2 et 3
+# OCEAMIC IMS — Phases 1, 2, 3 et 4
 
 Système de gestion industrielle pour la conserverie de poisson OCEAMIC.
 
@@ -15,9 +15,15 @@ rapport à un standard, et arrêts de production. Elle ne contient ni OEE comple
 paie, ni pointage RH, ni produits finis, palettes ou expédition, mais l'architecture est
 conçue pour les accueillir sans refonte.
 
-Les modules remplissage, sertissage, stérilisation, produits finis, palettes et
-expédition ne sont pas construits ici, mais l'architecture est conçue pour les
-accueillir sans refonte.
+La **Phase 4** ajoute le **procédé aval** : remplissage et contrôle poids, sertissage et
+ses contrôles, marquage, stérilisation (autoclaves, programmes, cycles), contrôles CCP,
+déviations et actions correctives, et refroidissement. Chaque opération reste rattachée
+à un Run de production existant ; rien n'est dupliqué depuis le Run ou le produit. Elle
+ne contient ni stock de produits finis, ni palettisation, ni expédition, ni CAPA
+complète, ni GMAO, mais l'architecture est conçue pour les accueillir sans refonte.
+
+Les modules produits finis, palettes et expédition ne sont pas construits ici, mais
+l'architecture est conçue pour les accueillir sans refonte (Phase 5).
 
 L'interface utilisateur est intégralement en français. Le code, les noms de tables et
 les commentaires techniques sont en anglais.
@@ -137,6 +143,10 @@ dans la table `schema_migrations`.
 | `006_production_views.sql` | Vues de bilan matière, de rendement et d'usage des lots |
 | `007_workforce.sql` | Employées, affectations de personnel, tours de contrôle, contrôles de ligne, standards de cadence, contrôles de cadence, catégories et événements d'arrêt |
 | `008_workforce_views.sql` | Vues de couverture, de cadence de ligne, de résumé de tour, d'arrêts et d'historique de cadence |
+| `009_filling.sql` | Milieux de couverture, spécifications de remplissage, opérations de remplissage, contrôles poids, pesées individuelles |
+| `010_seaming_marking.sql` | Équipements, opérations de sertissage, paramètres et spécifications de sertissage, contrôles et mesures de sertissage, marquage et sa vérification |
+| `011_sterilization.sql` | Programmes et cycles de stérilisation, chargements de cycle, mesures de procédé, contrôles CCP, déviations, actions correctives, refroidissement, retenues de Run |
+| `012_process_views.sql` | Vues de résumé de contrôle poids, de résultat de sertissage, de statut CCP et de cycle de stérilisation, et de retenues actives |
 
 Pour ajouter une évolution du schéma : créer un nouveau fichier `005_....sql`.
 Ne jamais modifier une migration déjà appliquée en production.
@@ -167,7 +177,16 @@ Il crée :
   un standard de cadence (SPSA-HO, grattage + remplissage, boîtes, 120 / h) ;
 - sur le Run de démonstration : quatre employées affectées et présentes sur L1, un tour
   de contrôle clôturé avec trois contrôles de cadence individuels (couverture 3 / 4), et
-  un arrêt PANNE_MACHINE de 27 minutes sur L2.
+  un arrêt PANNE_MACHINE de 27 minutes sur L2 ;
+- deux autoclaves, deux sertisseuses, une remplisseuse, cinq milieux de couverture,
+  quatre paramètres de sertissage, cinq points de vérification de marquage, une
+  spécification de remplissage (SPSA-HO, 120 g / 130 g) et un programme de
+  stérilisation (SPSA-HO) ;
+- sur le même Run : une opération de remplissage avec un contrôle poids à 20 boîtes
+  (2 sous-poids, 17 conformes, 1 surpoids), une opération de sertissage avec un contrôle
+  non conforme (épaisseur hors spécification, mesure conservée), un marquage vérifié, un
+  cycle de stérilisation complet (mesures, décision CCP libérée, clôturé TERMINE) suivi
+  d'un refroidissement, et une déviation avec son action corrective.
 
 > La répartition entrepôt / sous-traitant des partenaires externes est une hypothèse
 > de démonstration. Elle est portée par la configuration des emplacements et doit être
@@ -196,9 +215,9 @@ autorisé.
 | Rôle | Droits |
 |---|---|
 | **ADMIN** | Toutes les permissions, dont l'ajustement de stock et l'annulation de mouvement |
-| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, consultation |
+| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, contrôles poids, contrôles sertissage, vérification du marquage, **validation CCP**, gestion des déviations, consultation |
 | **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, consultation |
-| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, consultation |
+| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, consultation |
 | **LECTURE** | Consultation |
 
 Le rôle STOCK ne peut **jamais** libérer un blocage qualité, ni ajuster le stock, ni
@@ -214,6 +233,16 @@ leur création et leur (dés)activation restent réservées à l'ADMIN
 (`masterdata:write`), au même titre que produits, lignes et motifs de perte. Le rôle
 PRODUCTION gère l'affectation du personnel au Run, mène les tours de contrôle, saisit
 la cadence et déclare les arrêts, mais ne crée pas ces données de référence.
+
+De la même façon, équipements, milieux de couverture, spécifications de remplissage et
+de sertissage, programmes de stérilisation et points de vérification de marquage sont
+des données de référence réservées à l'ADMIN. PRODUCTION exécute les opérations de
+remplissage, de sertissage et de stérilisation et y saisit les mesures de procédé ;
+QUALITE contrôle ce qui en sort — poids, sertissage, marquage — et valide seule les
+décisions CCP (`ccp:validate`) : un utilisateur PRODUCTION ne peut jamais, à lui seul,
+libérer un cycle dont la donnée CCP est défavorable. La retenue d'un Run consécutive à
+une décision CCP « retenu » se libère avec `quality:release`, la même permission que la
+libération d'un lot en Phase 1.
 
 ---
 
@@ -240,6 +269,11 @@ série car ils partagent cette base.
 | `tests/cadence.test.ts` | Formule de cadence individuelle, durées de mesure différentes, absence de standard, correspondance déterministe par spécificité, non-réécriture de l'historique lors d'un changement de standard, doublon même ligne rejeté, doublon ligne différente avec confirmation, couverture complète / incomplète / nulle (0/12 sans division par zéro), ligne inactive refusée, correction par annulation-remplacement, clôture d'un tour incomplet |
 | `tests/downtime.test.ts` | Démarrage d'un arrêt, clôture avec durée calculée automatiquement (27 min = 1620 s), fin antérieure au début refusée, portée Run et portée ligne, historique conservé après clôture, double clôture refusée |
 | `tests/cadenceAcceptance.test.ts` | Les dix scénarios d'acceptation de la Phase 3, via l'API HTTP |
+| `tests/filling.test.ts` | Remplissage toujours rattaché à un Run, classification automatique des pesées (sous-poids / conforme / surpoids), contrôle à 20 échantillons, contrôle incomplet, non-réécriture de la spécification historique, doublon de boîte rejeté, correction par annulation-remplacement |
+| `tests/seaming.test.ts` | Opération rattachée au Run, mesure comparée à la spécification correspondante, mesure hors spécification rendant le contrôle non conforme, historique de spécification préservé, correction par annulation-remplacement |
+| `tests/sterilization.test.ts` | Cycle rattaché à un autoclave et à un Run via son chargement, programme obligatoire, base refusant qu'un cycle se termine avant son début, clôture refusée sans donnée CCP (`A_VERIFIER`), clôture normale avec CCP conforme (`TERMINE`), décision CCP retenue ouvrant une retenue de Run et clôturant le cycle `BLOQUE`, déviation visible avec ses actions correctives |
+| `tests/processTraceability.test.ts` | Généalogie complète d'un Run (remplissage, contrôle poids, sertissage, marquage, stérilisation) retrouvée sans liaison manuelle, vue d'ensemble du process |
+| `tests/phase4Acceptance.test.ts` | Les quatre scénarios d'acceptation de la Phase 4 (remplissage/poids, sertissage, stérilisation, traçabilité), via l'API HTTP |
 
 ---
 
@@ -286,6 +320,28 @@ Le détail est documenté dans [`docs/regles-metier.md`](docs/regles-metier.md).
     d'un standard de cadence ne réécrit jamais une performance déjà enregistrée.
 15. **Les arrêts sont séparés des contrôles de cadence.** Une interruption ne modifie
     jamais une quantité mesurée.
+16. **Le statut d'une pesée est toujours calculé, jamais saisi.** Sous-poids, conforme ou
+    surpoids découlent directement du poids mesuré et des limites en vigueur au moment
+    du contrôle.
+17. **Un contrôle poids sans standard configuré ne peut pas s'ouvrir.** Il n'existe
+    aucune limite par défaut : sans spécification active pour le produit, il n'y a rien
+    à comparer.
+18. **Le résultat d'un contrôle sertissage n'est jamais stocké** : il est toujours lu en
+    direct depuis ses mesures, exactement comme la couverture d'un contrôle de cadence
+    en Phase 3.
+19. **Une décision CCP est distincte d'une mesure de procédé.** Température, pression et
+    F0 sont des faits mesurés ; la décision CCP (conforme, retenu, à vérifier) est un
+    jugement de sécurité alimentaire, réservé à la Qualité.
+20. **Un cycle de stérilisation ne se termine jamais silencieusement.** Sans donnée CCP,
+    il passe « à vérifier » ; si la dernière décision CCP est « retenu », il se termine
+    « bloqué » — le procédé peut être physiquement terminé sans que le matériel soit
+    libéré.
+21. **Statut du procédé et disposition qualité ne sont jamais confondus.** Un cycle
+    « terminé » peut correspondre à un Run encore retenu par une décision CCP
+    défavorable.
+22. **Toute mesure de procédé Phase 4 (pesée, mesure de sertissage, mesure de
+    stérilisation, décision CCP) suit la même politique de correction qu'en Phase 2 et
+    3** : annulation puis remplacement, jamais une réécriture.
 
 ---
 
@@ -334,6 +390,25 @@ Toutes les routes sont préfixées par `/api` et exigent une session, sauf
 | `POST` | `/api/production/runs/:id/tours-controle`, `/api/cadence/control-rounds/:id/cloture`, `/annulation`, `/lignes`, `/api/cadence/line-controls/:id/cloture`, `/employes`, `/api/cadence/controles/:id/correction` | `cadence:control` |
 | `GET` | `/api/downtime` | `production:read` |
 | `POST` | `/api/production/runs/:id/arrets`, `/api/downtime/:id/cloture` | `downtime:record` |
+| `GET` | `/api/equipment`, `/api/filling-media`, `/api/filling-specs`, `/api/seaming-parameters`, `/api/seaming-specifications`, `/api/sterilization-programs`, `/api/marking-verification-items` | `masterdata:read` |
+| `POST` | mêmes ressources | `masterdata:write` |
+| `GET` | `/api/filling-operations`, `/api/filling-weight-controls`, `/api/filling-weight-controls/:id` | `production:read` |
+| `POST` | `/api/production/runs/:id/remplissage`, `/api/filling-operations/:id/cloture`, `/annulation` | `filling:manage` |
+| `POST` | `/api/filling-operations/:id/controles-poids`, `/api/filling-weight-controls/:id/echantillons`, `/api/filling-weight-samples/:id/correction` | `weight:control` |
+| `GET` | `/api/seaming-operations`, `/api/seaming-controls`, `/api/seaming-controls/:id` | `production:read` |
+| `POST` | `/api/production/runs/:id/sertissage`, `/api/seaming-operations/:id/cloture` | `seaming:operate` |
+| `POST` | `/api/seaming-operations/:id/controles`, `/api/seaming-controls/:id/mesures`, `/api/seaming-measurements/:id/correction` | `seaming:control` |
+| `GET` | `/api/marking-events` | `production:read` |
+| `POST` | `/api/production/runs/:id/marquage` | `marking:record` |
+| `POST` | `/api/marking-events/:id/verification` | `marking:verify` |
+| `GET` | `/api/sterilization-cycles`, `/api/sterilization-cycles/:id` | `production:read` |
+| `POST` | `/api/sterilization-cycles`, `/chargements`, `/demarrage`, `/mesures`, `/cloture`, `/annulation`, `/refroidissement`, `/api/sterilization-measurements/:id/correction`, `/api/cooling-events/:id/cloture`, `/mesures` | `sterilization:operate` |
+| `POST` | `/api/sterilization-cycles/:id/ccp`, `/api/ccp-controls/:id/correction` | `ccp:validate` |
+| `GET` | `/api/deviations`, `/api/deviations/:id` | `production:read` |
+| `POST` | `/api/deviations`, `/api/deviations/:id/statut`, `/actions`, `/api/corrective-actions/:id/cloture` | `deviation:manage` |
+| `GET` | `/api/production-run-holds` | `production:read` |
+| `POST` | `/api/production-run-holds/:id/levee` | `quality:release` |
+| `GET` | `/api/production/runs/:id/vue-process`, `/genealogie` | `production:read` |
 
 Les erreurs renvoient `{ "code": "...", "message": "..." }`, le message étant
 directement affichable à l'opérateur.
@@ -353,15 +428,24 @@ directement affichable à l'opérateur.
 | Situation du lot | **Page unique de traçabilité** : identité, stock, réceptions, mouvements, contrôles, décisions, blocages, sous-traitance, **Runs consommateurs**, lots enfants |
 | Runs de production | Liste des ordres de production : entrée MP, sortie utile, rendement, écart, statut |
 | Nouveau Run | Contexte de production (date, produit, format, pièces/boîte, lignes actives, responsable) — sans sélection de matière première |
-| Situation du Run | **Page unique de production**, en onglets : vue générale, lots consommés, lignes, sorties, pertes, bilan matière, traçabilité, **contrôles horaires, cadence, arrêts** ; personnel du Run affecté et présence directement sur l'onglet lignes |
+| Situation du Run | **Page unique de production**, en onglets : vue générale (avec **vue du process**), lots consommés, lignes, sorties, pertes, bilan matière, traçabilité, contrôles horaires, cadence, arrêts, **remplissage, sertissage, stérilisation** ; personnel du Run affecté et présence directement sur l'onglet lignes |
 | Contrôles horaires | Liste filtrable de tous les tours de contrôle |
 | Tour de contrôle | **Écran de saisie terrain** : sélection de la ligne, puis uniquement matricule + quantité par employée — produit, espèce, activité, nom, standard et horodatage sont déjà connus ; le focus revient automatiquement sur la prochaine employée à contrôler |
 | Cadence | Historique filtrable des mesures de cadence individuelles |
 | Arrêts | Liste des interruptions de production, avec durée en direct pour un arrêt encore ouvert et action de clôture |
+| Remplissage | Opérations de remplissage actives, avec accès direct à un **nouveau contrôle poids** |
+| Contrôles poids | Historique filtrable des contrôles poids |
+| Contrôle poids | **Écran de saisie rapide** (tablette) : une case par boîte, statut évalué automatiquement, focus déplacé sur la prochaine case vide après chaque saisie valide ; anomalies visibles, échantillons conformes discrets |
+| Sertissage | Opérations de sertissage actives, avec accès direct à un nouveau contrôle |
+| Contrôles sertissage | Historique filtrable des contrôles sertissage, avec saisie des mesures par paramètre configuré |
+| Stérilisation | Cycles de stérilisation, cycles actifs repérables en un coup d'œil |
+| Cycle de stérilisation | **Écran du cycle actif** : temps écoulé en direct (jamais persisté), mesures de procédé (saisie manuelle explicitement distinguée d'une donnée équipement), décisions CCP, refroidissement, déviations liées |
+| CCP | Vue par cycle des dernières décisions CCP, pour repérer ce qui reste à vérifier |
+| Déviations | Liste et création de déviations de procédé, avec leurs actions correctives |
 | Sous-traitance | Envois, résultats multiples et bilan matière |
 | Qualité | Contrôles et lots bloqués |
 | Traçabilité | Recherche globale menant à la situation du lot |
-| Paramètres | Données de référence, **employées, standards de cadence, catégories d'arrêt**, et utilisateurs |
+| Paramètres | Données de référence — **employées, standards de cadence, catégories d'arrêt, équipements, milieux de couverture, spécifications de remplissage et de sertissage, programmes de stérilisation, points de vérification de marquage** — et utilisateurs |
 
 ---
 

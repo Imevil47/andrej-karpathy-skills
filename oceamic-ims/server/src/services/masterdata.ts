@@ -204,7 +204,14 @@ export type ActivationTarget =
   | 'production_loss_reasons'
   | 'employees'
   | 'cadence_standards'
-  | 'downtime_categories';
+  | 'downtime_categories'
+  | 'equipment'
+  | 'filling_media'
+  | 'product_filling_specs'
+  | 'seaming_parameters'
+  | 'seaming_specifications'
+  | 'sterilization_programs'
+  | 'marking_verification_items';
 
 // The table name never comes from the request: it is looked up in this map,
 // keyed by a validated union.
@@ -220,6 +227,13 @@ const ACTIVATION_TABLES: Readonly<Record<ActivationTarget, string>> = {
   employees: 'employees',
   cadence_standards: 'cadence_standards',
   downtime_categories: 'downtime_categories',
+  equipment: 'equipment',
+  filling_media: 'filling_media',
+  product_filling_specs: 'product_filling_specs',
+  seaming_parameters: 'seaming_parameters',
+  seaming_specifications: 'seaming_specifications',
+  sterilization_programs: 'sterilization_programs',
+  marking_verification_items: 'marking_verification_items',
 };
 
 export async function setActivation(
@@ -230,9 +244,16 @@ export async function setActivation(
   actorId: string,
 ): Promise<void> {
   const table = ACTIVATION_TABLES[target];
-  // Every activatable table has a "code" column except employees, which are
-  // identified by employee_number instead.
-  const codeColumn = target === 'employees' ? 'employee_number' : 'code';
+  // Every activatable table has a "code" column except employees (identified
+  // by employee_number instead) and the two Phase 4 specification tables,
+  // which have no natural business code (they are scoped by product/format,
+  // not named) and fall back to their id for the audit context.
+  const codeColumn =
+    target === 'employees'
+      ? 'employee_number'
+      : target === 'product_filling_specs' || target === 'seaming_specifications'
+        ? 'id'
+        : 'code';
   await withTransaction(pool, async (client) => {
     const updated = await client.query<{ code: string; is_active: boolean }>(
       `UPDATE ${table} SET is_active = $2, updated_at = now()
@@ -792,6 +813,522 @@ export async function createCadenceStandard(
       userId: actorId,
       action: 'CADENCE_STANDARD_CREATION',
       entityType: 'cadence_standards',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+// --- Phase 4: equipment, filling, seaming and marking master data ---------
+
+export type EquipmentRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  equipmentType: string;
+  locationId: string | null;
+  locationCode: string | null;
+  isActive: boolean;
+}>;
+
+export async function listEquipment(
+  pool: pg.Pool,
+  includeInactive: boolean,
+  equipmentType: string | null,
+): Promise<readonly EquipmentRow[]> {
+  const result = await pool.query<EquipmentRow>(
+    `SELECT e.id AS "id", e.code AS "code", e.name AS "name",
+            e.equipment_type AS "equipmentType", e.location_id AS "locationId",
+            l.code AS "locationCode", e.is_active AS "isActive"
+       FROM equipment e
+       LEFT JOIN locations l ON l.id = e.location_id
+      WHERE ($1::boolean IS TRUE OR e.is_active IS TRUE)
+        AND ($2::text IS NULL OR e.equipment_type = $2)
+      ORDER BY e.equipment_type, e.code`,
+    [includeInactive, equipmentType],
+  );
+  return result.rows;
+}
+
+export type EquipmentInput = Readonly<{
+  code: string;
+  name: string;
+  equipmentType: string;
+  locationId: string | null;
+}>;
+
+export async function createEquipment(pool: pg.Pool, input: EquipmentInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM equipment WHERE code = $1', [input.code]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`L'équipement ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO equipment (code, name, equipment_type, location_id)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [input.code.toUpperCase(), input.name, input.equipmentType, input.locationId],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("L'équipement n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'equipment',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type FillingMediumRow = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
+
+export async function listFillingMedia(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly FillingMediumRow[]> {
+  const result = await pool.query<FillingMediumRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", is_active AS "isActive"
+       FROM filling_media
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY name`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type FillingMediumInput = Readonly<{ code: string; name: string }>;
+
+export async function createFillingMedium(
+  pool: pg.Pool,
+  input: FillingMediumInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM filling_media WHERE code = $1', [
+      input.code,
+    ]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le milieu de couverture ${input.code} existe déjà.`, {
+        code: input.code,
+      });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO filling_media (code, name) VALUES ($1, $2) RETURNING id',
+      [input.code.toUpperCase(), input.name],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le milieu de couverture n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'filling_media',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type FillingSpecRow = Readonly<{
+  id: string;
+  productId: string;
+  productCode: string;
+  format: string | null;
+  piecesPerCan: number | null;
+  targetNetWeightG: string | null;
+  minWeightG: string;
+  maxWeightG: string;
+  targetFishWeightG: string | null;
+  targetMediumWeightG: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export async function listFillingSpecs(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly FillingSpecRow[]> {
+  const result = await pool.query<FillingSpecRow>(
+    `SELECT s.id AS "id", s.product_id AS "productId", p.code AS "productCode",
+            s.format AS "format", s.pieces_per_can AS "piecesPerCan",
+            s.target_net_weight_g::text AS "targetNetWeightG",
+            s.min_weight_g::text AS "minWeightG", s.max_weight_g::text AS "maxWeightG",
+            s.target_fish_weight_g::text AS "targetFishWeightG",
+            s.target_medium_weight_g::text AS "targetMediumWeightG",
+            s.valid_from AS "validFrom", s.valid_to AS "validTo", s.is_active AS "isActive"
+       FROM product_filling_specs s
+       JOIN products p ON p.id = s.product_id
+      WHERE ($1::boolean IS TRUE OR s.is_active IS TRUE)
+      ORDER BY p.code, s.format NULLS FIRST`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type FillingSpecInput = Readonly<{
+  productId: string;
+  format: string | null;
+  piecesPerCan: number | null;
+  targetNetWeightG: string | null;
+  minWeightG: string;
+  maxWeightG: string;
+  targetFishWeightG: string | null;
+  targetMediumWeightG: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+}>;
+
+export async function createFillingSpec(pool: pg.Pool, input: FillingSpecInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO product_filling_specs (product_id, format, pieces_per_can, target_net_weight_g,
+                                          min_weight_g, max_weight_g, target_fish_weight_g,
+                                          target_medium_weight_g, valid_from, valid_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [
+        input.productId,
+        input.format,
+        input.piecesPerCan,
+        input.targetNetWeightG,
+        input.minWeightG,
+        input.maxWeightG,
+        input.targetFishWeightG,
+        input.targetMediumWeightG,
+        input.validFrom,
+        input.validTo,
+      ],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("La spécification de remplissage n'a pas pu être créée.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'product_filling_specs',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type SeamingParameterRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  defaultUnit: string;
+  isActive: boolean;
+}>;
+
+export async function listSeamingParameters(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly SeamingParameterRow[]> {
+  const result = await pool.query<SeamingParameterRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", default_unit AS "defaultUnit",
+            is_active AS "isActive"
+       FROM seaming_parameters
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY name`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type SeamingParameterInput = Readonly<{ code: string; name: string; defaultUnit: string }>;
+
+export async function createSeamingParameter(
+  pool: pg.Pool,
+  input: SeamingParameterInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM seaming_parameters WHERE code = $1', [
+      input.code,
+    ]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le paramètre de sertissage ${input.code} existe déjà.`, {
+        code: input.code,
+      });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO seaming_parameters (code, name, default_unit) VALUES ($1, $2, $3) RETURNING id',
+      [input.code.toUpperCase(), input.name, input.defaultUnit],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le paramètre de sertissage n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'seaming_parameters',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type SeamingSpecRow = Readonly<{
+  id: string;
+  seamingParameterId: string;
+  parameterName: string;
+  productId: string | null;
+  productCode: string | null;
+  format: string | null;
+  minValue: string | null;
+  maxValue: string | null;
+  targetValue: string | null;
+  unit: string;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export async function listSeamingSpecs(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly SeamingSpecRow[]> {
+  const result = await pool.query<SeamingSpecRow>(
+    `SELECT s.id AS "id", s.seaming_parameter_id AS "seamingParameterId",
+            sp.name AS "parameterName", s.product_id AS "productId", p.code AS "productCode",
+            s.format AS "format", s.min_value::text AS "minValue", s.max_value::text AS "maxValue",
+            s.target_value::text AS "targetValue", s.unit AS "unit",
+            s.valid_from AS "validFrom", s.valid_to AS "validTo", s.is_active AS "isActive"
+       FROM seaming_specifications s
+       JOIN seaming_parameters sp ON sp.id = s.seaming_parameter_id
+       LEFT JOIN products p ON p.id = s.product_id
+      WHERE ($1::boolean IS TRUE OR s.is_active IS TRUE)
+      ORDER BY sp.name, p.code NULLS FIRST`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type SeamingSpecInput = Readonly<{
+  seamingParameterId: string;
+  productId: string | null;
+  format: string | null;
+  minValue: string | null;
+  maxValue: string | null;
+  targetValue: string | null;
+  unit: string;
+  validFrom: string | null;
+  validTo: string | null;
+}>;
+
+export async function createSeamingSpec(pool: pg.Pool, input: SeamingSpecInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO seaming_specifications (seaming_parameter_id, product_id, format, min_value,
+                                           max_value, target_value, unit, valid_from, valid_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [
+        input.seamingParameterId,
+        input.productId,
+        input.format,
+        input.minValue,
+        input.maxValue,
+        input.targetValue,
+        input.unit,
+        input.validFrom,
+        input.validTo,
+      ],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("La spécification de sertissage n'a pas pu être créée.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'seaming_specifications',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type SterilizationProgramRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  productId: string | null;
+  productCode: string | null;
+  format: string | null;
+  targetTemperatureC: string | null;
+  targetPressureBar: string | null;
+  targetF0: string | null;
+  minimumF0: string | null;
+  maximumF0: string | null;
+  holdingTimeSeconds: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export async function listSterilizationPrograms(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly SterilizationProgramRow[]> {
+  const result = await pool.query<SterilizationProgramRow>(
+    `SELECT sp.id AS "id", sp.code AS "code", sp.name AS "name", sp.product_id AS "productId",
+            p.code AS "productCode", sp.format AS "format",
+            sp.target_temperature_c::text AS "targetTemperatureC",
+            sp.target_pressure_bar::text AS "targetPressureBar",
+            sp.target_f0::text AS "targetF0", sp.minimum_f0::text AS "minimumF0",
+            sp.maximum_f0::text AS "maximumF0", sp.holding_time_seconds AS "holdingTimeSeconds",
+            sp.valid_from AS "validFrom", sp.valid_to AS "validTo", sp.is_active AS "isActive"
+       FROM sterilization_programs sp
+       LEFT JOIN products p ON p.id = sp.product_id
+      WHERE ($1::boolean IS TRUE OR sp.is_active IS TRUE)
+      ORDER BY sp.code`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type SterilizationProgramInput = Readonly<{
+  code: string;
+  name: string;
+  productId: string | null;
+  format: string | null;
+  targetTemperatureC: string | null;
+  targetPressureBar: string | null;
+  targetF0: string | null;
+  minimumF0: string | null;
+  maximumF0: string | null;
+  holdingTimeSeconds: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+}>;
+
+export async function createSterilizationProgram(
+  pool: pg.Pool,
+  input: SterilizationProgramInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM sterilization_programs WHERE code = $1', [
+      input.code,
+    ]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le programme de stérilisation ${input.code} existe déjà.`, {
+        code: input.code,
+      });
+    }
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO sterilization_programs (code, name, product_id, format, target_temperature_c,
+                                           target_pressure_bar, target_f0, minimum_f0, maximum_f0,
+                                           holding_time_seconds, valid_from, valid_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id`,
+      [
+        input.code.toUpperCase(),
+        input.name,
+        input.productId,
+        input.format,
+        input.targetTemperatureC,
+        input.targetPressureBar,
+        input.targetF0,
+        input.minimumF0,
+        input.maximumF0,
+        input.holdingTimeSeconds,
+        input.validFrom,
+        input.validTo,
+      ],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le programme de stérilisation n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'sterilization_programs',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type MarkingVerificationItemRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+}>;
+
+export async function listMarkingVerificationItems(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly MarkingVerificationItemRow[]> {
+  const result = await pool.query<MarkingVerificationItemRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", is_active AS "isActive"
+       FROM marking_verification_items
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY name`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type MarkingVerificationItemInput = Readonly<{ code: string; name: string }>;
+
+export async function createMarkingVerificationItem(
+  pool: pg.Pool,
+  input: MarkingVerificationItemInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query(
+      'SELECT id FROM marking_verification_items WHERE code = $1',
+      [input.code],
+    );
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le point de vérification ${input.code} existe déjà.`, {
+        code: input.code,
+      });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO marking_verification_items (code, name) VALUES ($1, $2) RETURNING id',
+      [input.code.toUpperCase(), input.name],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le point de vérification n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'marking_verification_items',
       entityId: id,
       oldValues: null,
       newValues: { ...input },

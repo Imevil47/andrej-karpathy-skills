@@ -16,6 +16,10 @@ type HomeSummary = Readonly<{
   controlRoundsToday: number;
   incompleteControlRounds: number;
   activeDowntimeCount: number;
+  weightControlsToCorrect: number;
+  activeSterilizationCycles: number;
+  ccpToVerify: number;
+  openDeviations: number;
   byLocation: readonly Readonly<{
     locationCode: string;
     locationName: string;
@@ -88,6 +92,22 @@ export function Accueil() {
               <div className="titre">Arrêts en cours</div>
               <div className="valeur">{data.activeDowntimeCount}</div>
             </div>
+            <div className="indicateur">
+              <div className="titre">Contrôles poids à corriger</div>
+              <div className="valeur">{data.weightControlsToCorrect}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Cycles de stérilisation en cours</div>
+              <div className="valeur">{data.activeSterilizationCycles}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">CCP à vérifier</div>
+              <div className="valeur">{data.ccpToVerify}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Déviations ouvertes</div>
+              <div className="valeur">{data.openDeviations}</div>
+            </div>
           </div>
 
           <Card title="Stock par emplacement">
@@ -130,6 +150,16 @@ export function Accueil() {
               <Link to="/production/controles">
                 <button type="button" className="secondaire">
                   Contrôles horaires
+                </button>
+              </Link>
+              <Link to="/production/sterilisation">
+                <button type="button" className="secondaire">
+                  Stérilisation
+                </button>
+              </Link>
+              <Link to="/qualite/deviations">
+                <button type="button" className="secondaire">
+                  Déviations
                 </button>
               </Link>
               <Link to="/tracabilite">

@@ -8,13 +8,18 @@ import { AppError } from './errors.ts';
 import { loadSessionUser } from './http/context.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerCadenceRoutes } from './routes/cadence.ts';
+import { registerDeviationRoutes } from './routes/deviations.ts';
 import { registerDowntimeRoutes } from './routes/downtime.ts';
+import { registerFillingRoutes } from './routes/filling.ts';
 import { registerHomeRoutes } from './routes/home.ts';
 import { registerLotRoutes } from './routes/lots.ts';
 import { registerMasterDataRoutes } from './routes/masterdata.ts';
+import { registerProcessRoutes } from './routes/process.ts';
 import { registerProductionRoutes } from './routes/production.ts';
 import { registerQualityRoutes } from './routes/quality.ts';
 import { registerReceptionRoutes } from './routes/receptions.ts';
+import { registerSeamingRoutes } from './routes/seaming.ts';
+import { registerSterilizationRoutes } from './routes/sterilization.ts';
 import { registerStockRoutes } from './routes/stock.ts';
 import { registerSubcontractingRoutes } from './routes/subcontracting.ts';
 import { registerTraceabilityRoutes } from './routes/traceability.ts';
@@ -80,6 +85,11 @@ export async function buildApp(dependencies: AppDependencies): Promise<FastifyIn
   await registerSubcontractingRoutes(app, dependencies);
   await registerQualityRoutes(app, dependencies);
   await registerTraceabilityRoutes(app, dependencies);
+  await registerFillingRoutes(app, dependencies);
+  await registerSeamingRoutes(app, dependencies);
+  await registerSterilizationRoutes(app, dependencies);
+  await registerDeviationRoutes(app, dependencies);
+  await registerProcessRoutes(app, dependencies);
 
   return app;
 }
