@@ -7,7 +7,8 @@ export type AppErrorCode =
   | 'INTROUVABLE'
   | 'CONFLIT'
   | 'STOCK_INSUFFISANT'
-  | 'LOT_BLOQUE';
+  | 'LOT_BLOQUE'
+  | 'CONFIRMATION_REQUISE';
 
 /**
  * Business error carrying a user-facing French message and the technical
@@ -68,6 +69,19 @@ export function insufficientStockError(
     `Stock insuffisant.\nDisponible : ${formatQuantity(availableKg)} kg\nDemandé : ${formatQuantity(requestedKg)} kg`,
     { ...details, availableKg, requestedKg },
   );
+}
+
+/**
+ * A legitimate but unusual situation the operator must explicitly confirm
+ * before it proceeds (section 22: an employee already recorded on another
+ * line for this round). Never a permanent block: resubmitting with
+ * confirmation set proceeds normally.
+ */
+export function confirmationRequiredError(
+  message: string,
+  details: Readonly<Record<string, unknown>>,
+): AppError {
+  return new AppError('CONFIRMATION_REQUISE', 409, message, details);
 }
 
 export function blockedLotError(lotCode: string, reason: string): AppError {

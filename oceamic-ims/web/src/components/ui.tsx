@@ -16,7 +16,7 @@ export function PageHeader({
   actions,
 }: {
   title: string;
-  subtitle: string | null;
+  subtitle: ReactNode;
   actions: ReactNode;
 }) {
   return (
@@ -72,6 +72,10 @@ const BADGE_TONES: Readonly<Record<string, string>> = {
   NON_CONFORME: 'alerte',
   REJETE: 'alerte',
   PERTE: 'alerte',
+  // Phase 3: workforce cadence
+  COMPLET: 'succes',
+  INCOMPLET: 'avertissement',
+  SOUS_STANDARD: 'alerte',
 };
 
 export function Badge({ value }: { value: string | null }) {

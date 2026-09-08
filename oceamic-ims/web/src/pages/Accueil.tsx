@@ -13,6 +13,9 @@ type HomeSummary = Readonly<{
   runsInProgress: number;
   consumedTodayKg: string;
   runsWithDifferenceToJustify: number;
+  controlRoundsToday: number;
+  incompleteControlRounds: number;
+  activeDowntimeCount: number;
   byLocation: readonly Readonly<{
     locationCode: string;
     locationName: string;
@@ -73,6 +76,18 @@ export function Accueil() {
               <div className="titre">Écarts matière à justifier</div>
               <div className="valeur">{data.runsWithDifferenceToJustify}</div>
             </div>
+            <div className="indicateur">
+              <div className="titre">Tours de contrôle aujourd'hui</div>
+              <div className="valeur">{data.controlRoundsToday}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Contrôles incomplets</div>
+              <div className="valeur">{data.incompleteControlRounds}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Arrêts en cours</div>
+              <div className="valeur">{data.activeDowntimeCount}</div>
+            </div>
           </div>
 
           <Card title="Stock par emplacement">
@@ -110,6 +125,11 @@ export function Accueil() {
               <Link to="/production/nouveau">
                 <button type="button" className="secondaire">
                   Nouveau Run
+                </button>
+              </Link>
+              <Link to="/production/controles">
+                <button type="button" className="secondaire">
+                  Contrôles horaires
                 </button>
               </Link>
               <Link to="/tracabilite">

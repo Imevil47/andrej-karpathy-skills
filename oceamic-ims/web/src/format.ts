@@ -31,6 +31,20 @@ export function nowLocalInput(): string {
   return new Date(now.getTime() - offset).toISOString().slice(0, 16);
 }
 
+/** Formats a duration in seconds the French way: "27 min" or "1 h 05". */
+export function formatDuration(totalSeconds: number | null): string {
+  if (totalSeconds === null) {
+    return '-';
+  }
+  const minutes = Math.round(totalSeconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours === 0) {
+    return `${minutes} min`;
+  }
+  return `${hours} h ${remainingMinutes.toString().padStart(2, '0')}`;
+}
+
 const LABELS: Readonly<Record<string, string>> = {
   INTERNE: 'Interne',
   EXTERNE: 'Externe',
@@ -97,6 +111,22 @@ const LABELS: Readonly<Record<string, string>> = {
   STOCK: 'Stock',
   PRODUCTION: 'Production',
   LECTURE: 'Lecture seule',
+  // Phase 3: workforce cadence
+  SOUS_STANDARD: 'Sous standard',
+  COMPLET: 'Contrôle complet',
+  INCOMPLET: 'Contrôle incomplet',
+  BOITES: 'Boîtes',
+  PIECES: 'Pièces',
+  KG: 'Kg',
+  UNITES: 'Unités',
+  PANNE_MACHINE: 'Panne machine',
+  MANQUE_MATIERE: 'Manque de matière',
+  MANQUE_PERSONNEL: 'Manque de personnel',
+  NETTOYAGE: 'Nettoyage',
+  CHANGEMENT_PRODUIT: 'Changement de produit',
+  REGLAGE: 'Réglage',
+  ATTENTE_QUALITE: 'Attente qualité',
+  COUPURE: 'Coupure électrique',
 };
 
 export function label(code: string | null): string {

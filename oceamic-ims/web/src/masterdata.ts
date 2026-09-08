@@ -100,3 +100,44 @@ export function useProductionStages() {
 export function useLossReasons() {
   return useResource<readonly LossReason[]>('/api/production-loss-reasons');
 }
+
+// --- Phase 3: workforce cadence ---------------------------------------------
+
+export type Employee = Readonly<{
+  id: string;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  department: string | null;
+  isActive: boolean;
+}>;
+
+export type DowntimeCategory = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
+
+export type CadenceStandard = Readonly<{
+  id: string;
+  speciesId: string | null;
+  speciesCode: string | null;
+  productId: string | null;
+  productCode: string | null;
+  activityType: string;
+  sizeGrade: string | null;
+  format: string | null;
+  piecesPerCan: number | null;
+  measurementUnit: string;
+  standardCadence: string;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export function useEmployees() {
+  return useResource<readonly Employee[]>('/api/employees');
+}
+export function useDowntimeCategories() {
+  return useResource<readonly DowntimeCategory[]>('/api/downtime-categories');
+}
+export function useCadenceStandards() {
+  return useResource<readonly CadenceStandard[]>('/api/cadence-standards');
+}

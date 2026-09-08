@@ -3,6 +3,9 @@ import { apiPost } from '../api';
 import { Badge, Card, DataTable, Field, Message, PageHeader } from '../components/ui';
 import { label } from '../format';
 import {
+  useCadenceStandards,
+  useDowntimeCategories,
+  useEmployees,
   useLocations,
   useLossReasons,
   useProductionLines,
@@ -35,6 +38,9 @@ export function Parametres() {
   const products = useProducts();
   const productionLines = useProductionLines();
   const lossReasons = useLossReasons();
+  const employees = useEmployees();
+  const cadenceStandards = useCadenceStandards();
+  const downtimeCategories = useDowntimeCategories();
   const users = useResource<readonly UserRow[]>('/api/users');
 
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +72,21 @@ export function Parametres() {
     code: '',
     name: '',
     outputType: 'PERTE_REELLE',
+  });
+  const [employeeForm, setEmployeeForm] = useState({
+    employeeNumber: '',
+    firstName: '',
+    lastName: '',
+  });
+  const [downtimeCategoryForm, setDowntimeCategoryForm] = useState({ code: '', name: '' });
+  const [standardForm, setStandardForm] = useState({
+    speciesId: '',
+    productId: '',
+    activityType: 'GRATTAGE_REMPLISSAGE',
+    format: '',
+    piecesPerCan: '',
+    measurementUnit: 'BOITES',
+    standardCadence: '',
   });
 
   const run = async (action: () => Promise<unknown>, message: string, reload: () => void) => {
@@ -641,6 +662,246 @@ export function Parametres() {
               <td>{row.code}</td>
               <td>{row.name}</td>
               <td>{label(row.outputType)}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Employées">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/employees', employeeForm),
+              'Employée créée.',
+              employees.reload,
+            ).then(() =>
+              setEmployeeForm({ employeeNumber: '', firstName: '', lastName: '' }),
+            );
+          }}
+        >
+          <Field label="Matricule" hint={null}>
+            <input
+              value={employeeForm.employeeNumber}
+              onChange={(event) =>
+                setEmployeeForm((f) => ({ ...f, employeeNumber: event.target.value }))
+              }
+              required
+            />
+          </Field>
+          <Field label="Prénom" hint={null}>
+            <input
+              value={employeeForm.firstName}
+              onChange={(event) => setEmployeeForm((f) => ({ ...f, firstName: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={employeeForm.lastName}
+              onChange={(event) => setEmployeeForm((f) => ({ ...f, lastName: event.target.value }))}
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'matricule', label: 'Matricule', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'actif', label: 'Active', numeric: false },
+          ]}
+          isEmpty={(employees.data ?? []).length === 0}
+          emptyText="Aucune employée."
+        >
+          {(employees.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.employeeNumber}</td>
+              <td>{row.displayName}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Standards de cadence">
+        <p style={{ color: 'var(--texte-doux)', marginTop: 0 }}>
+          Le standard le plus spécifique s'applique : produit avant espèce, avant format, avant
+          pièces par boîte. Laisser un champ vide pour qu'il s'applique à toutes les valeurs.
+        </p>
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/cadence-standards', {
+                  speciesId: standardForm.speciesId === '' ? null : standardForm.speciesId,
+                  productId: standardForm.productId === '' ? null : standardForm.productId,
+                  activityType: standardForm.activityType,
+                  format: standardForm.format === '' ? null : standardForm.format,
+                  piecesPerCan:
+                    standardForm.piecesPerCan === '' ? null : Number(standardForm.piecesPerCan),
+                  measurementUnit: standardForm.measurementUnit,
+                  standardCadence: standardForm.standardCadence,
+                  validFrom: null,
+                  validTo: null,
+                }),
+              'Standard créé.',
+              cadenceStandards.reload,
+            );
+          }}
+        >
+          <Field label="Produit" hint={null}>
+            <select
+              value={standardForm.productId}
+              onChange={(event) => setStandardForm((f) => ({ ...f, productId: event.target.value }))}
+            >
+              <option value="">Tous les produits</option>
+              {(products.data ?? []).map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.code}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Espèce" hint={null}>
+            <select
+              value={standardForm.speciesId}
+              onChange={(event) => setStandardForm((f) => ({ ...f, speciesId: event.target.value }))}
+            >
+              <option value="">Toutes les espèces</option>
+              {(species.data ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Activité" hint={null}>
+            <select
+              value={standardForm.activityType}
+              onChange={(event) =>
+                setStandardForm((f) => ({ ...f, activityType: event.target.value }))
+              }
+            >
+              <option value="GRATTAGE">Grattage</option>
+              <option value="REMPLISSAGE">Remplissage</option>
+              <option value="GRATTAGE_REMPLISSAGE">Grattage + remplissage</option>
+              <option value="TRAITEMENT">Traitement</option>
+              <option value="AUTRE">Autre</option>
+            </select>
+          </Field>
+          <Field label="Unité de mesure" hint={null}>
+            <select
+              value={standardForm.measurementUnit}
+              onChange={(event) =>
+                setStandardForm((f) => ({ ...f, measurementUnit: event.target.value }))
+              }
+            >
+              <option value="BOITES">Boîtes</option>
+              <option value="PIECES">Pièces</option>
+              <option value="KG">Kg</option>
+              <option value="UNITES">Unités</option>
+            </select>
+          </Field>
+          <Field label="Cadence standard (par heure)" hint={null}>
+            <input
+              value={standardForm.standardCadence}
+              onChange={(event) =>
+                setStandardForm((f) => ({ ...f, standardCadence: event.target.value }))
+              }
+              inputMode="decimal"
+              placeholder="120"
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'produit', label: 'Produit', numeric: false },
+            { key: 'espece', label: 'Espèce', numeric: false },
+            { key: 'activite', label: 'Activité', numeric: false },
+            { key: 'unite', label: 'Unité', numeric: false },
+            { key: 'cadence', label: 'Cadence (par h)', numeric: true },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(cadenceStandards.data ?? []).length === 0}
+          emptyText="Aucun standard de cadence."
+        >
+          {(cadenceStandards.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.productCode ?? '-'}</td>
+              <td>{row.speciesCode ?? '-'}</td>
+              <td>{label(row.activityType)}</td>
+              <td>{label(row.measurementUnit)}</td>
+              <td className="nombre">{row.standardCadence}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Catégories d'arrêt">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/downtime-categories', downtimeCategoryForm),
+              'Catégorie créée.',
+              downtimeCategories.reload,
+            ).then(() => setDowntimeCategoryForm({ code: '', name: '' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={downtimeCategoryForm.code}
+              onChange={(event) =>
+                setDowntimeCategoryForm((f) => ({ ...f, code: event.target.value }))
+              }
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={downtimeCategoryForm.name}
+              onChange={(event) =>
+                setDowntimeCategoryForm((f) => ({ ...f, name: event.target.value }))
+              }
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(downtimeCategories.data ?? []).length === 0}
+          emptyText="Aucune catégorie."
+        >
+          {(downtimeCategories.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
               <td>{row.isActive ? 'Oui' : 'Non'}</td>
             </tr>
           ))}

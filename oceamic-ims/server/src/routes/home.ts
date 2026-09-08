@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppDependencies } from '../app.ts';
 import { requirePermission } from '../http/context.ts';
-import { countReceptionsToday } from '../services/receptions.ts';
+import { cadenceHomeSummary } from '../services/cadenceQueries.ts';
 import { productionHomeSummary } from '../services/productionQueries.ts';
+import { countReceptionsToday } from '../services/receptions.ts';
 import { stockSummary } from '../services/stockQueries.ts';
 
 /**
@@ -18,15 +19,17 @@ export async function registerHomeRoutes(
   app.get('/api/home/summary', async (request) => {
     requirePermission(request, 'stock:read');
 
-    const [summary, receptionsToday, blocked, subcontracting, production] = await Promise.all([
-      stockSummary(pool),
-      countReceptionsToday(pool),
-      pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM blocked_lots'),
-      pool.query<{ count: string }>(
-        "SELECT COUNT(*)::text AS count FROM subcontracting_operations WHERE status = 'EN_COURS'",
-      ),
-      productionHomeSummary(pool),
-    ]);
+    const [summary, receptionsToday, blocked, subcontracting, production, cadence] =
+      await Promise.all([
+        stockSummary(pool),
+        countReceptionsToday(pool),
+        pool.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM blocked_lots'),
+        pool.query<{ count: string }>(
+          "SELECT COUNT(*)::text AS count FROM subcontracting_operations WHERE status = 'EN_COURS'",
+        ),
+        productionHomeSummary(pool),
+        cadenceHomeSummary(pool),
+      ]);
 
     return {
       internalStockKg: summary.internalKg,
@@ -38,6 +41,9 @@ export async function registerHomeRoutes(
       runsInProgress: production.runsInProgress,
       consumedTodayKg: production.consumedTodayKg,
       runsWithDifferenceToJustify: production.runsWithDifferenceToJustify,
+      controlRoundsToday: cadence.controlRoundsToday,
+      incompleteControlRounds: cadence.incompleteControlRounds,
+      activeDowntimeCount: cadence.activeDowntimeCount,
       byLocation: summary.byLocation,
     };
   });

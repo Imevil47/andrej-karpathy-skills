@@ -201,7 +201,10 @@ export type ActivationTarget =
   | 'subcontractors'
   | 'products'
   | 'production_lines'
-  | 'production_loss_reasons';
+  | 'production_loss_reasons'
+  | 'employees'
+  | 'cadence_standards'
+  | 'downtime_categories';
 
 // The table name never comes from the request: it is looked up in this map,
 // keyed by a validated union.
@@ -214,6 +217,9 @@ const ACTIVATION_TABLES: Readonly<Record<ActivationTarget, string>> = {
   products: 'products',
   production_lines: 'production_lines',
   production_loss_reasons: 'production_loss_reasons',
+  employees: 'employees',
+  cadence_standards: 'cadence_standards',
+  downtime_categories: 'downtime_categories',
 };
 
 export async function setActivation(
@@ -224,9 +230,13 @@ export async function setActivation(
   actorId: string,
 ): Promise<void> {
   const table = ACTIVATION_TABLES[target];
+  // Every activatable table has a "code" column except employees, which are
+  // identified by employee_number instead.
+  const codeColumn = target === 'employees' ? 'employee_number' : 'code';
   await withTransaction(pool, async (client) => {
     const updated = await client.query<{ code: string; is_active: boolean }>(
-      `UPDATE ${table} SET is_active = $2, updated_at = now() WHERE id = $1 RETURNING code, is_active`,
+      `UPDATE ${table} SET is_active = $2, updated_at = now()
+        WHERE id = $1 RETURNING ${codeColumn} AS code, is_active`,
       [id, isActive],
     );
     const row = updated.rows[0];
@@ -565,6 +575,223 @@ export async function createLossReason(pool: pg.Pool, input: LossReasonInput, ac
       userId: actorId,
       action: 'MASTERDATA_CREATION',
       entityType: 'production_loss_reasons',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+// --- Phase 3: workforce master data -----------------------------------------
+
+export type EmployeeRow = Readonly<{
+  id: string;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  department: string | null;
+  isActive: boolean;
+}>;
+
+export async function listEmployees(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly EmployeeRow[]> {
+  const result = await pool.query<EmployeeRow>(
+    `SELECT id AS "id", employee_number AS "employeeNumber", first_name AS "firstName",
+            last_name AS "lastName",
+            COALESCE(display_name, first_name || ' ' || last_name) AS "displayName",
+            department AS "department", is_active AS "isActive"
+       FROM employees
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY employee_number`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type EmployeeInput = Readonly<{
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  displayName: string | null;
+  department: string | null;
+}>;
+
+export async function createEmployee(pool: pg.Pool, input: EmployeeInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM employees WHERE employee_number = $1', [
+      input.employeeNumber,
+    ]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le matricule ${input.employeeNumber} existe déjà.`, {
+        employeeNumber: input.employeeNumber,
+      });
+    }
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO employees (employee_number, first_name, last_name, display_name, department)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [input.employeeNumber, input.firstName, input.lastName, input.displayName, input.department],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("L'employée n'a pas pu être créée.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'employees',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type DowntimeCategoryRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+}>;
+
+export async function listDowntimeCategories(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly DowntimeCategoryRow[]> {
+  const result = await pool.query<DowntimeCategoryRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", is_active AS "isActive"
+       FROM downtime_categories
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY name`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type DowntimeCategoryInput = Readonly<{ code: string; name: string }>;
+
+export async function createDowntimeCategory(
+  pool: pg.Pool,
+  input: DowntimeCategoryInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM downtime_categories WHERE code = $1', [
+      input.code,
+    ]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`La catégorie ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO downtime_categories (code, name) VALUES ($1, $2) RETURNING id',
+      [input.code.toUpperCase(), input.name],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("La catégorie d'arrêt n'a pas pu être créée.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'downtime_categories',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type CadenceStandardRow = Readonly<{
+  id: string;
+  speciesId: string | null;
+  speciesCode: string | null;
+  productId: string | null;
+  productCode: string | null;
+  activityType: string;
+  sizeGrade: string | null;
+  format: string | null;
+  piecesPerCan: number | null;
+  measurementUnit: string;
+  standardCadence: string;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+}>;
+
+export async function listCadenceStandards(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly CadenceStandardRow[]> {
+  const result = await pool.query<CadenceStandardRow>(
+    `SELECT cs.id AS "id", cs.species_id AS "speciesId", sp.code AS "speciesCode",
+            cs.product_id AS "productId", pr.code AS "productCode",
+            cs.activity_type AS "activityType", cs.size_grade AS "sizeGrade",
+            cs.format AS "format", cs.pieces_per_can AS "piecesPerCan",
+            cs.measurement_unit AS "measurementUnit",
+            cs.standard_cadence::numeric(10,2)::text AS "standardCadence",
+            cs.valid_from AS "validFrom", cs.valid_to AS "validTo", cs.is_active AS "isActive"
+       FROM cadence_standards cs
+       LEFT JOIN species sp ON sp.id = cs.species_id
+       LEFT JOIN products pr ON pr.id = cs.product_id
+      WHERE ($1::boolean IS TRUE OR cs.is_active IS TRUE)
+      ORDER BY cs.activity_type, pr.code NULLS FIRST, sp.code NULLS FIRST`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type CadenceStandardInput = Readonly<{
+  speciesId: string | null;
+  productId: string | null;
+  activityType: string;
+  format: string | null;
+  piecesPerCan: number | null;
+  measurementUnit: string;
+  standardCadence: string;
+  validFrom: string | null;
+  validTo: string | null;
+}>;
+
+export async function createCadenceStandard(
+  pool: pg.Pool,
+  input: CadenceStandardInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO cadence_standards (species_id, product_id, activity_type, format,
+                                      pieces_per_can, measurement_unit, standard_cadence,
+                                      valid_from, valid_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [
+        input.speciesId,
+        input.productId,
+        input.activityType,
+        input.format,
+        input.piecesPerCan,
+        input.measurementUnit,
+        input.standardCadence,
+        input.validFrom,
+        input.validTo,
+      ],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le standard de cadence n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'CADENCE_STANDARD_CREATION',
+      entityType: 'cadence_standards',
       entityId: id,
       oldValues: null,
       newValues: { ...input },

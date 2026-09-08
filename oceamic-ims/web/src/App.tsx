@@ -2,7 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
 import { Layout } from './components/Layout';
 import { Accueil } from './pages/Accueil';
+import { Arrets } from './pages/Arrets';
+import { Cadence } from './pages/Cadence';
 import { Connexion } from './pages/Connexion';
+import { ControleRound } from './pages/ControleRound';
+import { ControlesHoraires } from './pages/ControlesHoraires';
 import { LotSituation } from './pages/LotSituation';
 import { Lots } from './pages/Lots';
 import { Parametres } from './pages/Parametres';
@@ -45,6 +49,10 @@ export function App() {
           <Route path="/lots/:id" element={<LotSituation />} />
           <Route path="/production" element={<ProductionRuns />} />
           <Route path="/production/nouveau" element={<ProductionRunNouveau />} />
+          <Route path="/production/controles" element={<ControlesHoraires />} />
+          <Route path="/production/controles/:id" element={<ControleRound />} />
+          <Route path="/production/cadence" element={<Cadence />} />
+          <Route path="/production/arrets" element={<Arrets />} />
           <Route path="/production/:id" element={<ProductionRunSituation />} />
           <Route path="/sous-traitance" element={<SousTraitance />} />
           <Route path="/sous-traitance/nouvelle" element={<SousTraitanceNouvelle />} />

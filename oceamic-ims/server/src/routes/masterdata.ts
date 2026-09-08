@@ -1,11 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDependencies } from '../app.ts';
-import { LOCATION_TYPES, STOCK_TYPES } from '../domain/types.ts';
+import { CADENCE_ACTIVITIES, LOCATION_TYPES, MEASUREMENT_UNITS, STOCK_TYPES } from '../domain/types.ts';
 import { requirePermission } from '../http/context.ts';
 import { requiredTextSchema, uuidSchema } from '../http/schemas.ts';
 import { listUsers } from '../services/auth.ts';
 import {
+  createCadenceStandard,
+  createDowntimeCategory,
+  createEmployee,
   createLocation,
   createLossReason,
   createProduct,
@@ -14,6 +17,9 @@ import {
   createSubcontractor,
   createSupplier,
   createVessel,
+  listCadenceStandards,
+  listDowntimeCategories,
+  listEmployees,
   listLocations,
   listLossReasons,
   listProductionLines,
@@ -43,6 +49,9 @@ const activationSchema = z.object({
     'products',
     'production_lines',
     'production_loss_reasons',
+    'employees',
+    'cadence_standards',
+    'downtime_categories',
   ]),
   id: uuidSchema,
 });
@@ -217,6 +226,79 @@ export async function registerMasterDataRoutes(
       .parse(request.body);
     reply.status(201);
     return createSubcontractor(pool, input, user.id);
+  });
+
+  app.get('/api/employees', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listEmployees(pool, inactifs);
+  });
+
+  app.post('/api/employees', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        employeeNumber: requiredTextSchema,
+        firstName: requiredTextSchema,
+        lastName: requiredTextSchema,
+        displayName: z
+          .string()
+          .trim()
+          .min(1)
+          .nullish()
+          .transform((value) => value ?? null),
+        department: z
+          .string()
+          .trim()
+          .min(1)
+          .nullish()
+          .transform((value) => value ?? null),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createEmployee(pool, input, user.id);
+  });
+
+  app.get('/api/downtime-categories', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listDowntimeCategories(pool, inactifs);
+  });
+
+  app.post('/api/downtime-categories', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({ code: requiredTextSchema, name: requiredTextSchema })
+      .parse(request.body);
+    reply.status(201);
+    return createDowntimeCategory(pool, input, user.id);
+  });
+
+  app.get('/api/cadence-standards', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listCadenceStandards(pool, inactifs);
+  });
+
+  app.post('/api/cadence-standards', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        speciesId: uuidSchema.nullable(),
+        productId: uuidSchema.nullable(),
+        activityType: z.enum(CADENCE_ACTIVITIES),
+        format: z.string().trim().min(1).nullable(),
+        piecesPerCan: z.number().int().positive().nullable(),
+        measurementUnit: z.enum(MEASUREMENT_UNITS),
+        standardCadence: z
+          .string()
+          .regex(/^\d{1,8}(\.\d{1,2})?$/, 'Cadence standard invalide.'),
+        validFrom: z.iso.date().nullish().transform((value) => value ?? null),
+        validTo: z.iso.date().nullish().transform((value) => value ?? null),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createCadenceStandard(pool, input, user.id);
   });
 
   app.post('/api/masterdata/:target/:id/activation', async (request) => {

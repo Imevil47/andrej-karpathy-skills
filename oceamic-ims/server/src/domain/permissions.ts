@@ -27,6 +27,10 @@ export const PERMISSIONS = [
   'production:material',
   'production:output',
   'production:correct',
+  // Phase 3: workforce cadence
+  'workforce:manage',
+  'cadence:control',
+  'downtime:record',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -63,6 +67,12 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     'production:material',
     'production:output',
     'production:correct',
+    // Manages Run workforce, runs control rounds, enters cadence and records
+    // downtime. Employees, cadence standards and downtime categories stay
+    // administrator-only, through masterdata:write.
+    'workforce:manage',
+    'cadence:control',
+    'downtime:record',
   ],
   LECTURE: READ_ONLY,
 };

@@ -10,9 +10,17 @@ import {
   recordOutput,
   startRun,
 } from '../services/production.ts';
+import {
+  closeLineControl,
+  openLineControl,
+  recordEmployeeCadenceControl,
+  startControlRound,
+} from '../services/cadence.ts';
+import { endDowntime, startDowntime } from '../services/downtime.ts';
 import { registerReception } from '../services/receptions.ts';
 import { transferStock } from '../services/stock.ts';
 import { sendToSubcontractor } from '../services/subcontracting.ts';
+import { assignEmployeeToLine } from '../services/workforce.ts';
 import { createPool, withTransaction } from './pool.ts';
 
 // Development / demonstration data only. Never run against production data:
@@ -117,6 +125,28 @@ const SUPPLIERS: readonly Readonly<{ code: string; name: string; country: string
   { code: 'FRN-002', name: 'Comptoir Maritime Agadir (démo)', country: 'Maroc' },
 ];
 
+// Phase 3: workforce cadence demonstration data.
+const EMPLOYEES: readonly Readonly<{ number: string; first: string; last: string }>[] = [
+  { number: '1001', first: 'Amal', last: 'Benali' },
+  { number: '1002', first: 'Ilham', last: 'Chraibi' },
+  { number: '1003', first: 'Nadia', last: 'Fassi' },
+  { number: '1004', first: 'Samira', last: 'Guerraoui' },
+  { number: '1005', first: 'Zineb', last: 'Haddad' },
+  { number: '1006', first: 'Karima', last: 'Idrissi' },
+];
+
+const DOWNTIME_CATEGORIES: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'PANNE_MACHINE', name: 'Panne machine' },
+  { code: 'MANQUE_MATIERE', name: 'Manque de matière' },
+  { code: 'MANQUE_PERSONNEL', name: 'Manque de personnel' },
+  { code: 'NETTOYAGE', name: 'Nettoyage' },
+  { code: 'CHANGEMENT_PRODUIT', name: 'Changement de produit' },
+  { code: 'REGLAGE', name: 'Réglage' },
+  { code: 'ATTENTE_QUALITE', name: 'Attente qualité' },
+  { code: 'COUPURE', name: 'Coupure électrique' },
+  { code: 'AUTRE', name: 'Autre' },
+];
+
 const VESSELS: readonly Readonly<{ code: string; name: string; registration: string }>[] = [
   { code: 'BAT-001', name: 'Al Amine (démo)', registration: 'AG-1245' },
   { code: 'BAT-002', name: 'Nour El Bahr (démo)', registration: 'AG-3378' },
@@ -196,6 +226,25 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
         );
       }
     }
+    for (const employee of EMPLOYEES) {
+      await client.query(
+        'INSERT INTO employees (employee_number, first_name, last_name) VALUES ($1, $2, $3)',
+        [employee.number, employee.first, employee.last],
+      );
+    }
+    for (const category of DOWNTIME_CATEGORIES) {
+      await client.query('INSERT INTO downtime_categories (code, name) VALUES ($1, $2)', [
+        category.code,
+        category.name,
+      ]);
+    }
+    // A cadence standard for the demo sardine product: 120 boxes/hour on the
+    // combined grattage/remplissage activity, unscoped by format so it applies
+    // regardless of the Run's exact packaging.
+    await client.query(
+      `INSERT INTO cadence_standards (product_id, activity_type, measurement_unit, standard_cadence)
+       VALUES ((SELECT id FROM products WHERE code = 'SPSA-HO'), 'GRATTAGE_REMPLISSAGE', 'BOITES', 120)`,
+    );
   });
 }
 
@@ -471,6 +520,101 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
     },
     productionUserId,
   );
+
+  // 5. Workforce cadence demonstration: four employees assigned to L1 of the
+  //    demo Run, an hourly control round measuring three of them (one
+  //    incomplete coverage, on purpose, so the home page and the round screen
+  //    show something real), and a 27-minute machine breakdown on L2.
+  const runLines = await pool.query<{ id: string; line_code: string }>(
+    `SELECT rl.id, l.code AS line_code
+       FROM production_run_lines rl
+       JOIN production_lines l ON l.id = rl.production_line_id
+      WHERE rl.production_run_id = $1
+      ORDER BY l.code`,
+    [run.id],
+  );
+  const runLineL1 = runLines.rows.find((row) => row.line_code === 'L1')?.id;
+  const runLineL2 = runLines.rows.find((row) => row.line_code === 'L2')?.id;
+  if (!runLineL1 || !runLineL2) {
+    throw new Error('Lignes de Run de démonstration introuvables.');
+  }
+
+  const employees = await pool.query<{ id: string; employee_number: string }>(
+    "SELECT id, employee_number FROM employees WHERE employee_number IN ('1001','1002','1003','1004') ORDER BY employee_number",
+  );
+
+  for (const employee of employees.rows) {
+    await assignEmployeeToLine(
+      pool,
+      run.id,
+      { productionRunLineId: runLineL1, employeeId: employee.id, isPresent: true },
+      productionUserId,
+    );
+  }
+
+  const round = await startControlRound(pool, run.id, 'Tour de démonstration', productionUserId);
+  const lineControl = await openLineControl(pool, round.id, runLineL1, productionUserId);
+
+  // Matricule 1001: 18 boîtes en 10 minutes -> 108/h, soit 90 % du standard
+  // (120/h), exactement l'exemple de référence de la Phase 3.
+  await recordEmployeeCadenceControl(
+    pool,
+    lineControl.id,
+    {
+      employeeNumber: '1001',
+      quantityCompleted: '18',
+      measurementUnit: 'BOITES',
+      measurementDurationSeconds: 600,
+      controlledAt: new Date(),
+      confirmCrossLine: false,
+    },
+    productionUserId,
+  );
+  await recordEmployeeCadenceControl(
+    pool,
+    lineControl.id,
+    {
+      employeeNumber: '1002',
+      quantityCompleted: '20',
+      measurementUnit: 'BOITES',
+      measurementDurationSeconds: 600,
+      controlledAt: new Date(),
+      confirmCrossLine: false,
+    },
+    productionUserId,
+  );
+  await recordEmployeeCadenceControl(
+    pool,
+    lineControl.id,
+    {
+      employeeNumber: '1003',
+      quantityCompleted: '15',
+      measurementUnit: 'BOITES',
+      measurementDurationSeconds: 300,
+      controlledAt: new Date(),
+      confirmCrossLine: false,
+    },
+    productionUserId,
+  );
+  // Matricule 1004 is present but deliberately left uncontrolled: coverage
+  // shows 3 / 4 (75 %) rather than an invented full count.
+  await closeLineControl(pool, lineControl.id, productionUserId);
+
+  const machinePanne = await idOf(pool, 'downtime_categories', 'PANNE_MACHINE');
+  const downtimeStart = new Date(Date.now() - 27 * 60 * 1000);
+  const downtime = await startDowntime(
+    pool,
+    run.id,
+    {
+      productionRunLineId: runLineL2,
+      downtimeCategoryId: machinePanne,
+      reasonText: 'Bourrage convoyeur (démo)',
+      planned: false,
+      startedAt: downtimeStart,
+    },
+    productionUserId,
+  );
+  await endDowntime(pool, downtime.id, new Date(), productionUserId);
 }
 
 export async function seedDatabase(pool: pg.Pool): Promise<boolean> {

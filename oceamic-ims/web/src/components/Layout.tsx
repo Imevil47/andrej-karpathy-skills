@@ -33,6 +33,9 @@ const NAVIGATION: readonly NavigationGroup[] = [
     entries: [
       { to: '/production', label: 'Runs de production', permission: 'production:read' },
       { to: '/production/nouveau', label: 'Nouveau Run', permission: 'production:run' },
+      { to: '/production/controles', label: 'Contrôles horaires', permission: 'production:read' },
+      { to: '/production/cadence', label: 'Cadence', permission: 'production:read' },
+      { to: '/production/arrets', label: 'Arrêts', permission: 'production:read' },
     ],
   },
   {

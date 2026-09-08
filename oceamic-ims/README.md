@@ -1,4 +1,4 @@
-# OCEAMIC IMS — Phases 1 et 2
+# OCEAMIC IMS — Phases 1, 2 et 3
 
 Système de gestion industrielle pour la conserverie de poisson OCEAMIC.
 
@@ -9,9 +9,15 @@ La **Phase 2** ajoute la couche **flux matière de production** : ordres de prod
 consommation de matière première, sorties, pertes, sous-produits, rework,
 reclassement, bilan matière et rendement.
 
-Les modules cadence de main-d'œuvre, remplissage, sertissage, stérilisation, produits
-finis, palettes et expédition ne sont pas construits ici, mais l'architecture est
+La **Phase 3** ajoute la **cadence de main-d'œuvre** : personnel affecté au Run,
+tours de contrôle horaires, mesure de cadence individuelle et de ligne, performance par
+rapport à un standard, et arrêts de production. Elle ne contient ni OEE complet, ni
+paie, ni pointage RH, ni produits finis, palettes ou expédition, mais l'architecture est
 conçue pour les accueillir sans refonte.
+
+Les modules remplissage, sertissage, stérilisation, produits finis, palettes et
+expédition ne sont pas construits ici, mais l'architecture est conçue pour les
+accueillir sans refonte.
 
 L'interface utilisateur est intégralement en français. Le code, les noms de tables et
 les commentaires techniques sont en anglais.
@@ -129,6 +135,8 @@ dans la table `schema_migrations`.
 | `004_stock_views.sql` | Vues de calcul du stock et du bilan matière |
 | `005_production.sql` | Produits, lignes, étapes, motifs, Runs, consommations, sorties |
 | `006_production_views.sql` | Vues de bilan matière, de rendement et d'usage des lots |
+| `007_workforce.sql` | Employées, affectations de personnel, tours de contrôle, contrôles de ligne, standards de cadence, contrôles de cadence, catégories et événements d'arrêt |
+| `008_workforce_views.sql` | Vues de couverture, de cadence de ligne, de résumé de tour, d'arrêts et d'historique de cadence |
 
 Pour ajouter une évolution du schéma : créer un nouveau fichier `005_....sql`.
 Ne jamais modifier une migration déjà appliquée en production.
@@ -154,7 +162,12 @@ Il crée :
   FMHOEV-BIO), lignes L1 à L8, étapes (traitement, grattage, remplissage) et motifs
   de perte ;
 - un ordre de production de démonstration avec consommation, sortie vers
-  remplissage, sous-produit et perte réelle.
+  remplissage, sous-produit et perte réelle ;
+- six employées de démonstration (matricules 1001 à 1006), neuf catégories d'arrêt et
+  un standard de cadence (SPSA-HO, grattage + remplissage, boîtes, 120 / h) ;
+- sur le Run de démonstration : quatre employées affectées et présentes sur L1, un tour
+  de contrôle clôturé avec trois contrôles de cadence individuels (couverture 3 / 4), et
+  un arrêt PANNE_MACHINE de 27 minutes sur L2.
 
 > La répartition entrepôt / sous-traitant des partenaires externes est une hypothèse
 > de démonstration. Elle est portée par la configuration des emplacements et doit être
@@ -185,7 +198,7 @@ autorisé.
 | **ADMIN** | Toutes les permissions, dont l'ajustement de stock et l'annulation de mouvement |
 | **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, consultation |
 | **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, consultation |
-| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, consultation |
+| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, consultation |
 | **LECTURE** | Consultation |
 
 Le rôle STOCK ne peut **jamais** libérer un blocage qualité, ni ajuster le stock, ni
@@ -195,6 +208,12 @@ mouvement sont réservés à l'administrateur, exigent un motif et sont audités
 La correction d'une consommation de production reste ouverte au rôle PRODUCTION :
 c'est une annulation traçable suivie d'un remplacement, entièrement auditée, et une
 équipe de quart ne peut pas attendre un administrateur pour corriger une pesée.
+
+Employées, standards de cadence et catégories d'arrêt sont des données de référence :
+leur création et leur (dés)activation restent réservées à l'ADMIN
+(`masterdata:write`), au même titre que produits, lignes et motifs de perte. Le rôle
+PRODUCTION gère l'affectation du personnel au Run, mène les tours de contrôle, saisit
+la cadence et déclare les arrêts, mais ne crée pas ces données de référence.
 
 ---
 
@@ -217,6 +236,10 @@ série car ils partagent cette base.
 | `tests/acceptance.test.ts` | Les sept scénarios d'acceptation de la Phase 1, via l'API HTTP |
 | `tests/production.test.ts` | Runs, consommation multi-lots, lot multi-Runs, lot bloqué, stock insuffisant, concurrence, bilan matière, rendement, clôture, corrections, annulation |
 | `tests/productionAcceptance.test.ts` | Les huit scénarios d'acceptation de la Phase 2, via l'API HTTP |
+| `tests/workforce.test.ts` | Affectation de personnel, activité toujours dérivée de la ligne du Run, déplacement de ligne avec préservation de l'historique, présence auditée |
+| `tests/cadence.test.ts` | Formule de cadence individuelle, durées de mesure différentes, absence de standard, correspondance déterministe par spécificité, non-réécriture de l'historique lors d'un changement de standard, doublon même ligne rejeté, doublon ligne différente avec confirmation, couverture complète / incomplète / nulle (0/12 sans division par zéro), ligne inactive refusée, correction par annulation-remplacement, clôture d'un tour incomplet |
+| `tests/downtime.test.ts` | Démarrage d'un arrêt, clôture avec durée calculée automatiquement (27 min = 1620 s), fin antérieure au début refusée, portée Run et portée ligne, historique conservé après clôture, double clôture refusée |
+| `tests/cadenceAcceptance.test.ts` | Les dix scénarios d'acceptation de la Phase 3, via l'API HTTP |
 
 ---
 
@@ -253,6 +276,16 @@ Le détail est documenté dans [`docs/regles-metier.md`](docs/regles-metier.md).
 11. **Le bilan matière et le rendement sont calculés.** Entrée − (sortie utile +
     sous-produits + rework + reclassement + pertes réelles) = écart matière. L'écart
     inexpliqué n'est jamais enregistré comme une perte déclarée.
+12. **La cadence est toujours rattachée à un Run, une ligne, un tour de contrôle et une
+    employée.** Aucune mesure de cadence n'existe hors de ce contexte.
+13. **Cadence et performance sont calculées, jamais saisies.** L'opérateur ne saisit que
+    la quantité et la durée réelle de mesure ; `cadence_per_hour` et
+    `performance_percent` sont des colonnes générées par la base à partir de ces valeurs
+    et du standard applicable au moment de la mesure.
+14. **Le standard applicable est figé au moment de la mesure.** Un changement ultérieur
+    d'un standard de cadence ne réécrit jamais une performance déjà enregistrée.
+15. **Les arrêts sont séparés des contrôles de cadence.** Une interruption ne modifie
+    jamais une quantité mesurée.
 
 ---
 
@@ -293,6 +326,14 @@ Toutes les routes sont préfixées par `/api` et exigent une session, sauf
 | `POST` | `/api/quality/decisions` | `quality:decide` (`quality:release` pour `LIBERE`) |
 | `GET` | `/api/search` | `traceability:read` |
 | `GET` | `/api/audit` | `audit:read` |
+| `GET` | `/api/employees`, `/api/downtime-categories`, `/api/cadence-standards` | `masterdata:read` |
+| `POST` | mêmes ressources | `masterdata:write` |
+| `GET` | `/api/production/runs/:id/personnel` | `production:read` |
+| `POST` | `/api/production/runs/:id/personnel`, `/api/production/personnel/:assignmentId/presence` | `workforce:manage` |
+| `GET` | `/api/cadence/control-rounds`, `/api/cadence/control-rounds/:id`, `/api/cadence`, `/api/production/runs/:id/lignes/resume` | `production:read` |
+| `POST` | `/api/production/runs/:id/tours-controle`, `/api/cadence/control-rounds/:id/cloture`, `/annulation`, `/lignes`, `/api/cadence/line-controls/:id/cloture`, `/employes`, `/api/cadence/controles/:id/correction` | `cadence:control` |
+| `GET` | `/api/downtime` | `production:read` |
+| `POST` | `/api/production/runs/:id/arrets`, `/api/downtime/:id/cloture` | `downtime:record` |
 
 Les erreurs renvoient `{ "code": "...", "message": "..." }`, le message étant
 directement affichable à l'opérateur.
@@ -312,11 +353,15 @@ directement affichable à l'opérateur.
 | Situation du lot | **Page unique de traçabilité** : identité, stock, réceptions, mouvements, contrôles, décisions, blocages, sous-traitance, **Runs consommateurs**, lots enfants |
 | Runs de production | Liste des ordres de production : entrée MP, sortie utile, rendement, écart, statut |
 | Nouveau Run | Contexte de production (date, produit, format, pièces/boîte, lignes actives, responsable) — sans sélection de matière première |
-| Situation du Run | **Page unique de production**, en onglets : vue générale, lots consommés, lignes, sorties, pertes, bilan matière, traçabilité |
+| Situation du Run | **Page unique de production**, en onglets : vue générale, lots consommés, lignes, sorties, pertes, bilan matière, traçabilité, **contrôles horaires, cadence, arrêts** ; personnel du Run affecté et présence directement sur l'onglet lignes |
+| Contrôles horaires | Liste filtrable de tous les tours de contrôle |
+| Tour de contrôle | **Écran de saisie terrain** : sélection de la ligne, puis uniquement matricule + quantité par employée — produit, espèce, activité, nom, standard et horodatage sont déjà connus ; le focus revient automatiquement sur la prochaine employée à contrôler |
+| Cadence | Historique filtrable des mesures de cadence individuelles |
+| Arrêts | Liste des interruptions de production, avec durée en direct pour un arrêt encore ouvert et action de clôture |
 | Sous-traitance | Envois, résultats multiples et bilan matière |
 | Qualité | Contrôles et lots bloqués |
 | Traçabilité | Recherche globale menant à la situation du lot |
-| Paramètres | Données de référence et utilisateurs |
+| Paramètres | Données de référence, **employées, standards de cadence, catégories d'arrêt**, et utilisateurs |
 
 ---
 

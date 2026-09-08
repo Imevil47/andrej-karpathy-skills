@@ -1,4 +1,4 @@
-# Modèle de données — OCEAMIC IMS Phases 1 et 2
+# Modèle de données — OCEAMIC IMS Phases 1, 2 et 3
 
 Toutes les clés primaires sont des UUID. Les codes lisibles (`LOT-…`, `REC-…`) sont des
 identifiants opérationnels affichés aux utilisateurs ; les UUID ne sont jamais montrés.
@@ -430,4 +430,195 @@ species ──< products ──< production_runs >── users (responsable)
                               │
                               └──< production_outputs >── production_stages
                                            └── production_loss_reasons
+```
+
+---
+
+# Phase 3 — Main-d'œuvre, cadence et arrêts
+
+## Employées
+
+### `employees`
+Donnée de référence du personnel de production. **Jamais supprimée** : `is_active`
+préserve la validité des contrôles de cadence déjà enregistrés.
+
+| Champ | Rôle |
+|---|---|
+| `employee_number` | **Matricule**, identifiant opérationnel unique, affiché partout à la place de l'UUID |
+| `first_name`, `last_name` | Identité |
+| `display_name` | Nom d'affichage explicite, facultatif ; à défaut, `first_name \|\| ' ' \|\| last_name` (jamais ressaisi) |
+| `department` | Facultatif |
+| `is_active` | Désactivation, jamais suppression |
+
+---
+
+## Personnel du Run
+
+### `production_run_employee_assignments`
+Qui est attendu et présent sur quelle ligne d'un Run, et depuis quand.
+
+| Champ | Rôle |
+|---|---|
+| `production_run_id`, `production_run_line_id`, `employee_id` | Contexte de l'affectation |
+| `assigned_from`, `assigned_until` | Ouverture et fermeture de la période ; `assigned_until IS NULL` = affectation active |
+| `is_present` | Présence courante |
+
+**Aucune colonne `activity_type`** sur cette table : l'activité d'une employée n'est
+jamais stockée deux fois, elle est toujours lue via `production_run_line_id →
+production_run_lines.activity_type`. Un même process sardine peut ainsi combiner
+grattage et remplissage sur une ligne, tandis qu'un process maquereau les sépare, sans
+qu'aucun modèle d'activité ne soit imposé par le schéma des employées.
+
+Un index unique partiel garantit **au plus une affectation ouverte par employée et par
+Run** (`WHERE assigned_until IS NULL`). Déplacer une employée vers une autre ligne ferme
+l'affectation en cours (`assigned_until = now()`) puis en ouvre une nouvelle : l'historique
+n'est jamais réécrit, et les contrôles de cadence déjà liés à l'ancienne ligne le restent.
+
+---
+
+## Tours de contrôle
+
+### `control_rounds`
+Un passage d'un contrôleur sur le terrain, pour un Run donné.
+
+| Champ | Rôle |
+|---|---|
+| `round_code` | Code opérationnel unique (`CTRL-20260908-001`) |
+| `production_run_id` | Run concerné |
+| `controller_user_id` | Contrôleur |
+| `started_at`, `ended_at` | Début et fin réels |
+| `status` | `EN_COURS`, `TERMINE`, `ANNULE` |
+
+### `line_controls`
+Une ligne visitée pendant un tour.
+
+| Champ | Rôle |
+|---|---|
+| `control_round_id`, `production_run_line_id` | Contexte |
+| `activity_type` | Copié de la ligne du Run au moment de l'ouverture |
+| `expected_employee_count` | **Instantané** du nombre de présentes sur la ligne, pris à l'ouverture du contrôle |
+| `status` | `EN_COURS`, `TERMINE` |
+
+`controlled_employee_count` n'est **volontairement pas stocké** : c'est toujours le
+compte en direct des contrôles de cadence valides, lu depuis la vue
+`line_control_coverage`. `expected_employee_count`, à l'inverse, est figé à l'ouverture :
+un changement de présence après coup ne réécrit jamais une couverture déjà en cours de
+saisie.
+
+Contrainte : une ligne n'est visitée **qu'une seule fois par tour**
+(`UNIQUE (control_round_id, production_run_line_id)`) — resélectionner une ligne déjà
+visitée reprend son contrôle existant au lieu d'en créer un doublon.
+
+---
+
+## Standards de cadence
+
+### `cadence_standards`
+Référence de performance attendue. Donnée de configuration pure.
+
+| Champ | Rôle |
+|---|---|
+| `species_id`, `product_id`, `format`, `pieces_per_can` | Dimensions de correspondance, chacune facultative (`NULL` = « s'applique à toutes les valeurs ») |
+| `activity_type` | Dimension **obligatoire** de la correspondance |
+| `size_grade` | Réservée à une phase future — voir ci-dessous |
+| `measurement_unit` | `BOITES`, `PIECES`, `KG` ou `UNITES` |
+| `standard_cadence` | Cadence attendue, dans l'unité déclarée, par heure |
+| `valid_from`, `valid_to` | Fenêtre de validité, facultative |
+
+**`size_grade` n'est jamais fourni par la correspondance de la Phase 3** : un Run peut
+consommer plusieurs lots de calibres différents, donc son contexte ne porte aucun
+calibre unique et non ambigu. Un standard portant un `size_grade` est donc structurellement
+exclu de toute correspondance en Phase 3 ; la colonne existe pour qu'une phase future
+puisse l'exploiter sans migration.
+
+Voir « Correspondance d'un standard » dans `docs/regles-metier.md` pour la règle de
+sélection déterministe.
+
+---
+
+## Contrôles de cadence
+
+### `employee_cadence_controls`
+Une mesure brute et réelle de performance individuelle.
+
+| Champ | Rôle |
+|---|---|
+| `line_control_id`, `production_run_id`, `production_run_line_id`, `employee_id` | Contexte complet, jamais une mesure isolée |
+| `controlled_at` | Horodatage réel de la mesure |
+| `quantity_completed` | Quantité réalisée, saisie |
+| `measurement_unit` | Unité de la quantité saisie |
+| `measurement_duration_seconds` | Durée réelle de mesure, saisie — **jamais** une heure d'horloge rigide |
+| `cadence_per_hour` | **Colonne générée** : `quantity_completed / (measurement_duration_seconds / 3600)` |
+| `cadence_standard_id` | Standard trouvé au moment de la mesure, ou `NULL` |
+| `standard_cadence_snapshot` | **Copie figée** du standard trouvé, ou `NULL` |
+| `performance_percent` | **Colonne générée** : `cadence_per_hour / standard_cadence_snapshot × 100`, ou `NULL` si aucun standard |
+| `status`, `cancelled_*`, `replaces_id` | Correction par annulation-remplacement (voir `docs/regles-metier.md`) |
+
+`cadence_per_hour` et `performance_percent` sont deux colonnes `GENERATED ALWAYS AS …
+STORED` **indépendantes**, toutes deux dérivées des colonnes source
+(`quantity_completed`, `measurement_duration_seconds`, `standard_cadence_snapshot`),
+jamais l'une de l'autre : PostgreSQL interdit qu'une colonne générée en référence une
+autre. Elles ne peuvent donc jamais diverger des valeurs qui les ont produites, et
+aucun écran ne les saisit.
+
+`standard_cadence_snapshot` est ce qui garantit qu'un **changement ultérieur** d'un
+standard de cadence ne réécrit jamais une performance déjà enregistrée : l'expression
+générée lit la copie figée sur la ligne, jamais la table `cadence_standards` en direct.
+
+Un index unique partiel garantit **au plus un contrôle valide par employée et par
+contrôle de ligne** (`WHERE status = 'VALIDE'`), ce qui rejette structurellement un
+doublon sur la même ligne. La détection d'un doublon sur une **autre** ligne du même
+tour (avertissement, non un rejet) est faite en service, pas en base : voir
+`docs/regles-metier.md`.
+
+---
+
+## Arrêts de production
+
+### `downtime_categories`
+Catégorie d'arrêt, donnée de référence (`code`, `name`, `is_active`).
+
+### `downtime_events`
+Une interruption, rattachée à un Run et, facultativement, à une seule de ses lignes.
+
+| Champ | Rôle |
+|---|---|
+| `production_run_id` | Toujours renseigné |
+| `production_run_line_id` | Facultatif : `NULL` = arrêt affectant tout le Run |
+| `started_at`, `ended_at` | `ended_at IS NULL` = arrêt **encore ouvert** |
+| `duration_seconds` | **Colonne générée**, `NULL` tant que l'arrêt est ouvert |
+| `downtime_category_id`, `reason_text`, `planned` | Qualification de l'arrêt |
+
+Il n'existe **aucune colonne `status` séparée** : `ended_at IS NULL` est l'unique
+source de vérité de « arrêt actif », ce qui rend une désynchronisation entre un statut
+et ses horodatages structurellement impossible. La durée d'un arrêt encore ouvert est
+calculée côté interface à l'affichage (rafraîchie périodiquement), jamais écrite en
+base tant que l'arrêt n'est pas clôturé.
+
+---
+
+## Vues de calcul de la cadence
+
+| Vue | Contenu |
+|---|---|
+| `line_control_coverage` | Couverture d'un contrôle de ligne : `controlled_employee_count / expected_employee_count`, statut `COMPLET` / `INCOMPLET` |
+| `line_control_cadence` | Cadence de ligne : quantité totale du groupe sur ses heures de main-d'œuvre totales — jamais la moyenne des cadences individuelles |
+| `control_round_summary` | Lignes visitées / terminées, employées attendues / contrôlées, couverture globale d'un tour |
+| `run_downtime_summary` | Durée totale d'arrêt clôturé, nombre d'arrêts clôturés et d'arrêts actifs, par Run |
+| `employee_cadence_history` | Flux réutilisable : une ligne par mesure valide, avec Run, produit, espèce, ligne, activité et employée déjà joints — source unique des écrans Cadence, historique employée et historique ligne |
+
+Ces vues sont la **seule** source des chiffres de couverture, de cadence et d'arrêt,
+aussi bien à l'écran que dans les réponses API.
+
+## Relations de main-d'œuvre
+
+```
+production_runs ──< production_run_lines ──< production_run_employee_assignments >── employees
+       │                     │
+       │                     └──< line_controls >── control_rounds
+       │                              │
+       │                              └──< employee_cadence_controls >── employees
+       │                                            └── cadence_standards (via snapshot)
+       │
+       └──< downtime_events >── downtime_categories
 ```

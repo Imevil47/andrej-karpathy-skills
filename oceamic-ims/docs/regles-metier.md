@@ -1,4 +1,4 @@
-# Règles métier — OCEAMIC IMS Phases 1 et 2
+# Règles métier — OCEAMIC IMS Phases 1, 2 et 3
 
 Ce document décrit le comportement attendu du système. Chaque règle est appliquée côté
 serveur (service, transaction ou contrainte de base) et non seulement dans l'interface.
@@ -566,3 +566,281 @@ les valeurs utiles.
 Le rôle STOCK voit l'usage de son stock en production mais ne saisit aucun
 enregistrement de production. Le rôle QUALITE consulte les Runs et la généalogie
 matière ; les contrôles qualité en cours de process viendront plus tard.
+
+
+---
+
+# Phase 3 — Main-d'œuvre, cadence et arrêts
+
+## 32. Modèle conceptuel de la cadence
+
+| Concept | Signification | Table |
+|---|---|---|
+| Employée | Personnel de production, identifiée par son matricule | `employees` |
+| Affectation | Qui est attendu et présent sur quelle ligne du Run | `production_run_employee_assignments` |
+| Tour de contrôle | Un passage du contrôleur sur le terrain | `control_rounds` |
+| Contrôle de ligne | Une ligne visitée pendant un tour | `line_controls` |
+| Contrôle de cadence | Une mesure individuelle réelle | `employee_cadence_controls` |
+| Standard de cadence | Référence de performance attendue | `cadence_standards` |
+| Arrêt | Interruption de production | `downtime_events` |
+
+**Une mesure de cadence n'existe jamais hors contexte.** Elle est toujours rattachée à
+un Run, une ligne du Run, un tour de contrôle et une employée ; il n'existe aucune
+saisie de cadence indépendante.
+
+## 33. Saisie terrain minimale
+
+L'écran de tour de contrôle ne demande jamais deux fois la même information (section 48
+de la spécification) : le contrôleur sélectionne le Run puis démarre un tour, choisit une
+ligne, saisit un matricule et une quantité, puis passe à l'employée suivante. Produit,
+espèce, activité de la ligne, nom de l'employée, standard applicable et horodatage sont
+tous déjà connus du système et ne sont jamais ressaisis. Après une saisie valide, le
+focus revient automatiquement sur le prochain matricule à contrôler.
+
+## 34. Configuration flexible de l'activité par Run
+
+L'activité de main-d'œuvre n'est **jamais** un modèle unique imposé par l'espèce. Elle
+est lue exclusivement via `production_run_lines.activity_type`, configurée par Run (déjà
+en Phase 2) :
+
+- process sardine : une seule ligne `GRATTAGE_REMPLISSAGE`, une employée y combine les
+  deux gestes — un seul contrôle de cadence par employée, jamais deux ;
+- process maquereau : des lignes séparées `GRATTAGE` et `REMPLISSAGE`, chacune avec son
+  propre effectif et ses propres contrôles.
+
+Aucune colonne d'activité n'existe sur l'affectation de personnel ni sur le contrôle de
+cadence : les deux lisent toujours l'activité de la ligne du Run, ce qui rend une
+divergence entre l'activité affichée et l'activité réelle structurellement impossible.
+
+## 35. Personnel du Run
+
+Une employée est affectée à une ligne active du Run, avec un statut de présence courant.
+Le nombre de personnes par ligne est **toujours variable**, jamais une constante.
+
+**Déplacement entre lignes.** Affecter une employée déjà ouverte sur une autre ligne du
+même Run ferme l'affectation en cours (`assigned_until = now()`) puis en ouvre une
+nouvelle : l'historique n'est jamais réécrit. Les contrôles de cadence déjà enregistrés
+restent liés à la ligne où ils ont réellement eu lieu, même après le déplacement de
+l'employée.
+
+## 36. Tour de contrôle et contrôle de ligne
+
+Un tour de contrôle regroupe les lignes visitées par un contrôleur en une seule passe.
+Sélectionner une ligne pour la première fois crée son contrôle de ligne et **fige le
+nombre d'employées attendues** (`expected_employee_count`) à partir des affectations
+présentes à cet instant ; resélectionner la même ligne reprend son contrôle existant, sans
+duplication. Un changement de présence après cet instant ne réécrit jamais ce nombre.
+
+## 37. Formule de cadence individuelle
+
+```
+Cadence individuelle (par heure) = Quantité réalisée / (Durée de mesure en secondes / 3600)
+```
+
+La quantité et la durée réelle de mesure sont les deux seules valeurs saisies par le
+contrôleur ; la cadence est **toujours calculée**, jamais tapée. Deux employées mesurées
+sur des durées différentes (par exemple 10 et 5 minutes) restent comparables, chacune
+ramenée à sa propre cadence horaire.
+
+Exemple (scénario d'acceptation) : 18 boîtes en 10 minutes (600 s) → 18 / (600 / 3600) =
+**108,00 / h**.
+
+## 38. Formule de performance individuelle
+
+```
+Performance (%) = Cadence individuelle / Standard applicable × 100
+```
+
+Si aucun standard ne s'applique au moment de la mesure, la performance est **toujours
+`NULL`**, jamais supposée à 100 % ni à aucune autre valeur par défaut ; l'interface
+affiche « Standard non défini ». Le standard appliqué est figé sur la ligne au moment de
+la mesure (`standard_cadence_snapshot`) : un changement ultérieur du standard dans les
+données de référence ne réécrit **jamais** une performance déjà enregistrée (scénario
+d'acceptation dédié).
+
+Exemple : 108,00 / h mesurée contre un standard de 120,00 / h → 108 / 120 × 100 = **90,00 %**.
+
+## 39. Statut de performance
+
+Le statut affiché n'est jamais choisi ni tapé par l'écran ; il est calculé une seule
+fois, côté serveur, à partir du pourcentage de performance :
+
+| Statut | Condition |
+|---|---|
+| `CONFORME` | Performance ≥ 95 % |
+| `A_SURVEILLER` | Performance ≥ 85 % et < 95 % |
+| `SOUS_STANDARD` | Performance < 85 % |
+
+Sans standard applicable, aucun statut n'est calculé (`NULL`). Les seuils vivent dans
+une seule fonction (`performanceStatus`, `server/src/domain/types.ts`) que toutes les
+routes réutilisent : aucun écran ne réimplémente la règle.
+
+## 40. Correspondance d'un standard de cadence
+
+La correspondance sélectionne le standard actif **le plus spécifique** au contexte de la
+mesure (produit, espèce, activité, unité de mesure, format, pièces par boîte, date de
+mesure), jamais le premier trouvé au hasard :
+
+1. `activity_type` et `measurement_unit` doivent correspondre **exactement** — dimensions
+   non facultatives de la correspondance ;
+2. pour chacune des dimensions `product_id`, `species_id`, `format`, `pieces_per_can` : un
+   standard portant `NULL` sur cette dimension s'applique à **toutes** les valeurs
+   (générique), un standard portant une valeur ne s'applique qu'à cette valeur précise
+   (spécifique) — un standard spécifique dont la valeur ne correspond pas au contexte est
+   exclu ;
+3. `valid_from` / `valid_to`, si renseignées, doivent couvrir la date de la mesure ;
+4. `size_grade` est **toujours exclu** de la correspondance en Phase 3 : un Run peut
+   consommer plusieurs lots de calibres différents, donc son contexte ne porte jamais un
+   calibre unique et non ambigu ; un standard portant un `size_grade` ne peut donc jamais
+   correspondre en Phase 3 ;
+5. parmi les standards restants, le plus spécifique gagne, avec une pondération fixe —
+   produit (8) > espèce (4) > format (2) > pièces par boîte (1), les points de chaque
+   dimension renseignée s'additionnant ;
+6. en cas d'égalité de spécificité, le standard **créé le plus récemment** gagne — jamais
+   un choix silencieux ou aléatoire.
+
+Cette règle vit dans une seule fonction (`findMatchingStandard`,
+`server/src/services/cadence.ts`), jamais dupliquée.
+
+## 41. Unités de mesure
+
+La quantité mesurée peut être exprimée en `BOITES`, `PIECES`, `KG` ou `UNITES`, configurée
+par standard. Un contrôle de cadence et le standard auquel il est comparé doivent porter
+la **même unité** : la correspondance ne sélectionne jamais un standard d'unité différente.
+
+## 42. Doublon et avertissement inter-lignes
+
+Deux protections distinctes, jamais confondues :
+
+- **Même employée, même ligne, même tour** : rejet **strict** au niveau base (index unique
+  partiel `WHERE status = 'VALIDE'`) et service — un doublon ne peut jamais être enregistré,
+  message :
+
+  ```
+  Ce matricule est déjà enregistré pour cette ligne dans ce tour de contrôle.
+  ```
+
+- **Même employée, ligne différente, même tour** : **avertissement confirmable**, jamais un
+  blocage permanent — l'opérateur peut confirmer explicitement (une employée peut
+  légitimement aider une autre ligne) :
+
+  ```
+  Attention.
+  Le matricule 1054 est déjà enregistré sur la ligne L2 pour ce tour.
+  ```
+
+  Le second appel, avec confirmation explicite, enregistre la mesure normalement.
+
+## 43. Couverture d'un contrôle de ligne
+
+```
+Couverture (%) = Employées contrôlées / Employées attendues × 100
+```
+
+- Affichée à la fois en fraction (`3 / 4`) et en pourcentage (`75,00 %`).
+- `expected_employee_count = 0` : couverture `COMPLET`, sans division par zéro — rien
+  n'était attendu, rien ne manque.
+- Aucune mesure n'est jamais inventée pour une employée absente ou non contrôlée.
+- Une couverture incomplète **ne rend jamais** la production elle-même non conforme :
+  c'est un concept propre au contrôle de main-d'œuvre, sans effet sur le statut du Run
+  ni sur son bilan matière.
+- Une couverture incomplète **ne bloque jamais** la clôture d'une ligne ni d'un tour : le
+  résultat incomplet est conservé tel quel, jamais masqué.
+
+## 44. Cadence de ligne
+
+```
+Cadence de ligne (par heure) = Σ quantités réalisées du groupe / (Σ durées de mesure du groupe en secondes / 3600)
+```
+
+**Jamais** la moyenne des pourcentages ou des cadences individuelles : sommer des
+pourcentages perd l'information de durée et de quantité réelle de chaque employée. La
+formule ramène la production totale du groupe à ses heures de main-d'œuvre totales, ce qui
+la rend directement comparable à un standard individuel même quand chaque employée a été
+mesurée sur une durée différente.
+
+## 45. Arrêts de production
+
+Un arrêt est rattaché à un Run et, facultativement, à une seule de ses lignes (arrêt
+localisé) ou à aucune (arrêt affectant tout le Run). Un arrêt ouvert a `ended_at = NULL` :
+c'est l'**unique** source de vérité de « arrêt actif », il n'existe aucune colonne de
+statut séparée qui pourrait s'en désynchroniser.
+
+```
+Durée de l'arrêt = Heure de fin − Heure de début
+```
+
+La durée est une colonne générée, calculée automatiquement à la clôture — jamais saisie.
+Un arrêt encore ouvert n'a pas de durée stockée : l'interface calcule et rafraîchit une
+durée écoulée à l'affichage, sans jamais écrire une valeur changeante en base à chaque
+seconde.
+
+**Les arrêts restent strictement séparés des contrôles de cadence** (section 40 de la
+spécification) : une interruption ne modifie et n'ajuste jamais la quantité mesurée d'une
+employée. Les deux registres sont indépendants, préparés pour un futur module d'OEE qui
+les combinera sans en modifier le sens.
+
+## 46. Correction d'un contrôle de cadence
+
+Un contrôle de cadence validé n'est jamais modifié. La correction suit exactement la
+même politique d'annulation-remplacement que la correction d'une consommation de
+production (section 28) :
+
+1. le contrôle d'origine passe `ANNULE`, avec son auteur et son motif — jamais
+   supprimé ;
+2. un contrôle de remplacement est créé si une quantité et une durée corrigées sont
+   fournies, réutilisant le standard et son instantané d'origine ;
+3. les deux lignes sont reliées (`replaces_id`), et l'audit conserve les deux
+   opérations.
+
+L'original reste consultable dans l'historique, marqué `ANNULE`.
+
+## 47. Historique d'un standard de cadence
+
+Un changement ultérieur d'un standard de cadence (nouvelle valeur, désactivation)
+n'affecte **jamais** les performances déjà calculées : chaque contrôle de cadence porte
+sa propre copie figée du standard appliqué au moment de la mesure
+(`standard_cadence_snapshot`). Les colonnes générées `cadence_per_hour` et
+`performance_percent` lisent cette copie, jamais la table `cadence_standards` en direct.
+
+## 48. Historique et traçabilité de la cadence
+
+- **Par employée** : la vue `employee_cadence_history` liste chaque mesure valide avec
+  Run, produit, espèce, ligne, activité, cadence et performance déjà résolus.
+- **Par ligne** : le résumé de ligne du Run affiche la présence courante, le dernier
+  contrôle, la cadence de ligne, la performance et l'arrêt du jour.
+- **Par Run** : les onglets « Contrôles horaires », « Cadence » et « Arrêts » de la
+  situation du Run donnent la vue complète, en s'appuyant sur les mêmes vues de calcul
+  que les écrans dédiés — aucune formule n'est dupliquée entre les écrans.
+
+## 49. Audit de la cadence
+
+Sont tracés : affectation et réaffectation de personnel, changement de présence,
+création, clôture et annulation d'un tour de contrôle, clôture d'un contrôle de ligne,
+contrôle de cadence et sa correction, démarrage et clôture d'un arrêt. Chaque entrée
+conserve l'auteur, la date et les valeurs utiles.
+
+## 50. Rôles de la cadence
+
+| Permission | ADMIN | PRODUCTION | QUALITE | STOCK | LECTURE |
+|---|:--:|:--:|:--:|:--:|:--:|
+| Consultation (personnel, cadence, arrêts) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Affecter le personnel du Run, changer la présence | ✓ | ✓ | | | |
+| Démarrer / clôturer / annuler un tour de contrôle | ✓ | ✓ | | | |
+| Saisir un contrôle de cadence, le corriger | ✓ | ✓ | | | |
+| Déclarer et clôturer un arrêt | ✓ | ✓ | | | |
+| Créer employées, standards de cadence, catégories d'arrêt | ✓ | | | | |
+
+Le rôle QUALITE consulte la performance de main-d'œuvre mais ne saisit ni ne corrige
+aucun contrôle de cadence : la cadence reste une responsabilité de production, la
+qualité une consultation. Les données de référence (employées, standards, catégories
+d'arrêt) suivent la même règle que produits, lignes et motifs de perte : création et
+(dés)activation réservées à l'ADMIN.
+
+## 51. Hors périmètre de la Phase 3
+
+Explicitement non construits : OEE complet, paie, pointage RH, calcul de salaire,
+produits finis, palettes, expédition, remplissage, sertissage, stérilisation, F0/CCP,
+emballage, GMAO/maintenance, SPC avancé, prédiction et prévision par IA, tableaux de
+bord complexes. Les tables de contrôle de cadence et d'arrêt sont conçues comme la
+donnée source d'un futur module d'OEE, sans en porter le calcul.

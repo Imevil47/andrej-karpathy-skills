@@ -7,6 +7,8 @@ import type { AppConfig } from './config.ts';
 import { AppError } from './errors.ts';
 import { loadSessionUser } from './http/context.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
+import { registerCadenceRoutes } from './routes/cadence.ts';
+import { registerDowntimeRoutes } from './routes/downtime.ts';
 import { registerHomeRoutes } from './routes/home.ts';
 import { registerLotRoutes } from './routes/lots.ts';
 import { registerMasterDataRoutes } from './routes/masterdata.ts';
@@ -16,6 +18,7 @@ import { registerReceptionRoutes } from './routes/receptions.ts';
 import { registerStockRoutes } from './routes/stock.ts';
 import { registerSubcontractingRoutes } from './routes/subcontracting.ts';
 import { registerTraceabilityRoutes } from './routes/traceability.ts';
+import { registerWorkforceRoutes } from './routes/workforce.ts';
 
 export type AppDependencies = Readonly<{ pool: pg.Pool; config: AppConfig }>;
 
@@ -71,6 +74,9 @@ export async function buildApp(dependencies: AppDependencies): Promise<FastifyIn
   await registerStockRoutes(app, dependencies);
   await registerLotRoutes(app, dependencies);
   await registerProductionRoutes(app, dependencies);
+  await registerWorkforceRoutes(app, dependencies);
+  await registerCadenceRoutes(app, dependencies);
+  await registerDowntimeRoutes(app, dependencies);
   await registerSubcontractingRoutes(app, dependencies);
   await registerQualityRoutes(app, dependencies);
   await registerTraceabilityRoutes(app, dependencies);

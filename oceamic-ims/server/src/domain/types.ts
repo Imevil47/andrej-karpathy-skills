@@ -151,3 +151,50 @@ export const RUN_STATUSES_ACCEPTING_ENTRIES: readonly RunStatus[] = [
 export function runAcceptsEntries(status: RunStatus): boolean {
   return RUN_STATUSES_ACCEPTING_ENTRIES.includes(status);
 }
+
+// --- Phase 3: workforce cadence -------------------------------------------
+
+export const CONTROL_ROUND_STATUSES = ['EN_COURS', 'TERMINE', 'ANNULE'] as const;
+export type ControlRoundStatus = (typeof CONTROL_ROUND_STATUSES)[number];
+
+export const LINE_CONTROL_STATUSES = ['EN_COURS', 'TERMINE'] as const;
+export type LineControlStatus = (typeof LINE_CONTROL_STATUSES)[number];
+
+export const MEASUREMENT_UNITS = ['BOITES', 'PIECES', 'KG', 'UNITES'] as const;
+export type MeasurementUnit = (typeof MEASUREMENT_UNITS)[number];
+
+// Standards and cadence controls apply to a real, active labor activity: a
+// line marked INACTIVE for a Run can never carry a standard or a control.
+export const CADENCE_ACTIVITIES = [
+  'GRATTAGE',
+  'REMPLISSAGE',
+  'GRATTAGE_REMPLISSAGE',
+  'TRAITEMENT',
+  'AUTRE',
+] as const;
+export type CadenceActivity = (typeof CADENCE_ACTIVITIES)[number];
+
+export const COVERAGE_STATUSES = ['COMPLET', 'INCOMPLET'] as const;
+export type CoverageStatus = (typeof COVERAGE_STATUSES)[number];
+
+// Performance thresholds, centralised here so no UI component invents its own
+// red/green cutoff (section 19). A run with no matched standard shows
+// "Standard non défini" and never falls into any of these buckets.
+export const PERFORMANCE_STATUSES = ['CONFORME', 'A_SURVEILLER', 'SOUS_STANDARD'] as const;
+export type PerformanceStatus = (typeof PERFORMANCE_STATUSES)[number];
+
+const PERFORMANCE_CONFORME_THRESHOLD = 95;
+const PERFORMANCE_SURVEILLANCE_THRESHOLD = 85;
+
+export function performanceStatus(performancePercent: number | null): PerformanceStatus | null {
+  if (performancePercent === null) {
+    return null;
+  }
+  if (performancePercent >= PERFORMANCE_CONFORME_THRESHOLD) {
+    return 'CONFORME';
+  }
+  if (performancePercent >= PERFORMANCE_SURVEILLANCE_THRESHOLD) {
+    return 'A_SURVEILLER';
+  }
+  return 'SOUS_STANDARD';
+}

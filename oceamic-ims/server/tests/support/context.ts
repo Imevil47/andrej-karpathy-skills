@@ -12,6 +12,14 @@ import { hashPassword } from '../../src/services/auth.ts';
 
 const TABLES_IN_TRUNCATION_ORDER = [
   'audit_log',
+  'employee_cadence_controls',
+  'line_controls',
+  'control_rounds',
+  'production_run_employee_assignments',
+  'downtime_events',
+  'downtime_categories',
+  'cadence_standards',
+  'employees',
   'production_outputs',
   'production_run_materials',
   'production_run_lines',
@@ -54,6 +62,9 @@ export type Fixtures = Readonly<{
   fillingStageId: string;
   lossReasonId: string;
   byProductReasonId: string;
+  employeeNumbers: readonly string[];
+  cadenceStandardId: string;
+  downtimeCategoryId: string;
 }>;
 
 export type TestContext = Readonly<{
@@ -146,7 +157,28 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
      RETURNING id, code`,
   );
 
+  const productSardineId = products.rows.find((row) => row.code === 'SPSA-HO')?.id ?? '';
+  const employees = await pool.query<{ employee_number: string }>(
+    `INSERT INTO employees (employee_number, first_name, last_name)
+     VALUES ('1001', 'Amal', 'Benali'), ('1002', 'Ilham', 'Chraibi'),
+            ('1003', 'Nadia', 'Fassi'), ('1004', 'Samira', 'Guerraoui')
+     RETURNING employee_number`,
+  );
+  const cadenceStandard = await pool.query<{ id: string }>(
+    `INSERT INTO cadence_standards (product_id, activity_type, measurement_unit, standard_cadence)
+     VALUES ($1, 'GRATTAGE_REMPLISSAGE', 'BOITES', 120)
+     RETURNING id`,
+    [productSardineId],
+  );
+  const downtimeCategory = await pool.query<{ id: string }>(
+    `INSERT INTO downtime_categories (code, name) VALUES ('PANNE_MACHINE', 'Panne machine')
+     RETURNING id`,
+  );
+
   return {
+    employeeNumbers: employees.rows.map((row) => row.employee_number),
+    cadenceStandardId: cadenceStandard.rows[0]?.id ?? '',
+    downtimeCategoryId: downtimeCategory.rows[0]?.id ?? '',
     users: users as Record<RoleCode, string>,
     productSardineId: products.rows.find((row) => row.code === 'SPSA-HO')?.id ?? '',
     productThonId: products.rows.find((row) => row.code === 'THON-NAT')?.id ?? '',
@@ -222,4 +254,16 @@ export async function globalStock(pool: pg.Pool, lotId: string): Promise<string>
     [lotId],
   );
   return result.rows[0]?.quantity_kg ?? '0.000';
+}
+
+export async function employeeIdByNumber(pool: pg.Pool, employeeNumber: string): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    'SELECT id FROM employees WHERE employee_number = $1',
+    [employeeNumber],
+  );
+  const id = result.rows[0]?.id;
+  if (!id) {
+    throw new Error(`Employée introuvable dans les fixtures de test: ${employeeNumber}`);
+  }
+  return id;
 }

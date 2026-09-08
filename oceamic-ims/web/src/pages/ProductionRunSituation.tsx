@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { apiPost } from '../api';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { apiPost, buildQuery } from '../api';
 import { useAuth } from '../auth';
 import { Badge, Card, DataTable, Field, KeyValue, Message, PageHeader } from '../components/ui';
-import { formatDate, formatDateTime, formatQuantity, label, nowLocalInput } from '../format';
+import { formatDate, formatDateTime, formatDuration, formatQuantity, label, nowLocalInput } from '../format';
 import { useResource } from '../hooks';
-import { useLossReasons, useProductionStages } from '../masterdata';
+import { useDowntimeCategories, useEmployees, useLossReasons, useProductionStages } from '../masterdata';
 
 type RunDetailPayload = Readonly<{
   run: Readonly<{
@@ -89,10 +89,80 @@ type StockLine = Readonly<{
 
 type LocationRow = Readonly<{ id: string; code: string }>;
 
+type RunLineCadenceSummaryRow = Readonly<{
+  productionRunLineId: string;
+  presentCount: number;
+  lastControlledAt: string | null;
+  lastCoveragePercent: string | null;
+  lastCoverageStatus: string | null;
+  lineCadencePerHour: string | null;
+  performancePercent: string | null;
+  performanceStatus: string | null;
+  downtimeTodaySeconds: number;
+  activeDowntime: boolean;
+}>;
+
+type WorkforceRow = Readonly<{
+  assignmentId: string;
+  productionRunLineId: string;
+  lineCode: string;
+  lineName: string;
+  activityType: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  isPresent: boolean;
+  assignedFrom: string;
+}>;
+
+type ControlRoundSummaryRow = Readonly<{
+  id: string;
+  roundCode: string;
+  startedAt: string;
+  endedAt: string | null;
+  status: string;
+  controllerName: string;
+  linesVisited: number;
+  linesCompleted: number;
+  employeesExpected: number;
+  employeesControlled: number;
+  coveragePercent: string | null;
+}>;
+
+type RunCadenceRow = Readonly<{
+  id: string;
+  controlledAt: string;
+  lineCode: string;
+  employeeNumber: string;
+  employeeName: string;
+  quantityCompleted: string;
+  measurementUnit: string;
+  cadencePerHour: string;
+  performancePercent: string | null;
+  performanceStatus: string | null;
+}>;
+
+type DowntimeRow = Readonly<{
+  id: string;
+  productionRunLineId: string | null;
+  lineCode: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  categoryCode: string;
+  categoryName: string;
+  reasonText: string | null;
+  planned: boolean;
+  createdByName: string;
+}>;
+
 const TABS = [
   'Vue générale',
   'Lots consommés',
   'Lignes',
+  'Contrôles horaires',
+  'Cadence',
+  'Arrêts',
   'Sorties',
   'Pertes',
   'Bilan matière',
@@ -104,6 +174,7 @@ const LOSS_TYPES = ['PERTE_REELLE', 'SOUS_PRODUIT', 'REWORK', 'RECLASSEMENT'] as
 /** "Situation du Run": one page, one tab per concern. */
 export function ProductionRunSituation() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { can } = useAuth();
   const { data, error, loading, reload } = useResource<RunDetailPayload>(
     `/api/production/runs/${id}`,
@@ -112,10 +183,33 @@ export function ProductionRunSituation() {
   const locations = useResource<readonly LocationRow[]>('/api/locations');
   const stages = useProductionStages();
   const lossReasons = useLossReasons();
+  const lineSummary = useResource<readonly RunLineCadenceSummaryRow[]>(
+    `/api/production/runs/${id}/lignes/resume`,
+  );
+  const workforce = useResource<readonly WorkforceRow[]>(`/api/production/runs/${id}/personnel`);
+  const employees = useEmployees();
+  const controlRounds = useResource<readonly ControlRoundSummaryRow[]>(
+    `/api/cadence/control-rounds${buildQuery({ run: id ?? null })}`,
+  );
+  const downtimeEvents = useResource<readonly DowntimeRow[]>(
+    `/api/downtime${buildQuery({ run: id ?? null })}`,
+  );
+  const downtimeCategories = useDowntimeCategories();
+  const cadenceHistory = useResource<readonly RunCadenceRow[]>(
+    `/api/cadence${buildQuery({ run: id ?? null })}`,
+  );
 
   const [tab, setTab] = useState<(typeof TABS)[number]>('Vue générale');
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  const [assignLineId, setAssignLineId] = useState('');
+  const [assignEmployeeId, setAssignEmployeeId] = useState('');
+
+  const [downtimeLineId, setDowntimeLineId] = useState('');
+  const [downtimeCategoryId, setDowntimeCategoryId] = useState('');
+  const [downtimeReason, setDowntimeReason] = useState('');
+  const [downtimePlanned, setDowntimePlanned] = useState(false);
 
   const [selection, setSelection] = useState('');
   const [quantityKg, setQuantityKg] = useState('');
@@ -449,25 +543,389 @@ export function ProductionRunSituation() {
       ) : null}
 
       {tab === 'Lignes' ? (
-        <Card title="Lignes du Run">
+        <>
+          <Card title="Lignes du Run">
+            <DataTable
+              columns={[
+                { key: 'ligne', label: 'Ligne', numeric: false },
+                { key: 'zone', label: 'Zone', numeric: false },
+                { key: 'activite', label: 'Activité', numeric: false },
+                { key: 'active', label: 'Active', numeric: false },
+                { key: 'presentes', label: 'Employées présentes', numeric: true },
+                { key: 'dernier', label: 'Dernier contrôle', numeric: false },
+                { key: 'cadence', label: 'Cadence ligne', numeric: true },
+                { key: 'performance', label: 'Performance', numeric: false },
+                { key: 'arret', label: "Arrêt aujourd'hui", numeric: false },
+              ]}
+              isEmpty={data.lines.length === 0}
+              emptyText="Aucune ligne configurée pour ce Run."
+            >
+              {data.lines.map((row) => {
+                const summary = (lineSummary.data ?? []).find(
+                  (entry) => entry.productionRunLineId === row.id,
+                );
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <strong>{row.lineName}</strong>
+                    </td>
+                    <td>{row.area ?? '-'}</td>
+                    <td>{label(row.activityType)}</td>
+                    <td>{row.isActiveForRun ? 'Oui' : 'Non'}</td>
+                    <td className="nombre">{summary?.presentCount ?? 0}</td>
+                    <td>
+                      {summary?.lastCoverageStatus ? (
+                        <>
+                          {summary.lastCoveragePercent ?? '-'} % <Badge value={summary.lastCoverageStatus} />
+                        </>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td className="nombre">
+                      {summary?.lineCadencePerHour ? `${summary.lineCadencePerHour} / h` : '-'}
+                    </td>
+                    <td>
+                      {summary?.performancePercent ? (
+                        <>
+                          {summary.performancePercent} %{' '}
+                          {summary.performanceStatus ? <Badge value={summary.performanceStatus} /> : null}
+                        </>
+                      ) : (
+                        <span className="badge">Standard non défini</span>
+                      )}
+                    </td>
+                    <td>
+                      {summary?.activeDowntime ? (
+                        <Badge value="INCOMPLET" />
+                      ) : summary && summary.downtimeTodaySeconds > 0 ? (
+                        formatDuration(summary.downtimeTodaySeconds)
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </DataTable>
+          </Card>
+
+          <Card title="Personnel du Run">
+            {can('workforce:manage') && isOpen ? (
+              <form
+                className="filtres"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void call(
+                    () =>
+                      apiPost(`/api/production/runs/${id}/personnel`, {
+                        productionRunLineId: assignLineId,
+                        employeeId: assignEmployeeId,
+                        isPresent: true,
+                      }),
+                    'Employée affectée.',
+                  ).then(() => {
+                    workforce.reload();
+                    lineSummary.reload();
+                    setAssignEmployeeId('');
+                  });
+                }}
+              >
+                <select
+                  value={assignLineId}
+                  onChange={(event) => setAssignLineId(event.target.value)}
+                  required
+                >
+                  <option value="">Ligne...</option>
+                  {data.lines
+                    .filter((line) => line.isActiveForRun && line.activityType !== 'INACTIVE')
+                    .map((line) => (
+                      <option key={line.id} value={line.id}>
+                        {line.lineName}
+                      </option>
+                    ))}
+                </select>
+                <select
+                  value={assignEmployeeId}
+                  onChange={(event) => setAssignEmployeeId(event.target.value)}
+                  required
+                >
+                  <option value="">Matricule...</option>
+                  {(employees.data ?? []).map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.employeeNumber} — {employee.displayName}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="secondaire">
+                  Affecter
+                </button>
+              </form>
+            ) : null}
+
+            <DataTable
+              columns={[
+                { key: 'matricule', label: 'Matricule', numeric: false },
+                { key: 'nom', label: 'Nom', numeric: false },
+                { key: 'ligne', label: 'Ligne', numeric: false },
+                { key: 'presence', label: 'Présence', numeric: false },
+              ]}
+              isEmpty={(workforce.data ?? []).length === 0}
+              emptyText="Aucune employée affectée à ce Run."
+            >
+              {(workforce.data ?? []).map((row) => (
+                <tr key={row.assignmentId}>
+                  <td>{row.employeeNumber}</td>
+                  <td>{row.employeeName}</td>
+                  <td>{row.lineCode}</td>
+                  <td>
+                    {can('workforce:manage') && isOpen ? (
+                      <button
+                        type="button"
+                        className="lien"
+                        onClick={() =>
+                          call(
+                            () =>
+                              apiPost(`/api/production/personnel/${row.assignmentId}/presence`, {
+                                isPresent: !row.isPresent,
+                              }),
+                            row.isPresent ? 'Marquée absente.' : 'Marquée présente.',
+                          ).then(() => workforce.reload())
+                        }
+                      >
+                        {row.isPresent ? 'Présente' : 'Absente'}
+                      </button>
+                    ) : (
+                      <Badge value={row.isPresent ? 'ACTIF' : 'ANNULE'} />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
+          </Card>
+        </>
+      ) : null}
+
+      {tab === 'Contrôles horaires' ? (
+        <Card title="Tours de contrôle">
+          {can('cadence:control') && isOpen ? (
+            <div className="ligne-boutons" style={{ marginTop: 0, marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  setActionError(null);
+                  try {
+                    const created = await apiPost<{ id: string }>(
+                      `/api/production/runs/${id}/tours-controle`,
+                      { notes: null },
+                    );
+                    navigate(`/production/controles/${created.id}`);
+                  } catch (failure) {
+                    setActionError((failure as Error).message);
+                  }
+                }}
+              >
+                Nouveau tour de contrôle
+              </button>
+            </div>
+          ) : null}
           <DataTable
             columns={[
-              { key: 'ligne', label: 'Ligne', numeric: false },
-              { key: 'zone', label: 'Zone', numeric: false },
-              { key: 'activite', label: 'Activité', numeric: false },
-              { key: 'active', label: 'Active', numeric: false },
+              { key: 'tour', label: 'Tour', numeric: false },
+              { key: 'debut', label: 'Début', numeric: false },
+              { key: 'fin', label: 'Fin', numeric: false },
+              { key: 'controleur', label: 'Contrôleur', numeric: false },
+              { key: 'lignes', label: 'Lignes', numeric: false },
+              { key: 'employees', label: 'Employées', numeric: false },
+              { key: 'couverture', label: 'Couverture', numeric: true },
+              { key: 'statut', label: 'Statut', numeric: false },
             ]}
-            isEmpty={data.lines.length === 0}
-            emptyText="Aucune ligne configurée pour ce Run."
+            isEmpty={(controlRounds.data ?? []).length === 0}
+            emptyText="Aucun tour de contrôle pour ce Run."
           >
-            {data.lines.map((row) => (
+            {(controlRounds.data ?? []).map((row) => (
               <tr key={row.id}>
                 <td>
-                  <strong>{row.lineName}</strong>
+                  <Link to={`/production/controles/${row.id}`}>
+                    <strong>{row.roundCode}</strong>
+                  </Link>
                 </td>
-                <td>{row.area ?? '-'}</td>
-                <td>{label(row.activityType)}</td>
-                <td>{row.isActiveForRun ? 'Oui' : 'Non'}</td>
+                <td>{formatDateTime(row.startedAt)}</td>
+                <td>{formatDateTime(row.endedAt)}</td>
+                <td>{row.controllerName}</td>
+                <td>
+                  {row.linesCompleted} / {row.linesVisited}
+                </td>
+                <td>
+                  {row.employeesControlled} / {row.employeesExpected}
+                </td>
+                <td className="nombre">
+                  {row.coveragePercent === null ? '-' : `${row.coveragePercent} %`}
+                </td>
+                <td>
+                  <Badge value={row.status} />
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        </Card>
+      ) : null}
+
+      {tab === 'Cadence' ? (
+        <Card title="Cadence mesurée sur ce Run">
+          <DataTable
+            columns={[
+              { key: 'heure', label: 'Heure', numeric: false },
+              { key: 'ligne', label: 'Ligne', numeric: false },
+              { key: 'matricule', label: 'Matricule', numeric: false },
+              { key: 'employee', label: 'Employée', numeric: false },
+              { key: 'quantite', label: 'Quantité', numeric: true },
+              { key: 'cadence', label: 'Cadence', numeric: true },
+              { key: 'performance', label: 'Performance', numeric: false },
+            ]}
+            isEmpty={(cadenceHistory.data ?? []).length === 0}
+            emptyText="Aucune mesure de cadence pour ce Run."
+          >
+            {(cadenceHistory.data ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>{formatDateTime(row.controlledAt)}</td>
+                <td>{row.lineCode}</td>
+                <td>{row.employeeNumber}</td>
+                <td>{row.employeeName}</td>
+                <td className="nombre">
+                  {row.quantityCompleted} {label(row.measurementUnit)}
+                </td>
+                <td className="nombre">{row.cadencePerHour} / h</td>
+                <td>
+                  {row.performancePercent === null ? (
+                    <span className="badge">Standard non défini</span>
+                  ) : (
+                    <>
+                      {row.performancePercent} %{' '}
+                      {row.performanceStatus ? <Badge value={row.performanceStatus} /> : null}
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+          <div className="ligne-boutons">
+            <Link to="/production/cadence">
+              <button type="button" className="secondaire">
+                Voir toutes les mesures de cadence
+              </button>
+            </Link>
+          </div>
+        </Card>
+      ) : null}
+
+      {tab === 'Arrêts' ? (
+        <Card title="Arrêts de production">
+          {can('downtime:record') && isOpen ? (
+            <form
+              className="filtres"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void call(
+                  () =>
+                    apiPost(`/api/production/runs/${id}/arrets`, {
+                      productionRunLineId: downtimeLineId === '' ? null : downtimeLineId,
+                      downtimeCategoryId,
+                      reasonText: downtimeReason.trim() === '' ? null : downtimeReason.trim(),
+                      planned: downtimePlanned,
+                      startedAt: new Date().toISOString(),
+                    }),
+                  'Arrêt démarré.',
+                ).then(() => {
+                  downtimeEvents.reload();
+                  lineSummary.reload();
+                  setDowntimeReason('');
+                });
+              }}
+            >
+              <select
+                value={downtimeLineId}
+                onChange={(event) => setDowntimeLineId(event.target.value)}
+              >
+                <option value="">Tout le Run</option>
+                {data.lines.map((line) => (
+                  <option key={line.id} value={line.id}>
+                    {line.lineName}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={downtimeCategoryId}
+                onChange={(event) => setDowntimeCategoryId(event.target.value)}
+                required
+              >
+                <option value="">Catégorie...</option>
+                {(downtimeCategories.data ?? []).map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                placeholder="Motif (optionnel)"
+                value={downtimeReason}
+                onChange={(event) => setDowntimeReason(event.target.value)}
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={downtimePlanned}
+                  onChange={(event) => setDowntimePlanned(event.target.checked)}
+                />
+                Planifié
+              </label>
+              <button type="submit">Démarrer l'arrêt</button>
+            </form>
+          ) : null}
+
+          <DataTable
+            columns={[
+              { key: 'debut', label: 'Début', numeric: false },
+              { key: 'fin', label: 'Fin', numeric: false },
+              { key: 'duree', label: 'Durée', numeric: false },
+              { key: 'ligne', label: 'Ligne', numeric: false },
+              { key: 'categorie', label: 'Catégorie', numeric: false },
+              { key: 'motif', label: 'Motif', numeric: false },
+              { key: 'actions', label: '', numeric: false },
+            ]}
+            isEmpty={(downtimeEvents.data ?? []).length === 0}
+            emptyText="Aucun arrêt enregistré pour ce Run."
+          >
+            {(downtimeEvents.data ?? []).map((row) => (
+              <tr key={row.id}>
+                <td>{formatDateTime(row.startedAt)}</td>
+                <td>{row.endedAt ? formatDateTime(row.endedAt) : <Badge value="EN_COURS" />}</td>
+                <td>{row.durationSeconds !== null ? formatDuration(row.durationSeconds) : '-'}</td>
+                <td>{row.lineCode ?? <em>Tout le Run</em>}</td>
+                <td>{row.categoryName}</td>
+                <td>{row.reasonText ?? '-'}</td>
+                <td>
+                  {row.endedAt === null && can('downtime:record') ? (
+                    <button
+                      type="button"
+                      className="lien"
+                      onClick={() =>
+                        call(
+                          () =>
+                            apiPost(`/api/downtime/${row.id}/cloture`, {
+                              endedAt: new Date().toISOString(),
+                            }),
+                          'Arrêt terminé.',
+                        ).then(() => {
+                          downtimeEvents.reload();
+                          lineSummary.reload();
+                        })
+                      }
+                    >
+                      Terminer
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </DataTable>
