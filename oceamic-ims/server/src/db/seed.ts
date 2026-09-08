@@ -38,6 +38,10 @@ import {
   startCoolingEvent,
 } from '../services/sterilization.ts';
 import { assignEmployeeToLine } from '../services/workforce.ts';
+import { decideFgQuality } from '../services/finishedGoodsQuality.ts';
+import { createFinishedGoodLot, createPackagingBatch, recordLabelCheck, recordPackagingOutput } from '../services/packaging.ts';
+import { createPallet } from '../services/pallets.ts';
+import { addPalletToShipment, confirmShipment, createShipment } from '../services/shipments.ts';
 import { createPool, withTransaction } from './pool.ts';
 
 // Development / demonstration data only. Never run against production data:
@@ -76,21 +80,30 @@ type SeedLocation = Readonly<{
   stockType: 'INTERNE' | 'EXTERNE';
   locationType: 'USINE' | 'ENTREPOT' | 'SOUS_TRAITANT' | 'ZONE_TRANSIT' | 'AUTRE';
   isSubcontractor: boolean;
+  stockDomain: 'MP' | 'PF' | 'MIXTE';
 }>;
 
 // Internal / external behaviour is configuration, never a rule derived from the
 // name of the site.
 const LOCATIONS: readonly SeedLocation[] = [
-  { code: 'OCEAMIC-2', name: 'OCEAMIC 2', stockType: 'INTERNE', locationType: 'USINE', isSubcontractor: false },
-  { code: 'OCEAMIC-1', name: 'OCEAMIC 1', stockType: 'INTERNE', locationType: 'USINE', isSubcontractor: false },
-  { code: 'COFRIGOP', name: 'COFRIGOP', stockType: 'EXTERNE', locationType: 'ENTREPOT', isSubcontractor: false },
-  { code: 'COFRIGOB', name: 'COFRIGOB', stockType: 'EXTERNE', locationType: 'ENTREPOT', isSubcontractor: false },
-  { code: 'DAMSA', name: 'DAMSA', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true },
-  { code: 'SARMA', name: 'SARMA', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true },
-  { code: 'FOURSEASEN', name: 'FOURSEASEN', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true },
-  { code: 'ATLANTIC', name: 'ATLANTIC', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true },
-  { code: 'WILL-FISHING', name: 'WILL FISHING', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true },
-  { code: 'KJ-FISH', name: 'KJ FISH', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true },
+  { code: 'OCEAMIC-2', name: 'OCEAMIC 2', stockType: 'INTERNE', locationType: 'USINE', isSubcontractor: false, stockDomain: 'MP' },
+  { code: 'OCEAMIC-1', name: 'OCEAMIC 1', stockType: 'INTERNE', locationType: 'USINE', isSubcontractor: false, stockDomain: 'MP' },
+  { code: 'COFRIGOP', name: 'COFRIGOP', stockType: 'EXTERNE', locationType: 'ENTREPOT', isSubcontractor: false, stockDomain: 'MP' },
+  { code: 'COFRIGOB', name: 'COFRIGOB', stockType: 'EXTERNE', locationType: 'ENTREPOT', isSubcontractor: false, stockDomain: 'MP' },
+  { code: 'DAMSA', name: 'DAMSA', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true, stockDomain: 'MP' },
+  { code: 'SARMA', name: 'SARMA', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true, stockDomain: 'MP' },
+  { code: 'FOURSEASEN', name: 'FOURSEASEN', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true, stockDomain: 'MP' },
+  { code: 'ATLANTIC', name: 'ATLANTIC', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true, stockDomain: 'MP' },
+  { code: 'WILL-FISHING', name: 'WILL FISHING', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true, stockDomain: 'MP' },
+  { code: 'KJ-FISH', name: 'KJ FISH', stockType: 'EXTERNE', locationType: 'SOUS_TRAITANT', isSubcontractor: true, stockDomain: 'MP' },
+  // Phase 5: Finished Goods warehouse, distinct from every raw-material
+  // location above (section 54's "STOCK PF A").
+  { code: 'STOCK-PF-A', name: 'Stock PF A', stockType: 'INTERNE', locationType: 'ENTREPOT', isSubcontractor: false, stockDomain: 'PF' },
+];
+
+// Phase 5: customer master data (section 22), demonstration only.
+const CUSTOMERS: readonly Readonly<{ code: string; name: string; country: string; city: string }>[] = [
+  { code: 'CLIENT-X', name: 'Client X (démo)', country: 'France', city: 'Marseille' },
 ];
 
 // Production references. A product is a commercial / production reference, it
@@ -264,8 +277,8 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
     }
     for (const location of LOCATIONS) {
       await client.query(
-        `INSERT INTO locations (code, name, stock_type, location_type) VALUES ($1, $2, $3, $4)`,
-        [location.code, location.name, location.stockType, location.locationType],
+        `INSERT INTO locations (code, name, stock_type, location_type, stock_domain) VALUES ($1, $2, $3, $4, $5)`,
+        [location.code, location.name, location.stockType, location.locationType, location.stockDomain],
       );
       if (location.isSubcontractor) {
         await client.query(
@@ -274,6 +287,14 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
           [location.code, location.name, location.code],
         );
       }
+    }
+    for (const customer of CUSTOMERS) {
+      await client.query('INSERT INTO customers (code, name, country, city) VALUES ($1, $2, $3, $4)', [
+        customer.code,
+        customer.name,
+        customer.country,
+        customer.city,
+      ]);
     }
     for (const employee of EMPLOYEES) {
       await client.query(
@@ -936,6 +957,145 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
     },
     qualityUserId,
   );
+
+  // 7. Phase 5: packaging, Finished Goods Lot, pallets, PF stock and a
+  //    complete shipment on the same demonstration Run/cycle, so the
+  //    forward/backward traceability chain (section 32/33) is real end to
+  //    end - the exact figures of the Phase 5 acceptance scenario (section
+  //    54: 12000 boîtes / 1000 cartons / 12 boîtes par carton).
+  const stockPfA = await idOf(pool, 'locations', 'STOCK-PF-A');
+  const clientX = await idOf(pool, 'customers', 'CLIENT-X');
+
+  const packagingBatch = await createPackagingBatch(
+    pool,
+    {
+      productionRunId: run.id,
+      sterilizationCycleId: sterilizationCycle.id,
+      format: 'CLUB',
+      responsibleUserId: productionUserId,
+      notes: 'Emballage de démonstration',
+    },
+    productionUserId,
+  );
+
+  const finishedGoodLot = await createFinishedGoodLot(
+    pool,
+    {
+      packagingBatchId: packagingBatch.id,
+      format: 'CLUB',
+      piecesPerCan: 4,
+      productionDate: new Date().toISOString().slice(0, 10),
+      bestBeforeDate: new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      notes: 'Lot PF de démonstration',
+      sources: [
+        {
+          sterilizationCycleId: sterilizationCycle.id,
+          productionRunId: run.id,
+          quantityUnits: 480,
+        },
+      ],
+    },
+    productionUserId,
+  );
+
+  await recordPackagingOutput(
+    pool,
+    packagingBatch.id,
+    {
+      finishedGoodLotId: finishedGoodLot.id,
+      quantityCans: 12000,
+      quantityCartons: 1000,
+      unitsPerCarton: 12,
+      occurredAt: new Date(),
+      notes: null,
+    },
+    productionUserId,
+  );
+
+  await recordLabelCheck(
+    pool,
+    packagingBatch.id,
+    {
+      finishedGoodLotId: finishedGoodLot.id,
+      productCorrect: true,
+      lotCorrect: true,
+      dateCorrect: true,
+      labelCorrect: true,
+      notes: null,
+    },
+    productionUserId,
+  );
+
+  // Two pallets of 60 cartons each, received directly into Stock PF A
+  // (section 55).
+  const palletOne = await createPallet(
+    pool,
+    {
+      destinationLocationId: stockPfA,
+      occurredAt: new Date(),
+      notes: null,
+      contents: [{ finishedGoodLotId: finishedGoodLot.id, quantityCartons: 60, quantityUnits: 720 }],
+    },
+    productionUserId,
+  );
+  const palletTwo = await createPallet(
+    pool,
+    {
+      destinationLocationId: stockPfA,
+      occurredAt: new Date(),
+      notes: null,
+      contents: [{ finishedGoodLotId: finishedGoodLot.id, quantityCartons: 60, quantityUnits: 720 }],
+    },
+    productionUserId,
+  );
+
+  // Quality release of the Lot PF and both pallets: nothing ships without an
+  // explicit LIBERE decision (section 19/25).
+  await decideFgQuality(
+    pool,
+    {
+      entityType: 'FINISHED_GOOD_LOT',
+      entityId: finishedGoodLot.id,
+      decisionType: 'ACCEPTE',
+      reason: 'Contrôle qualité PF conforme (démo).',
+      notes: null,
+    },
+    qualityUserId,
+  );
+  for (const pallet of [palletOne, palletTwo]) {
+    await decideFgQuality(
+      pool,
+      {
+        entityType: 'PALLET',
+        entityId: pallet.id,
+        decisionType: 'ACCEPTE',
+        reason: 'Contrôle qualité palette conforme (démo).',
+        notes: null,
+      },
+      qualityUserId,
+    );
+  }
+
+  // Shipment to Client X, container CONT-001 (section 56/57), loading both
+  // pallets and confirming the full transaction through to EXPEDIEE.
+  const shipment = await createShipment(
+    pool,
+    {
+      customerId: clientX,
+      plannedDate: new Date().toISOString().slice(0, 10),
+      destination: 'Port de Casablanca (démo)',
+      containerNumber: 'CONT-001',
+      sealNumber: 'SEAL-0001',
+      vehicleRegistration: null,
+      targetTemperatureC: '4.00',
+      gensetRequired: true,
+      notes: 'Expédition de démonstration',
+    },
+    stockUserId,
+  );
+  await addPalletToShipment(pool, shipment.id, palletOne.id, stockUserId);
+  await addPalletToShipment(pool, shipment.id, palletTwo.id, stockUserId);
+  await confirmShipment(pool, shipment.id, stockUserId);
 }
 
 export async function seedDatabase(pool: pg.Pool): Promise<boolean> {

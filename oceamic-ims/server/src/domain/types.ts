@@ -279,3 +279,90 @@ export type CoolingResult = (typeof COOLING_RESULTS)[number];
 
 export const RUN_HOLD_STATUSES = ['ACTIF', 'LEVE'] as const;
 export type RunHoldStatus = (typeof RUN_HOLD_STATUSES)[number];
+
+// --- Phase 5: packaging, finished goods, pallets, PF stock, shipments ------
+
+// Which stock a location is meant to hold (section 14). Existing Phase 1
+// locations default to 'MP' at the schema level, preserving their current
+// meaning exactly; nothing about raw-material stock changes.
+export const LOCATION_STOCK_DOMAINS = ['MP', 'PF', 'MIXTE'] as const;
+export type LocationStockDomain = (typeof LOCATION_STOCK_DOMAINS)[number];
+
+export const PACKAGING_BATCH_STATUSES = ['PLANIFIE', 'EN_COURS', 'TERMINE', 'ANNULE'] as const;
+export type PackagingBatchStatus = (typeof PACKAGING_BATCH_STATUSES)[number];
+
+// Shared by finished_good_lots.quality_status and pallets.quality_status
+// (section 19): never automatically LIBERE just because packaging or
+// palletizing completed. Kept fully separate from operational status - a
+// pallet can be EN_STOCK and BLOQUE at the same time.
+export const FG_QUALITY_STATUSES = ['BLOQUE', 'A_VERIFIER', 'LIBERE', 'REJETE'] as const;
+export type FgQualityStatus = (typeof FG_QUALITY_STATUSES)[number];
+
+export const PALLET_STATUSES = [
+  'EN_PREPARATION',
+  'TERMINEE',
+  'EN_STOCK',
+  'RESERVEE',
+  'EXPEDIEE',
+  'ANNULEE',
+] as const;
+export type PalletStatus = (typeof PALLET_STATUSES)[number];
+
+// RESERVATION / LIBERATION_RESERVATION are deliberately absent: a reservation
+// never changes a physical location, so it is never a stock movement
+// (section 16's own principle, applied consistently).
+export const FG_MOVEMENT_TYPES = [
+  'ENTREE_PRODUCTION',
+  'TRANSFERT',
+  'EXPEDITION',
+  'RETOUR',
+  'AJUSTEMENT',
+  'BLOCAGE_LOGISTIQUE',
+] as const;
+export type FgMovementType = (typeof FG_MOVEMENT_TYPES)[number];
+
+export const FG_REFERENCE_TYPES = [
+  'PACKAGING',
+  'TRANSFERT',
+  'EXPEDITION',
+  'RETOUR',
+  'AJUSTEMENT',
+  'BLOCAGE_LOGISTIQUE',
+  'ANNULATION',
+] as const;
+export type FgReferenceType = (typeof FG_REFERENCE_TYPES)[number];
+
+// Polymorphic quality decisions/blocks (section 20): one shared mechanism for
+// the two new Phase 5 entity types, instead of duplicating Phase 1's
+// quality_decisions/lot_blocks logic a second and third time.
+export const FG_ENTITY_TYPES = ['FINISHED_GOOD_LOT', 'PALLET'] as const;
+export type FgEntityType = (typeof FG_ENTITY_TYPES)[number];
+
+export const FG_DECISION_TYPES = ['ACCEPTE', 'BLOQUE', 'REJETE', 'LIBERE'] as const;
+export type FgDecisionType = (typeof FG_DECISION_TYPES)[number];
+
+export const SHIPMENT_STATUSES = [
+  'PLANIFIEE',
+  'EN_PREPARATION',
+  'EN_CHARGEMENT',
+  'EXPEDIEE',
+  'ANNULEE',
+] as const;
+export type ShipmentStatus = (typeof SHIPMENT_STATUSES)[number];
+
+// Statuses in which a shipment still accepts pallets/reservations.
+export const SHIPMENT_STATUSES_ACCEPTING_ENTRIES: readonly ShipmentStatus[] = [
+  'PLANIFIEE',
+  'EN_PREPARATION',
+  'EN_CHARGEMENT',
+];
+
+export function shipmentAcceptsEntries(status: ShipmentStatus): boolean {
+  return SHIPMENT_STATUSES_ACCEPTING_ENTRIES.includes(status);
+}
+
+export const RESERVATION_STATUSES = ['ACTIF', 'CONSOMMEE', 'ANNULEE'] as const;
+export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
+
+export const PACKAGING_LABEL_RESULTS = ['CONFORME', 'NON_CONFORME'] as const;
+export type PackagingLabelResult = (typeof PACKAGING_LABEL_RESULTS)[number];

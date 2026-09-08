@@ -94,6 +94,13 @@ const BADGE_TONES: Readonly<Record<string, string>> = {
   MINEURE: 'info',
   MAJEURE: 'avertissement',
   CRITIQUE: 'alerte',
+  // Phase 5: packaging, finished goods, pallets, PF stock, shipments
+  EN_PREPARATION: 'info',
+  EN_STOCK: 'succes',
+  RESERVEE: 'avertissement',
+  EXPEDIEE: 'succes',
+  PLANIFIEE: 'info',
+  CONSOMMEE: 'succes',
 };
 
 export function Badge({ value }: { value: string | null }) {

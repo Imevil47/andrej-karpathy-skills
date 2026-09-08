@@ -41,6 +41,11 @@ export const PERMISSIONS = [
   'sterilization:operate',
   'ccp:validate',
   'deviation:manage',
+  // Phase 5: packaging, finished goods, pallets, PF stock, shipments
+  'packaging:manage',
+  'fgstock:manage',
+  'fgquality:decide',
+  'shipment:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -73,6 +78,10 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     // on their own (section 36).
     'ccp:validate',
     'deviation:manage',
+    // Blocking/releasing a Finished Goods Lot or a pallet is the same kind
+    // of authority as releasing a raw-material lot (section 20): reserved to
+    // Quality/Admin.
+    'fgquality:decide',
   ],
   // Stock runs receptions, movements and subcontracting logistics, but can
   // never release a quality block and can never adjust stock on its own.
@@ -83,6 +92,12 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     'stock:loss',
     'subcontracting:create',
     'subcontracting:result',
+    // Finished Goods stock and shipments are logistics, the same domain as
+    // raw-material stock: transfers, reservations, container loading and
+    // shipment confirmation stay with STOCK, never with PRODUCTION or
+    // QUALITE (section 45).
+    'fgstock:manage',
+    'shipment:manage',
   ],
   // Production runs the transformation: runs, consumption, outputs and losses.
   // Corrections stay available because they are reversals, fully audited, and a
@@ -108,6 +123,10 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     'seaming:operate',
     'marking:record',
     'sterilization:operate',
+    // Packaging is a Production activity, the same way filling, seaming and
+    // sterilization are: creating packaging batches, Finished Goods Lots and
+    // pallets stays with PRODUCTION (section 45's "EMBALLAGE / PRODUCTION").
+    'packaging:manage',
   ],
   LECTURE: READ_ONLY,
 };

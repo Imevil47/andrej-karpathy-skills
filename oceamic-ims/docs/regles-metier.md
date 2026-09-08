@@ -1148,3 +1148,211 @@ d'ingrédients, gestion de récupération d'huile, OEE avancé, SPC, IA, prévis
 Phase 4 rend cependant possible la création d'un futur lot de produit fini
 (Phase 5) à partir d'une chaîne aval validée, sans créer prématurément d'inventaire de
 produits finis (section 76).
+
+---
+
+## 76. Séparation des concepts de la Phase 5
+
+Lot d'emballage, Lot PF, palette, mouvement de stock PF, réservation, expédition et
+conteneur ne sont **jamais** fusionnés (section 62) :
+
+- un **lot d'emballage** (`packaging_batches`) est l'événement de production
+  d'emballage ;
+- un **Lot PF** (`finished_good_lots`) est l'identité de traçabilité du produit fini ;
+- une **palette** (`pallets`) est l'unité de manutention logistique ;
+- un **mouvement de stock PF** (`finished_goods_stock_movements`) est un événement
+  d'inventaire ;
+- une **réservation** (`stock_reservations`) est une allocation future de stock
+  disponible ;
+- une **expédition** (`shipments`) est un événement logistique client, et son
+  **conteneur** une identité de transport portée directement sur l'expédition
+  (section 29) plutôt qu'une table séparée sans usage réel dans ce périmètre.
+
+## 77. Cartonisation agrégée, pas de table par carton
+
+La sortie d'emballage (`packaging_outputs`) enregistre des totaux — boîtes, cartons,
+boîtes par carton — jamais une ligne par carton physique (section 9) : rien ne
+justifierait de créer des millions de lignes sans utilité opérationnelle. Le contrôle
+d'étiquette (`packaging_label_checks`) suit la même discipline que les statuts calculés
+de la Phase 4 : son `result` est une colonne générée à partir des quatre vérifications
+booléennes, jamais une valeur saisie librement.
+
+## 78. Un Lot PF n'a jamais de position de stock propre
+
+Le stock d'un Lot PF est **toujours dérivé** en agrégeant, via `pallet_contents`,
+chaque palette qui le contient — jamais stocké sur `finished_good_lots` lui-même
+(section 5). C'est la même discipline qu'en Phase 1 : le stock n'est jamais une colonne,
+toujours un calcul depuis un registre de mouvements (`finished_goods_stock_movements`).
+
+## 79. Granularité du stock PF : la palette
+
+**Décision de conception documentée.** Le stock PF est suivi à la granularité
+**PALETTE** exclusivement — jamais à la granularité Lot PF, jamais à la granularité
+carton. Une palette n'est jamais scindée entre deux emplacements : chaque mouvement
+déplace toujours sa quantité physique totale. Un Lot PF réparti sur plusieurs palettes
+peut donc se trouver sur plusieurs emplacements à la fois, sans que cela contredise la
+règle précédente — c'est la somme des positions de ses palettes qui compose sa
+position agrégée.
+
+## 80. Le statut qualité PF n'est jamais automatiquement `LIBERE`
+
+Un Lot PF et une palette démarrent `A_VERIFIER` (section 19), jamais `LIBERE` — ni la
+fin de l'emballage, ni la création de la palette ne libèrent automatiquement quoi que
+ce soit. Seule une décision qualité explicite (`fgquality:decide`, ACCEPTE ou LIBERE)
+fait passer l'entité à `LIBERE`. Une décision `BLOQUE` ouvre un blocage
+(`finished_goods_quality_blocks`, `ACTIF`) ; une décision `LIBERE` ferme le blocage
+actif. Le statut mis en cache sur `finished_good_lots.quality_status` /
+`pallets.quality_status` est toujours recalculé par le service, jamais réécrit
+directement.
+
+## 81. Héritage du blocage Production/CCP amont
+
+À la création d'un Lot PF, le service vérifie, via la vue `run_hold_status` de la
+Phase 4, si le(s) Run(s) source(s) (`finished_good_lot_sources`) portent une retenue
+Production/CCP active non levée. Si oui, le Lot PF est immédiatement `BLOQUE`,
+avec un blocage qualité référençant le motif de la retenue amont, au lieu de rester à
+son défaut `A_VERIFIER`. Cet héritage protège contre l'oubli : une matière retenue par
+la Qualité en amont ne peut jamais devenir un produit fini apparemment neutre en aval.
+
+## 82. Statut opérationnel ≠ disposition qualité, aussi pour les palettes
+
+Comme un cycle de stérilisation (section 67), une palette peut être opérationnellement
+`EN_STOCK` tout en restant `BLOQUE` pour la Qualité : les deux colonnes
+(`pallets.status`, `pallets.quality_status`) sont indépendantes et ne sont jamais
+fusionnées.
+
+## 83. Formule du stock disponible
+
+**Stock disponible = Stock physique − Stock bloqué − Stock réservé.**
+
+Une réservation n'est **jamais** traitée comme déjà expédiée : elle diminue le
+disponible sans toucher au stock physique, qui ne varie qu'au moment d'un mouvement de
+stock réel (transfert, expédition, retour, ajustement). Les cartons d'une palette
+comptent comme bloqués si la palette **ou** le Lot PF qu'elle porte est `BLOQUE`.
+
+## 84. Réservation : allocation, pas encore expédition
+
+Charger une palette sur une expédition (`addPalletToShipment`) ouvre en une seule
+transaction une ligne `shipment_lines` (contenu confirmé) et une ligne
+`stock_reservations` (`ACTIF`). Un index unique partiel garantit **au plus une
+réservation active par palette**, ce qui rend impossibles, au niveau de la base et pas
+seulement de la logique applicative :
+
+- le **double engagement** d'une même palette sur deux expéditions différentes ;
+- le **double chargement** de la même palette sur la même expédition.
+
+Tenter de charger une palette déjà réservée renvoie l'erreur exacte : *« Cette palette
+est déjà affectée à une expédition. »*
+
+## 85. Validation avant confirmation d'expédition
+
+Avant de confirmer une expédition, chaque palette chargée est vérifiée :
+
+1. une réservation active existe toujours pour ce couple expédition/palette ;
+2. ni la palette, ni aucun Lot PF qu'elle porte, n'est `BLOQUE` — sinon : *« Expédition
+   impossible.\nLa palette est bloquée par le service Qualité. »* ou *« Expédition
+   impossible.\nLe lot PF est bloqué par le service Qualité. »* ;
+3. la palette et chaque Lot PF qu'elle porte sont explicitement `LIBERE` — un statut
+   `A_VERIFIER` bloque autant l'expédition qu'un statut `BLOQUE` : rien ne s'expédie
+   sans libération qualité explicite ;
+4. le solde physique de la palette à son emplacement courant couvre toujours la
+   quantité réservée — sinon : *« Stock disponible insuffisant. »*
+
+Toute violation interrompt la confirmation **avant** la création du moindre mouvement
+de stock : une expédition refusée ne laisse aucune trace de mouvement.
+
+## 86. La confirmation d'expédition est une seule transaction
+
+`confirmShipment` (section 30) exécute, dans une seule transaction :
+
+1. valider stock, qualité et réservations (section 85) pour chaque palette chargée ;
+2. créer un mouvement `EXPEDITION` par palette (source = emplacement courant,
+   destination = néant) ;
+3. clôturer chaque réservation active en `CONSOMMEE` ;
+4. marquer chaque palette `EXPEDIEE` ;
+5. marquer l'expédition `EXPEDIEE` et horodater `shipped_at` ;
+6. auditer la confirmation.
+
+Toute erreur à n'importe quelle étape annule l'intégralité de la transaction : jamais
+d'expédition à moitié confirmée, jamais de palette marquée expédiée sans mouvement de
+sortie correspondant.
+
+## 87. Une expédition confirmée n'est jamais librement modifiée
+
+Une fois `EXPEDIEE`, une expédition ne peut plus recevoir de nouvelle palette ni être
+annulée : son historique reste définitif. Une correction après expédition (retour
+client, litige) passe par un mouvement `RETOUR` distinct et audité, jamais par une
+réécriture de l'expédition d'origine.
+
+## 88. Chargement d'une palette : statut opérationnel
+
+Charger une palette sur une expédition fait passer son statut à `RESERVEE`, et
+l'expédition, si elle était encore `PLANIFIEE`, passe à `EN_PREPARATION` (section 23) :
+une expédition avec au moins une palette réservée n'est plus une simple intention.
+
+## 89. Traçabilité avant (Lot MP → clients)
+
+Depuis un Lot MP, la chaîne avant retrouve, sans liaison saisie séparément :
+
+```
+Lot MP → Runs (production_run_materials) → Lots PF (finished_good_lot_sources)
+       → Palettes (pallet_contents) → Expéditions (shipment_lines) → Clients
+```
+
+Cette chaîne répond à la question posée par la section 63 : si un Lot MP présente un
+problème, quels clients ont reçu un produit qui en est issu.
+
+## 90. Traçabilité arrière (Expédition/Conteneur → Lots MP)
+
+Depuis une expédition ou un numéro de conteneur, la chaîne arrière redescend
+symétriquement :
+
+```
+Expédition/Conteneur → Palettes (shipment_lines) → Lots PF (pallet_contents)
+       → Cycles de stérilisation et Runs (finished_good_lot_sources)
+       → Lots MP (production_run_materials) → Fournisseur/Navire/Réception
+```
+
+La recherche globale de traçabilité (section 34) accepte désormais un Lot MP, un Run,
+un Lot PF, une Palette, une Expédition, un numéro de Conteneur ou un Client, et mène
+chaque résultat à son propre écran plutôt que de tout faire converger vers « Situation
+du lot » comme en Phase 1 seule.
+
+## 91. Audit de la Phase 5
+
+Sont tracés : création et clôture d'un lot d'emballage, création d'un Lot PF, sortie
+d'emballage, contrôle d'étiquette, création et annulation d'une palette, décisions et
+blocages qualité PF, chaque mouvement de stock PF (entrée, transfert, ajustement,
+blocage logistique, retour, expédition), création d'une expédition, mise à jour des
+informations conteneur, chargement/retrait d'une palette, confirmation et annulation
+d'une expédition. Chaque entrée conserve l'auteur, la date et les valeurs utiles.
+
+## 92. Rôles de la Phase 5
+
+| Permission | ADMIN | PRODUCTION | QUALITE | STOCK | LECTURE |
+|---|:--:|:--:|:--:|:--:|:--:|
+| Consultation (emballage, Lots PF, palettes, stock PF, expéditions) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Créer/gérer lot d'emballage, Lot PF, palette | ✓ | ✓ | | | |
+| Gérer le stock PF (transfert, ajustement, blocage logistique, retour de palette) | ✓ | | | ✓ | |
+| Décider qualité PF (bloquer/libérer un Lot PF ou une palette) | ✓ | | ✓ | | |
+| Gérer une expédition (créer, charger, confirmer, annuler) | ✓ | | | ✓ | |
+| Créer/désactiver un client | ✓ | | | | |
+
+PRODUCTION emballe (crée lots d'emballage, Lots PF, palettes), exactement comme elle
+remplit, sertit et stérilise en Phase 4. STOCK gère la logistique PF et les
+expéditions, au même titre que le stock matière première en Phase 1 — jamais
+PRODUCTION ni QUALITE. QUALITE décide seule des blocages et libérations PF, exactement
+comme elle décide seule des blocages matière première en Phase 1 et des décisions CCP
+en Phase 4 : un utilisateur STOCK ne peut jamais, à lui seul, libérer un Lot PF ou une
+palette bloquée.
+
+## 93. Hors périmètre de la Phase 5
+
+Explicitement non construits : gestion de rappel complète (la traçabilité rend
+possible d'identifier tous les clients/expéditions affectés par un Lot MP et tous les
+lots amont impliqués dans un Lot PF, mais aucun flux de rappel dédié n'existe), CRM,
+facturation client, comptabilité, approvisionnement, moteur de stock d'ingrédients,
+GMAO/maintenance complète, gestion de récupération d'huile, BI avancée, prévision, IA,
+concepteur de documents ERP complet (seules des vues imprimables/exportables de base —
+liste de colisage, bon d'expédition, liste de palettes, traçabilité d'un lot —
+existent).

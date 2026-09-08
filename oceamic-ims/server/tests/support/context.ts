@@ -11,6 +11,22 @@ import { hashPassword } from '../../src/services/auth.ts';
 // live in transactions, constraints and locks, which mocks cannot exercise.
 
 const TABLES_IN_TRUNCATION_ORDER = [
+  // Phase 5: packaging, finished goods, pallets, PF stock, shipments - most
+  // dependent tables first, mirroring the rest of this list.
+  'stock_reservations',
+  'shipment_lines',
+  'shipments',
+  'customers',
+  'finished_goods_quality_blocks',
+  'finished_goods_quality_decisions',
+  'finished_goods_stock_movements',
+  'pallet_contents',
+  'pallets',
+  'packaging_label_checks',
+  'packaging_outputs',
+  'finished_good_lot_sources',
+  'finished_good_lots',
+  'packaging_batches',
   'audit_log',
   'employee_cadence_controls',
   'line_controls',
@@ -99,6 +115,8 @@ export type Fixtures = Readonly<{
   seamingSpecEpaisseurId: string;
   sterilizationProgramId: string;
   markingItemIds: readonly string[];
+  stockPfALocationId: string;
+  customerId: string;
 }>;
 
 export type TestContext = Readonly<{
@@ -152,11 +170,16 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     `INSERT INTO suppliers (code, name) VALUES ('FRN-TEST', 'Fournisseur test') RETURNING id`,
   );
   const locations = await pool.query<{ id: string; code: string }>(
-    `INSERT INTO locations (code, name, stock_type, location_type)
-     VALUES ('OCEAMIC-2', 'OCEAMIC 2', 'INTERNE', 'USINE'),
-            ('DAMSA', 'DAMSA', 'EXTERNE', 'ENTREPOT'),
-            ('SARMA', 'SARMA', 'EXTERNE', 'SOUS_TRAITANT')
+    `INSERT INTO locations (code, name, stock_type, location_type, stock_domain)
+     VALUES ('OCEAMIC-2', 'OCEAMIC 2', 'INTERNE', 'USINE', 'MP'),
+            ('DAMSA', 'DAMSA', 'EXTERNE', 'ENTREPOT', 'MP'),
+            ('SARMA', 'SARMA', 'EXTERNE', 'SOUS_TRAITANT', 'MP'),
+            ('STOCK-PF-A', 'Stock PF A', 'INTERNE', 'ENTREPOT', 'PF')
      RETURNING id, code`,
+  );
+  const customer = await pool.query<{ id: string }>(
+    `INSERT INTO customers (code, name, country, city) VALUES ('CLIENT-TEST', 'Client Test', 'France', 'Marseille')
+     RETURNING id`,
   );
   const sarmaLocationId = locations.rows.find((row) => row.code === 'SARMA')?.id ?? '';
   const subcontractor = await pool.query<{ id: string }>(
@@ -279,6 +302,8 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     seamingSpecEpaisseurId: seamingSpec.rows[0]?.id ?? '',
     sterilizationProgramId: sterilizationProgram.rows[0]?.id ?? '',
     markingItemIds: markingItems.rows.map((row) => row.id),
+    stockPfALocationId: locations.rows.find((row) => row.code === 'STOCK-PF-A')?.id ?? '',
+    customerId: customer.rows[0]?.id ?? '',
   };
 }
 

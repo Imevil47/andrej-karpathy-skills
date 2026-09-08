@@ -59,6 +59,21 @@ const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
+    title: 'Emballage',
+    entries: [
+      { to: '/emballage/lots-pf', label: 'Lots PF', permission: 'production:read' },
+      { to: '/palettes', label: 'Palettes', permission: 'stock:read' },
+    ],
+  },
+  {
+    title: 'Stock PF',
+    entries: [{ to: '/stock-pf', label: 'Situation du stock', permission: 'stock:read' }],
+  },
+  {
+    title: 'Expéditions',
+    entries: [{ to: '/expeditions', label: 'Expéditions', permission: 'stock:read' }],
+  },
+  {
     title: null,
     entries: [
       { to: '/tracabilite', label: 'Traçabilité', permission: 'traceability:read' },

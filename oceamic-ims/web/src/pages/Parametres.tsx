@@ -4,6 +4,7 @@ import { Badge, Card, DataTable, Field, Message, PageHeader } from '../component
 import { label } from '../format';
 import {
   useCadenceStandards,
+  useCustomers,
   useDowntimeCategories,
   useEmployees,
   useEquipment,
@@ -57,6 +58,7 @@ export function Parametres() {
   const seamingSpecs = useSeamingSpecs();
   const sterilizationPrograms = useSterilizationPrograms();
   const markingItems = useMarkingVerificationItems();
+  const customers = useCustomers();
   const users = useResource<readonly UserRow[]>('/api/users');
 
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +72,9 @@ export function Parametres() {
     name: '',
     stockType: 'INTERNE',
     locationType: 'USINE',
+    stockDomain: 'MP',
   });
+  const [customerForm, setCustomerForm] = useState({ code: '', name: '', country: '', city: '' });
   const [subcontractorForm, setSubcontractorForm] = useState({
     code: '',
     name: '',
@@ -263,6 +267,16 @@ export function Parametres() {
               <option value="AUTRE">Autre</option>
             </select>
           </Field>
+          <Field label="Domaine de stock" hint="Détermine si l'emplacement peut recevoir du stock PF.">
+            <select
+              value={locationForm.stockDomain}
+              onChange={(event) => setLocationForm((f) => ({ ...f, stockDomain: event.target.value }))}
+            >
+              <option value="MP">Matières premières</option>
+              <option value="PF">Produits finis</option>
+              <option value="MIXTE">Mixte</option>
+            </select>
+          </Field>
           <div style={{ display: 'flex', alignItems: 'end' }}>
             <button type="submit" className="secondaire">
               Ajouter
@@ -275,6 +289,7 @@ export function Parametres() {
             { key: 'nom', label: 'Nom', numeric: false },
             { key: 'type', label: 'Type de stock', numeric: false },
             { key: 'nature', label: 'Nature', numeric: false },
+            { key: 'domaine', label: 'Domaine', numeric: false },
             { key: 'reception', label: 'Réception', numeric: false },
             { key: 'actif', label: 'Actif', numeric: false },
           ]}
@@ -289,7 +304,81 @@ export function Parametres() {
                 <Badge value={row.stockType} />
               </td>
               <td>{label(row.locationType)}</td>
+              <td>{label(row.stockDomain)}</td>
               <td>{row.canReceive ? 'Oui' : 'Non'}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Clients">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () =>
+                apiPost('/api/customers', {
+                  code: customerForm.code,
+                  name: customerForm.name,
+                  country: customerForm.country.trim() === '' ? null : customerForm.country.trim(),
+                  city: customerForm.city.trim() === '' ? null : customerForm.city.trim(),
+                }),
+              'Client créé.',
+              customers.reload,
+            ).then(() => setCustomerForm({ code: '', name: '', country: '', city: '' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={customerForm.code}
+              onChange={(event) => setCustomerForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={customerForm.name}
+              onChange={(event) => setCustomerForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Pays" hint={null}>
+            <input
+              value={customerForm.country}
+              onChange={(event) => setCustomerForm((f) => ({ ...f, country: event.target.value }))}
+            />
+          </Field>
+          <Field label="Ville" hint={null}>
+            <input
+              value={customerForm.city}
+              onChange={(event) => setCustomerForm((f) => ({ ...f, city: event.target.value }))}
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'pays', label: 'Pays', numeric: false },
+            { key: 'ville', label: 'Ville', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(customers.data ?? []).length === 0}
+          emptyText="Aucun client."
+        >
+          {(customers.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.country ?? '-'}</td>
+              <td>{row.city ?? '-'}</td>
               <td>{row.isActive ? 'Oui' : 'Non'}</td>
             </tr>
           ))}

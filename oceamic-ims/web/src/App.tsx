@@ -14,8 +14,17 @@ import { ControleSertissageDetail } from './pages/ControleSertissageDetail';
 import { ControlesSertissage } from './pages/ControlesSertissage';
 import { DeviationDetail } from './pages/DeviationDetail';
 import { Deviations } from './pages/Deviations';
+import { EmballageNouveau } from './pages/EmballageNouveau';
+import { ExpeditionDetail } from './pages/ExpeditionDetail';
+import { ExpeditionNouvelle } from './pages/ExpeditionNouvelle';
+import { Expeditions } from './pages/Expeditions';
+import { LotPFSituation } from './pages/LotPFSituation';
 import { LotSituation } from './pages/LotSituation';
 import { Lots } from './pages/Lots';
+import { LotsPF } from './pages/LotsPF';
+import { PaletteNouvelle } from './pages/PaletteNouvelle';
+import { PaletteSituation } from './pages/PaletteSituation';
+import { Palettes } from './pages/Palettes';
 import { Parametres } from './pages/Parametres';
 import { ProductionRunNouveau } from './pages/ProductionRunNouveau';
 import { ProductionRunSituation } from './pages/ProductionRunSituation';
@@ -33,6 +42,7 @@ import { Sterilisation } from './pages/Sterilisation';
 import { SterilisationCycle } from './pages/SterilisationCycle';
 import { SterilisationNouveau } from './pages/SterilisationNouveau';
 import { StockMouvements } from './pages/StockMouvements';
+import { StockPF } from './pages/StockPF';
 import { StockSituation } from './pages/StockSituation';
 import { StockTransfert } from './pages/StockTransfert';
 import { Tracabilite } from './pages/Tracabilite';
@@ -84,6 +94,16 @@ export function App() {
           <Route path="/qualite/deviations" element={<Deviations />} />
           <Route path="/qualite/deviations/:id" element={<DeviationDetail />} />
           <Route path="/tracabilite" element={<Tracabilite />} />
+          <Route path="/emballage/nouveau" element={<EmballageNouveau />} />
+          <Route path="/emballage/lots-pf" element={<LotsPF />} />
+          <Route path="/emballage/lots-pf/:id" element={<LotPFSituation />} />
+          <Route path="/palettes" element={<Palettes />} />
+          <Route path="/palettes/nouvelle" element={<PaletteNouvelle />} />
+          <Route path="/palettes/:id" element={<PaletteSituation />} />
+          <Route path="/stock-pf" element={<StockPF />} />
+          <Route path="/expeditions" element={<Expeditions />} />
+          <Route path="/expeditions/nouvelle" element={<ExpeditionNouvelle />} />
+          <Route path="/expeditions/:id" element={<ExpeditionDetail />} />
           <Route path="/parametres" element={<Parametres />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

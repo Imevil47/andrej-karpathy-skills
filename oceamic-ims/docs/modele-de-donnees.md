@@ -903,3 +903,174 @@ production_runs ──< filling_operations ──< filling_weight_controls ─�
        │
        └──< production_run_holds
 ```
+
+---
+
+## Emballage
+
+### `packaging_batches`
+L'événement de production d'emballage (section 4), distinct du Lot PF qu'il produit
+(section 62). Rattaché à un Run et, facultativement, à un cycle de stérilisation.
+`status` : `PLANIFIE`, `EN_COURS`, `TERMINE`, `ANNULE`.
+
+### `finished_good_lots`
+L'identité de traçabilité du produit fini (section 6), **jamais** le registre de stock
+lui-même : la colonne `quality_status` est un statut mis en cache, recalculé par le
+service qualité, jamais saisie librement, et son stock physique/bloqué/réservé n'est
+jamais stocké ici (voir `finished_good_lot_stock_summary` plus bas).
+
+| Champ | Rôle |
+|---|---|
+| `packaging_batch_id`, `production_run_id`, `product_id` | Origine |
+| `format`, `pieces_per_can` | Snapshot au moment de l'emballage |
+| `production_date`, `best_before_date` | DLC facultative, jamais antérieure à la production |
+| `quality_status` | `BLOQUE`, `A_VERIFIER`, `LIBERE`, `REJETE` — **jamais `LIBERE` automatiquement** à la création (section 19) |
+| `commercial_status` | Champ libre facultatif |
+
+### `finished_good_lot_sources`
+La relation plusieurs-à-plusieurs entre un Lot PF et le(s) cycle(s) de stérilisation
+qui l'ont produit (section 7) — un Lot PF peut agréger plusieurs cycles, un cycle peut
+alimenter plusieurs Lots PF. `quantity_units` facultatif.
+
+### `packaging_outputs`
+La sortie de cartonisation **agrégée** (boîtes, cartons, boîtes par carton), et non une
+table d'une ligne par carton physique — la section 9 sanctionne explicitement ce choix
+pour éviter des millions de lignes sans utilité opérationnelle.
+
+### `packaging_label_checks`
+Le contrôle d'étiquette avant palettisation (section 10). `result` est une **colonne
+générée** (`GENERATED ALWAYS AS ... STORED`) à partir des quatre booléens de contrôle
+(produit, lot, date, étiquette) — jamais une valeur saisie directement, la même
+discipline que les statuts calculés de la Phase 4.
+
+---
+
+## Palettes
+
+Réutilise le modèle d'emplacement existant (section 14) : `locations` gagne une
+colonne `stock_domain` (`MP`, `PF`, `MIXTE`), avec `MP` par défaut pour préserver le
+sens des emplacements des Phases 1-4 sans aucun changement de comportement.
+
+### `pallets`
+L'unité de manutention logistique (section 11). Composition fixée à la création et
+jamais modifiée ensuite (correction par annulation + nouvelle palette, la même
+philosophie « pas de réécriture silencieuse » que partout ailleurs). `status`
+(`EN_PREPARATION`, `TERMINEE`, `EN_STOCK`, `RESERVEE`, `EXPEDIEE`, `ANNULEE`) et
+`quality_status` (`BLOQUE`, `A_VERIFIER`, `LIBERE`, `REJETE`) sont deux colonnes
+totalement séparées, comme statut de procédé et disposition qualité en Phase 4.
+
+### `pallet_contents`
+Quel(s) Lot(s) PF, et combien de cartons/unités, une palette porte (section 12) — pas
+forcée à un seul lot, mais le cas mono-lot reste le plus courant.
+
+---
+
+## Stock PF et Qualité PF
+
+### `finished_goods_stock_movements`
+Le registre de mouvements de stock PF (section 15), un nouveau registre distinct de
+`stock_movements` (kilogrammes de matière première contre cartons/unités de produit
+fini — deux domaines qu'un mélange aurait confondus).
+
+> **Décision de conception documentée** : chaque mouvement physique réel est suivi à la
+> granularité **PALETTE** exclusivement, exactement comme `stock_movements` suit la
+> matière première à la granularité LOT + EMPLACEMENT en Phase 1. Un Lot PF n'a jamais
+> de position de stock indépendante (section 5) : son stock est toujours la somme, sur
+> chaque palette qui le contient (`pallet_contents`), de la position et de la quantité
+> courantes de cette palette. `finished_good_lot_id` reste sur cette table à titre
+> **informatif et dénormalisé** uniquement (renseigné quand la palette est mono-lot) ;
+> les vues de solde par lot dérivent toujours de `pallet_contents`, jamais de cette
+> colonne, pour ne jamais avoir deux sources de vérité.
+
+`movement_type` : `ENTREE_PRODUCTION`, `TRANSFERT`, `EXPEDITION`, `RETOUR`,
+`AJUSTEMENT`, `BLOCAGE_LOGISTIQUE`. **`RESERVATION` et `LIBERATION_RESERVATION` sont
+volontairement absents** : une réservation ne change jamais un emplacement physique, et
+la section 16 met elle-même en garde contre la confusion entre un blocage qualité et un
+mouvement de stock « sauf si l'emplacement physique change » — le même principe exclut
+la réservation ici.
+
+### `finished_goods_quality_decisions` / `finished_goods_quality_blocks`
+Un mécanisme **polymorphe** unique et partagé pour les deux nouveaux types d'entité
+Phase 5 (`FINISHED_GOOD_LOT`, `PALLET`) plutôt que de dupliquer deux fois la logique
+`quality_decisions`/`lot_blocks` de la Phase 1 (section 20). Les tables existantes de
+la Phase 1 restent inchangées, spécifiques à la matière première ; ce nouveau couple
+suit leur **forme de cycle de vie** (décision → blocage optionnel → levée) par
+convention, sans clé étrangère réelle — `entity_id` ne peut pas référencer deux tables
+cibles différentes, donc `entity_type` est validé dans la couche service, le même
+motif déjà utilisé pour la double portée optionnelle de `process_deviations` en
+Phase 4. Un index unique partiel garantit **au plus un blocage actif par entité**
+(`fg_blocks_one_active_per_entity`), exactement comme `lot_blocks_one_active_per_lot`.
+
+---
+
+## Expéditions
+
+### `customers`
+Donnée de référence client (section 22) : usage expédition/traçabilité uniquement,
+jamais un CRM.
+
+### `shipments`
+L'événement logistique client (section 62). L'identité conteneur/transport (n° de
+conteneur, n° de scellé, température consigne, GENSET) vit directement sur cette table
+plutôt que dans une table `containers` séparée : la Phase 5 expédie un seul conteneur
+par expédition en pratique, donc une table dédiée n'ajouterait qu'une jointure inutile.
+`status` : `PLANIFIEE`, `EN_PREPARATION`, `EN_CHARGEMENT`, `EXPEDIEE`, `ANNULEE`.
+
+### `shipment_lines`
+Le contenu confirmé d'une expédition (section 23), toujours par palette — le picking
+réel en entrepôt se fait palette par palette. `finished_good_lot_id` reste une
+référence informative et dénormalisée (renseignée quand la palette est mono-lot) ; la
+composition Lot PF de référence reste toujours `pallet_contents`.
+
+### `stock_reservations`
+L'allocation future de stock disponible (section 62), structurellement séparée du
+registre de stock physique et de la ligne confirmée de l'expédition. Charger une
+palette sur une expédition ouvre une réservation dans la même transaction ; l'index
+unique partiel ci-dessous rend le double engagement (section 24) et le double
+chargement de la même palette (section 28) structurellement impossibles, pas
+seulement empêchés par la logique applicative.
+
+Un index unique partiel garantit **au plus une réservation active par palette**
+(`stock_reservations_one_active_per_pallet`), que ce soit pour la même expédition ou
+une autre.
+
+---
+
+## Vues de calcul de la Phase 5
+
+Le stock PF n'est jamais stocké, avec la même discipline qu'en Phase 1 : il est
+toujours calculé depuis le registre de mouvements.
+
+| Vue | Contenu |
+|---|---|
+| `fg_stock_ledger_entries` | Chaque mouvement de stock PF transformé en ligne signée (entrée = positive, sortie = négative), comme `stock_ledger_entries` en Phase 1 |
+| `pallet_stock_balance` | Position physique de chaque palette : au plus un emplacement avec un solde non nul par palette |
+| `pallet_summary` | Position, réservation et statut qualité d'une palette en une ligne, pour les écrans liste/détail |
+| `finished_good_lot_stock_summary` | Cartons/unités physiques, bloqués et réservés d'un Lot PF, toujours dérivés en attribuant la position de chaque palette via `pallet_contents` — un Lot PF ne porte jamais sa propre position de stock (section 5) |
+| `fg_stock_by_location` | Stock PF agrégé par emplacement et par produit, pour les cartes de synthèse de l'écran Stock PF |
+
+Sur `finished_good_lot_stock_summary`, les cartons d'une palette comptent comme
+bloqués si la palette **ou** le Lot PF qu'elle porte est `BLOQUE` : un blocage au
+niveau palette est un problème de manutention affectant tout ce qu'elle porte, un
+blocage au niveau Lot PF est un problème produit affectant seulement les cartons de ce
+lot, où qu'ils se trouvent physiquement.
+
+## Relations de la Phase 5
+
+```
+production_runs ──< finished_good_lot_sources >── sterilization_cycles
+       │                       │
+       │                       └── finished_good_lots ──< packaging_outputs
+       │                                  │              ├──< packaging_label_checks
+       │                                  │              └──< pallet_contents >── pallets
+       │                                  │                                          │
+       │                                  └──< finished_goods_quality_decisions/blocks (entity_type='FINISHED_GOOD_LOT')
+       │                                                                             │
+       └──< packaging_batches ──< finished_good_lots                                 │
+                                                                                       ├── finished_goods_stock_movements
+                                                                                       ├── finished_goods_quality_decisions/blocks (entity_type='PALLET')
+                                                                                       ├──< stock_reservations >── shipments >── customers
+                                                                                       └──< shipment_lines >── shipments
+
+raw_material_lots ──< production_run_materials >── production_runs   (traçabilité avant/arrière, sections 32-33)
+```

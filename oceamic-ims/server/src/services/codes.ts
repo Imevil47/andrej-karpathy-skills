@@ -12,7 +12,12 @@ export type CodePrefix =
   | 'CP'
   | 'SRT'
   | 'STE'
-  | 'DEV';
+  | 'DEV'
+  | 'EMB'
+  | 'PF'
+  | 'PAL'
+  | 'MVP'
+  | 'EXP';
 
 const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   LOT: 3,
@@ -36,6 +41,18 @@ const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   STE: 3,
   // Process deviation (section 37).
   DEV: 3,
+  // Packaging batch (section 4).
+  EMB: 3,
+  // Finished Goods Lot (section 6: "PF-20260908-001").
+  PF: 3,
+  // Pallet (section 11: "PAL-20260908-001").
+  PAL: 3,
+  // Finished Goods stock movement. MVP, never MVT: MVT is already the
+  // raw-material movement prefix, and the two ledgers are deliberately
+  // separate registries (section 15).
+  MVP: 5,
+  // Shipment (section 21).
+  EXP: 3,
 };
 
 /**

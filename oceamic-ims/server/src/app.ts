@@ -14,11 +14,14 @@ import { registerFillingRoutes } from './routes/filling.ts';
 import { registerHomeRoutes } from './routes/home.ts';
 import { registerLotRoutes } from './routes/lots.ts';
 import { registerMasterDataRoutes } from './routes/masterdata.ts';
+import { registerPackagingRoutes } from './routes/packaging.ts';
+import { registerPalletRoutes } from './routes/pallets.ts';
 import { registerProcessRoutes } from './routes/process.ts';
 import { registerProductionRoutes } from './routes/production.ts';
 import { registerQualityRoutes } from './routes/quality.ts';
 import { registerReceptionRoutes } from './routes/receptions.ts';
 import { registerSeamingRoutes } from './routes/seaming.ts';
+import { registerShipmentRoutes } from './routes/shipments.ts';
 import { registerSterilizationRoutes } from './routes/sterilization.ts';
 import { registerStockRoutes } from './routes/stock.ts';
 import { registerSubcontractingRoutes } from './routes/subcontracting.ts';
@@ -90,6 +93,9 @@ export async function buildApp(dependencies: AppDependencies): Promise<FastifyIn
   await registerSterilizationRoutes(app, dependencies);
   await registerDeviationRoutes(app, dependencies);
   await registerProcessRoutes(app, dependencies);
+  await registerPackagingRoutes(app, dependencies);
+  await registerPalletRoutes(app, dependencies);
+  await registerShipmentRoutes(app, dependencies);
 
   return app;
 }

@@ -12,6 +12,7 @@ export type Location = Readonly<{
   canReceive: boolean;
   canStore: boolean;
   isActive: boolean;
+  stockDomain: 'MP' | 'PF' | 'MIXTE';
 }>;
 export type Subcontractor = Readonly<{
   id: string;
@@ -238,4 +239,19 @@ export function useSterilizationPrograms() {
 }
 export function useMarkingVerificationItems() {
   return useResource<readonly MarkingVerificationItem[]>('/api/marking-verification-items');
+}
+
+// --- Phase 5: packaging, finished goods, pallets, PF stock, shipments -------
+
+export type Customer = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  country: string | null;
+  city: string | null;
+  isActive: boolean;
+}>;
+
+export function useCustomers() {
+  return useResource<readonly Customer[]>('/api/customers');
 }

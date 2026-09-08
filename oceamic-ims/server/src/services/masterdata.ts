@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { withTransaction } from '../db/pool.ts';
-import type { LocationType, StockType } from '../domain/types.ts';
+import type { LocationStockDomain, LocationType, StockType } from '../domain/types.ts';
 import { conflictError, notFoundError } from '../errors.ts';
 import { recordAudit } from './audit.ts';
 
@@ -33,6 +33,16 @@ export type LocationRow = Readonly<{
   locationType: LocationType;
   canReceive: boolean;
   canStore: boolean;
+  isActive: boolean;
+  stockDomain: LocationStockDomain;
+}>;
+
+export type CustomerRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  country: string | null;
+  city: string | null;
   isActive: boolean;
 }>;
 
@@ -95,10 +105,25 @@ export async function listLocations(
   const result = await pool.query<LocationRow>(
     `SELECT id AS "id", code AS "code", name AS "name", stock_type AS "stockType",
             location_type AS "locationType", can_receive AS "canReceive",
-            can_store AS "canStore", is_active AS "isActive"
+            can_store AS "canStore", is_active AS "isActive", stock_domain AS "stockDomain"
        FROM locations
       WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
       ORDER BY stock_type, code`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export async function listCustomers(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly CustomerRow[]> {
+  const result = await pool.query<CustomerRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", country AS "country", city AS "city",
+            is_active AS "isActive"
+       FROM customers
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY name`,
     [includeInactive],
   );
   return result.rows;
@@ -156,6 +181,7 @@ export type LocationInput = Readonly<{
   locationType: LocationType;
   canReceive: boolean;
   canStore: boolean;
+  stockDomain: LocationStockDomain;
 }>;
 
 export async function createLocation(pool: pg.Pool, input: LocationInput, actorId: string) {
@@ -165,8 +191,8 @@ export async function createLocation(pool: pg.Pool, input: LocationInput, actorI
       throw conflictError(`L'emplacement ${input.code} existe déjà.`, { code: input.code });
     }
     const inserted = await client.query<{ id: string }>(
-      `INSERT INTO locations (code, name, stock_type, location_type, can_receive, can_store)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      `INSERT INTO locations (code, name, stock_type, location_type, can_receive, can_store, stock_domain)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [
         input.code.toUpperCase(),
         input.name,
@@ -174,6 +200,7 @@ export async function createLocation(pool: pg.Pool, input: LocationInput, actorI
         input.locationType,
         input.canReceive,
         input.canStore,
+        input.stockDomain,
       ],
     );
     const id = inserted.rows[0]?.id;
@@ -184,6 +211,40 @@ export async function createLocation(pool: pg.Pool, input: LocationInput, actorI
       userId: actorId,
       action: 'MASTERDATA_CREATION',
       entityType: 'locations',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type CustomerInput = Readonly<{
+  code: string;
+  name: string;
+  country: string | null;
+  city: string | null;
+}>;
+
+export async function createCustomer(pool: pg.Pool, input: CustomerInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM customers WHERE code = $1', [input.code]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Le client ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO customers (code, name, country, city) VALUES ($1, $2, $3, $4) RETURNING id',
+      [input.code.toUpperCase(), input.name, input.country, input.city],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le client n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'customers',
       entityId: id,
       oldValues: null,
       newValues: { ...input },
@@ -211,7 +272,8 @@ export type ActivationTarget =
   | 'seaming_parameters'
   | 'seaming_specifications'
   | 'sterilization_programs'
-  | 'marking_verification_items';
+  | 'marking_verification_items'
+  | 'customers';
 
 // The table name never comes from the request: it is looked up in this map,
 // keyed by a validated union.
@@ -234,6 +296,7 @@ const ACTIVATION_TABLES: Readonly<Record<ActivationTarget, string>> = {
   seaming_specifications: 'seaming_specifications',
   sterilization_programs: 'sterilization_programs',
   marking_verification_items: 'marking_verification_items',
+  customers: 'customers',
 };
 
 export async function setActivation(

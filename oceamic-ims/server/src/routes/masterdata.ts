@@ -4,6 +4,7 @@ import type { AppDependencies } from '../app.ts';
 import {
   CADENCE_ACTIVITIES,
   EQUIPMENT_TYPES,
+  LOCATION_STOCK_DOMAINS,
   LOCATION_TYPES,
   MEASUREMENT_UNITS,
   STOCK_TYPES,
@@ -13,6 +14,7 @@ import { decimalSchema, requiredTextSchema, uuidSchema } from '../http/schemas.t
 import { listUsers } from '../services/auth.ts';
 import {
   createCadenceStandard,
+  createCustomer,
   createDowntimeCategory,
   createEmployee,
   createEquipment,
@@ -31,6 +33,7 @@ import {
   createSupplier,
   createVessel,
   listCadenceStandards,
+  listCustomers,
   listDowntimeCategories,
   listEmployees,
   listEquipment,
@@ -79,6 +82,7 @@ const activationSchema = z.object({
     'seaming_specifications',
     'sterilization_programs',
     'marking_verification_items',
+    'customers',
   ]),
   id: uuidSchema,
 });
@@ -241,10 +245,31 @@ export async function registerMasterDataRoutes(
         locationType: z.enum(LOCATION_TYPES),
         canReceive: z.boolean(),
         canStore: z.boolean(),
+        stockDomain: z.enum(LOCATION_STOCK_DOMAINS),
       })
       .parse(request.body);
     reply.status(201);
     return createLocation(pool, input, user.id);
+  });
+
+  app.get('/api/customers', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listCustomers(pool, inactifs);
+  });
+
+  app.post('/api/customers', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        country: z.string().trim().min(1).nullable(),
+        city: z.string().trim().min(1).nullable(),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createCustomer(pool, input, user.id);
   });
 
   app.post('/api/subcontractors', async (request, reply) => {

@@ -313,15 +313,27 @@ export async function lotSituation(pool: pg.Pool, lotId: string): Promise<LotSit
 }
 
 export type SearchHit = Readonly<{
-  kind: 'LOT' | 'RECEPTION' | 'SOUS_TRAITANCE' | 'MOUVEMENT' | 'RUN';
+  kind:
+    | 'LOT'
+    | 'RECEPTION'
+    | 'SOUS_TRAITANCE'
+    | 'MOUVEMENT'
+    | 'RUN'
+    | 'LOT_PF'
+    | 'PALETTE'
+    | 'EXPEDITION'
+    | 'CONTENEUR'
+    | 'CLIENT';
   label: string;
   detail: string;
   lotId: string;
 }>;
 
 /**
- * Global search. Every hit resolves to a lot, so the operator always lands on
- * "Situation du lot".
+ * Global search (section 34): a Phase 1 hit resolves to "Situation du lot",
+ * while a Phase 5 hit resolves to its own screen (Lot PF, Palette,
+ * Expédition) - the frontend routes on `kind`, `lotId` is only meaningful for
+ * the Phase 1 kinds and is left empty for the others rather than repurposed.
  */
 export async function search(pool: pg.Pool, term: string): Promise<readonly SearchHit[]> {
   const result = await pool.query<SearchHit>(
@@ -354,6 +366,29 @@ export async function search(pool: pg.Pool, term: string): Promise<readonly Sear
      SELECT 'RUN', u.run_code, u.product_name, u.raw_material_lot_id
        FROM lot_production_usage u
       WHERE u.run_code ILIKE '%' || $1 || '%'
+     UNION ALL
+     SELECT 'LOT_PF', fgl.lot_code, p.name || ' - ' || fgl.quality_status, fgl.id
+       FROM finished_good_lots fgl
+       JOIN products p ON p.id = fgl.product_id
+      WHERE fgl.lot_code ILIKE '%' || $1 || '%'
+     UNION ALL
+     SELECT 'PALETTE', pal.pallet_code, pal.status || ' - ' || pal.quality_status, pal.id
+       FROM pallets pal
+      WHERE pal.pallet_code ILIKE '%' || $1 || '%'
+     UNION ALL
+     SELECT 'EXPEDITION', sh.shipment_code, c.name || ' - ' || sh.status, sh.id
+       FROM shipments sh
+       JOIN customers c ON c.id = sh.customer_id
+      WHERE sh.shipment_code ILIKE '%' || $1 || '%'
+     UNION ALL
+     SELECT 'CONTENEUR', sh.container_number, c.name || ' - ' || sh.status, sh.id
+       FROM shipments sh
+       JOIN customers c ON c.id = sh.customer_id
+      WHERE sh.container_number ILIKE '%' || $1 || '%'
+     UNION ALL
+     SELECT 'CLIENT', c.name, COALESCE(c.country, ''), c.id
+       FROM customers c
+      WHERE c.name ILIKE '%' || $1 || '%' OR c.code ILIKE '%' || $1 || '%'
       LIMIT 50`,
     [term],
   );

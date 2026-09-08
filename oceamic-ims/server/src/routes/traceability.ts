@@ -2,7 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDependencies } from '../app.ts';
 import { requirePermission } from '../http/context.ts';
-import { limitSchema, uuidSchema } from '../http/schemas.ts';
+import { limitSchema, requiredTextSchema, uuidSchema } from '../http/schemas.ts';
+import {
+  backwardTraceabilityFromContainer,
+  backwardTraceabilityFromShipment,
+  forwardTraceabilityFromRawMaterialLot,
+} from '../services/fgQueries.ts';
 import { lotSituation, search } from '../services/traceability.ts';
 
 type AuditRow = Readonly<{
@@ -33,6 +38,27 @@ export async function registerTraceabilityRoutes(
     requirePermission(request, 'traceability:read');
     const { q } = z.object({ q: z.string().trim().min(2) }).parse(request.query);
     return search(pool, q);
+  });
+
+  // Forward traceability (section 32): Lot MP -> ... -> Customer, to answer
+  // "if this raw-material lot has a problem, which customers are affected".
+  app.get('/api/lots/:id/traceability-avant', async (request) => {
+    requirePermission(request, 'traceability:read');
+    const { id } = z.object({ id: uuidSchema }).parse(request.params);
+    return forwardTraceabilityFromRawMaterialLot(pool, id);
+  });
+
+  // Backward traceability (section 33): Shipment/Container -> ... -> Lot MP.
+  app.get('/api/shipments/:id/traceability-arriere', async (request) => {
+    requirePermission(request, 'traceability:read');
+    const { id } = z.object({ id: uuidSchema }).parse(request.params);
+    return backwardTraceabilityFromShipment(pool, id);
+  });
+
+  app.get('/api/conteneurs/:numero/traceability-arriere', async (request) => {
+    requirePermission(request, 'traceability:read');
+    const { numero } = z.object({ numero: requiredTextSchema }).parse(request.params);
+    return backwardTraceabilityFromContainer(pool, numero);
   });
 
   app.get('/api/audit', async (request) => {

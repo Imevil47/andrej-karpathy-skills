@@ -497,3 +497,21 @@ button.lien {
     padding: 16px 14px 48px;
   }
 }
+
+/* Basic printable views (section 31): packing list, bon d'expédition, pallet
+   list, lot traceability. No document designer - just the standard page with
+   navigation and actions hidden. */
+@media print {
+  .sidebar,
+  .imprimer-masquer {
+    display: none !important;
+  }
+  .contenu {
+    padding: 0;
+  }
+  .carte {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ccc;
+  }
+}

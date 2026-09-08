@@ -5,13 +5,50 @@ import { Card, DataTable, Field, Message, PageHeader } from '../components/ui';
 import { label } from '../format';
 
 type SearchHit = Readonly<{
-  kind: 'LOT' | 'RECEPTION' | 'SOUS_TRAITANCE' | 'MOUVEMENT';
+  kind:
+    | 'LOT'
+    | 'RECEPTION'
+    | 'SOUS_TRAITANCE'
+    | 'MOUVEMENT'
+    | 'RUN'
+    | 'LOT_PF'
+    | 'PALETTE'
+    | 'EXPEDITION'
+    | 'CONTENEUR'
+    | 'CLIENT';
   label: string;
   detail: string;
   lotId: string;
 }>;
 
-/** Every search result leads to one page: "Situation du lot". */
+const ROUTE_BY_KIND: Readonly<Record<SearchHit['kind'], (id: string) => string>> = {
+  LOT: (id) => `/lots/${id}`,
+  RECEPTION: (id) => `/lots/${id}`,
+  SOUS_TRAITANCE: (id) => `/lots/${id}`,
+  MOUVEMENT: (id) => `/lots/${id}`,
+  RUN: (id) => `/production/${id}`,
+  LOT_PF: (id) => `/emballage/lots-pf/${id}`,
+  PALETTE: (id) => `/palettes/${id}`,
+  EXPEDITION: (id) => `/expeditions/${id}`,
+  CONTENEUR: (id) => `/expeditions/${id}`,
+  CLIENT: () => '/parametres',
+};
+
+const ACTION_LABEL_BY_KIND: Readonly<Record<SearchHit['kind'], string>> = {
+  LOT: 'Situation du lot',
+  RECEPTION: 'Situation du lot',
+  SOUS_TRAITANCE: 'Situation du lot',
+  MOUVEMENT: 'Situation du lot',
+  RUN: 'Situation du Run',
+  LOT_PF: 'Situation du Lot PF',
+  PALETTE: 'Situation de la palette',
+  EXPEDITION: 'Voir l’expédition',
+  CONTENEUR: 'Voir l’expédition',
+  CLIENT: 'Voir dans Paramètres',
+};
+
+/** Every search result leads to its own screen (section 34): Lot MP, Run, Lot
+ * PF, Palette, Expédition, Conteneur or Client. */
 export function Tracabilite() {
   const navigate = useNavigate();
   const [term, setTerm] = useState('');
@@ -36,7 +73,7 @@ export function Tracabilite() {
     <>
       <PageHeader
         title="Traçabilité"
-        subtitle="Recherche par lot, réception, camion, fournisseur, sous-traitance ou mouvement"
+        subtitle="Recherche par Lot MP, Run, Lot PF, Palette, Expédition, Conteneur ou Client"
         actions={null}
       />
 
@@ -85,9 +122,9 @@ export function Tracabilite() {
                   <button
                     type="button"
                     className="lien"
-                    onClick={() => navigate(`/lots/${hit.lotId}`)}
+                    onClick={() => navigate(ROUTE_BY_KIND[hit.kind](hit.lotId))}
                   >
-                    Situation du lot
+                    {ACTION_LABEL_BY_KIND[hit.kind]}
                   </button>
                 </td>
               </tr>

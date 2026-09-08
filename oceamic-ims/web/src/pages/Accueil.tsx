@@ -26,6 +26,10 @@ type HomeSummary = Readonly<{
     stockType: string;
     quantityKg: string;
   }>[];
+  fgAvailableCartons: number;
+  fgBlockedFinishedGoodLots: number;
+  shipmentsInPreparation: number;
+  palletsToLoad: number;
 }>;
 
 export function Accueil() {
@@ -108,6 +112,22 @@ export function Accueil() {
               <div className="titre">Déviations ouvertes</div>
               <div className="valeur">{data.openDeviations}</div>
             </div>
+            <div className="indicateur accent">
+              <div className="titre">Stock PF disponible (cartons)</div>
+              <div className="valeur">{data.fgAvailableCartons}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Lots PF bloqués</div>
+              <div className="valeur">{data.fgBlockedFinishedGoodLots}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Expéditions en préparation</div>
+              <div className="valeur">{data.shipmentsInPreparation}</div>
+            </div>
+            <div className="indicateur">
+              <div className="titre">Palettes à charger</div>
+              <div className="valeur">{data.palletsToLoad}</div>
+            </div>
           </div>
 
           <Card title="Stock par emplacement">
@@ -160,6 +180,16 @@ export function Accueil() {
               <Link to="/qualite/deviations">
                 <button type="button" className="secondaire">
                   Déviations
+                </button>
+              </Link>
+              <Link to="/emballage/nouveau">
+                <button type="button" className="secondaire">
+                  Nouveau Lot PF
+                </button>
+              </Link>
+              <Link to="/expeditions/nouvelle">
+                <button type="button" className="secondaire">
+                  Nouvelle expédition
                 </button>
               </Link>
               <Link to="/tracabilite">

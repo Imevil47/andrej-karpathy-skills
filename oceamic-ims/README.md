@@ -1,4 +1,4 @@
-# OCEAMIC IMS — Phases 1, 2, 3 et 4
+# OCEAMIC IMS — Phases 1, 2, 3, 4 et 5
 
 Système de gestion industrielle pour la conserverie de poisson OCEAMIC.
 
@@ -22,8 +22,16 @@ déviations et actions correctives, et refroidissement. Chaque opération reste 
 ne contient ni stock de produits finis, ni palettisation, ni expédition, ni CAPA
 complète, ni GMAO, mais l'architecture est conçue pour les accueillir sans refonte.
 
-Les modules produits finis, palettes et expédition ne sont pas construits ici, mais
-l'architecture est conçue pour les accueillir sans refonte (Phase 5).
+La **Phase 5** ajoute la **couche logistique aval** : emballage (lots d'emballage,
+cartonisation agrégée), Lots PF, palettes et leur composition, stock PF (cartons et
+unités, jamais de virgule flottante), mouvements de stock PF, statut qualité PF
+(hérité de la retenue Production/CCP amont, jamais libéré automatiquement),
+préparation et exécution d'expéditions (client, conteneur, réservation, chargement,
+confirmation transactionnelle), et traçabilité avant/arrière complète du Lot MP
+jusqu'au client et retour. Chaque Lot PF reste rattaché au(x) cycle(s) de
+stérilisation et Run(s) qui l'ont produit ; rien n'est dupliqué depuis la Phase 4.
+Elle ne contient ni gestion de rappel complète, ni CRM, ni facturation, ni
+comptabilité, mais l'architecture est conçue pour les accueillir sans refonte.
 
 L'interface utilisateur est intégralement en français. Le code, les noms de tables et
 les commentaires techniques sont en anglais.
@@ -147,6 +155,11 @@ dans la table `schema_migrations`.
 | `010_seaming_marking.sql` | Équipements, opérations de sertissage, paramètres et spécifications de sertissage, contrôles et mesures de sertissage, marquage et sa vérification |
 | `011_sterilization.sql` | Programmes et cycles de stérilisation, chargements de cycle, mesures de procédé, contrôles CCP, déviations, actions correctives, refroidissement, retenues de Run |
 | `012_process_views.sql` | Vues de résumé de contrôle poids, de résultat de sertissage, de statut CCP et de cycle de stérilisation, et de retenues actives |
+| `013_packaging.sql` | Lots d'emballage, Lots PF, sources de Lot PF (cycle + Run), sorties d'emballage (cartonisation agrégée), contrôles d'étiquette |
+| `014_pallets.sql` | Domaine de stock des emplacements (`stock_domain`), palettes, composition des palettes |
+| `015_pf_stock_quality.sql` | Registre de mouvements de stock PF, décisions et blocages qualité PF (polymorphes : Lot PF ou palette) |
+| `016_shipments.sql` | Clients, expéditions (avec identité conteneur), lignes d'expédition, réservations de stock |
+| `017_pf_views.sql` | Vues de registre et de solde de stock PF, résumé de palette, résumé de stock par Lot PF, stock PF par emplacement |
 
 Pour ajouter une évolution du schéma : créer un nouveau fichier `005_....sql`.
 Ne jamais modifier une migration déjà appliquée en production.
@@ -186,7 +199,16 @@ Il crée :
   (2 sous-poids, 17 conformes, 1 surpoids), une opération de sertissage avec un contrôle
   non conforme (épaisseur hors spécification, mesure conservée), un marquage vérifié, un
   cycle de stérilisation complet (mesures, décision CCP libérée, clôturé TERMINE) suivi
-  d'un refroidissement, et une déviation avec son action corrective.
+  d'un refroidissement, et une déviation avec son action corrective ;
+- un emplacement Stock PF A (`stock_domain = 'PF'`) et un client de démonstration
+  (CLIENT-X) ;
+- sur le même Run et cycle de stérilisation : un lot d'emballage et un Lot PF
+  (12 000 boîtes / 1 000 cartons / 12 boîtes par carton, conforme aux chiffres du
+  scénario d'acceptation), deux palettes de 60 cartons chacune reçues directement en
+  Stock PF A, la libération qualité du Lot PF et des deux palettes, une expédition vers
+  CLIENT-X sur le conteneur CONT-001 chargeant les deux palettes et confirmée
+  jusqu'à `EXPEDIEE` — la chaîne de traçabilité complète, du Lot MP jusqu'au client,
+  est donc réelle et interrogeable dès l'initialisation.
 
 > La répartition entrepôt / sous-traitant des partenaires externes est une hypothèse
 > de démonstration. Elle est portée par la configuration des emplacements et doit être
@@ -215,9 +237,9 @@ autorisé.
 | Rôle | Droits |
 |---|---|
 | **ADMIN** | Toutes les permissions, dont l'ajustement de stock et l'annulation de mouvement |
-| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, contrôles poids, contrôles sertissage, vérification du marquage, **validation CCP**, gestion des déviations, consultation |
-| **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, consultation |
-| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, consultation |
+| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, contrôles poids, contrôles sertissage, vérification du marquage, **validation CCP**, gestion des déviations, **décisions qualité PF (blocage/libération de Lot PF ou palette)**, consultation |
+| **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, **stock PF, transferts/ajustements de palette, préparation et confirmation d'expédition**, consultation |
+| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, **emballage (lots d'emballage, Lots PF, palettes)**, consultation |
 | **LECTURE** | Consultation |
 
 Le rôle STOCK ne peut **jamais** libérer un blocage qualité, ni ajuster le stock, ni
@@ -243,6 +265,13 @@ décisions CCP (`ccp:validate`) : un utilisateur PRODUCTION ne peut jamais, à l
 libérer un cycle dont la donnée CCP est défavorable. La retenue d'un Run consécutive à
 une décision CCP « retenu » se libère avec `quality:release`, la même permission que la
 libération d'un lot en Phase 1.
+
+La logistique aval de la Phase 5 suit la même séparation : bloquer ou libérer un Lot PF
+ou une palette (`fgquality:decide`) reste réservé à QUALITE/ADMIN, exactement comme un
+lot matière première. Le stock PF, les transferts de palette et les expéditions
+(`fgstock:manage`, `shipment:manage`) restent du ressort de STOCK, jamais de PRODUCTION
+ni de QUALITE. Créer un lot d'emballage, un Lot PF ou une palette (`packaging:manage`)
+reste une activité de production, au même titre que le remplissage ou le sertissage.
 
 ---
 
@@ -274,6 +303,7 @@ série car ils partagent cette base.
 | `tests/sterilization.test.ts` | Cycle rattaché à un autoclave et à un Run via son chargement, programme obligatoire, base refusant qu'un cycle se termine avant son début, clôture refusée sans donnée CCP (`A_VERIFIER`), clôture normale avec CCP conforme (`TERMINE`), décision CCP retenue ouvrant une retenue de Run et clôturant le cycle `BLOQUE`, déviation visible avec ses actions correctives |
 | `tests/processTraceability.test.ts` | Généalogie complète d'un Run (remplissage, contrôle poids, sertissage, marquage, stérilisation) retrouvée sans liaison manuelle, vue d'ensemble du process |
 | `tests/phase4Acceptance.test.ts` | Les quatre scénarios d'acceptation de la Phase 4 (remplissage/poids, sertissage, stérilisation, traçabilité), via l'API HTTP |
+| `tests/phase5.test.ts` | Héritage du blocage Run/CCP sur un Lot PF nouvellement créé, unicité d'un Lot PF sur une palette, double affectation d'une palette à une expédition refusée (message exact), blocage qualité empêchant la confirmation d'expédition sans aucun mouvement de stock, transaction complète de confirmation d'expédition (mouvements, palettes, réservations cohérents), et le scénario complet d'acceptation (sections 54-59) : Lot PF → palettes → stock PF → expédition → traçabilité avant/arrière |
 
 ---
 
@@ -342,6 +372,38 @@ Le détail est documenté dans [`docs/regles-metier.md`](docs/regles-metier.md).
 22. **Toute mesure de procédé Phase 4 (pesée, mesure de sertissage, mesure de
     stérilisation, décision CCP) suit la même politique de correction qu'en Phase 2 et
     3** : annulation puis remplacement, jamais une réécriture.
+23. **Lot d'emballage, Lot PF, palette, mouvement de stock PF, réservation, expédition
+    et conteneur ne sont jamais fusionnés** (section 62) : un lot d'emballage est
+    l'événement de production, un Lot PF est l'identité de traçabilité du produit fini,
+    une palette est l'unité de manutention logistique, un mouvement de stock PF est un
+    événement d'inventaire, une réservation est une allocation future de stock
+    disponible, une expédition est un événement logistique client.
+24. **Le stock PF n'est jamais stocké**, comme en Phase 1. Il est calculé à partir du
+    registre `finished_goods_stock_movements`, à la seule granularité de la palette :
+    un Lot PF n'a pas de position de stock propre, elle est toujours dérivée en
+    agrégeant les palettes qui le contiennent (`pallet_contents`).
+25. **Une palette n'est jamais scindée entre deux emplacements.** Chaque mouvement de
+    stock PF déplace toujours la totalité de la palette ; sa composition est fixée à la
+    création et jamais modifiée ensuite (correction par annulation de la palette et
+    création d'une nouvelle).
+26. **Le statut qualité PF n'est jamais automatiquement `LIBERE`** parce que
+    l'emballage ou la palettisation s'est terminée. Un Lot PF hérite immédiatement du
+    statut `BLOQUE` si le(s) Run(s)/cycle(s) source portent une retenue Production/CCP
+    active non levée ; sinon il démarre `A_VERIFIER`.
+27. **Stock disponible = Stock physique − Stock bloqué − Stock réservé.** Une
+    réservation n'est jamais traitée comme déjà expédiée : elle diminue le disponible
+    sans toucher au stock physique tant que l'expédition n'est pas confirmée.
+28. **Une palette ne peut jamais porter deux réservations actives simultanées**, que ce
+    soit pour la même expédition ou une autre : un index unique partiel l'empêche au
+    niveau de la base, ce qui rend le double chargement structurellement impossible.
+29. **La confirmation d'une expédition est une seule transaction** : validation du
+    stock, de la libération qualité et des réservations, clôture des réservations,
+    création des mouvements de sortie, marquage des palettes expédiées et
+    horodatage — ou annulation complète en cas d'échec, sans aucun effet partiel.
+30. **La traçabilité avant et arrière ne s'arrête jamais à la Phase 4.** Depuis un Lot
+    MP, la chaîne avant remonte jusqu'au(x) client(s) ayant reçu le produit ; depuis une
+    expédition ou un conteneur, la chaîne arrière redescend jusqu'au(x) Lot(s) MP et
+    fournisseur(s)/navire(s) d'origine.
 
 ---
 
@@ -409,6 +471,17 @@ Toutes les routes sont préfixées par `/api` et exigent une session, sauf
 | `GET` | `/api/production-run-holds` | `production:read` |
 | `POST` | `/api/production-run-holds/:id/levee` | `quality:release` |
 | `GET` | `/api/production/runs/:id/vue-process`, `/genealogie` | `production:read` |
+| `GET` | `/api/packaging-batches`, `/api/packaging-batches/:id`, `/api/finished-good-lots`, `/api/finished-good-lots/:id/situation` | `production:read` |
+| `POST` | `/api/packaging-batches`, `/cloture`, `/annulation`, `/lots-pf`, `/sorties`, `/controles-etiquette` | `packaging:manage` |
+| `GET` | `/api/pallets`, `/api/pallets/:id/situation`, `/api/fg-stock/summary`, `/api/fg-stock/by-location` | `stock:read` |
+| `POST` | `/api/pallets`, `/api/pallets/:id/annulation` | `packaging:manage` |
+| `POST` | `/api/pallets/:id/transfert`, `/ajustement`, `/blocage-logistique`, `/retour` | `fgstock:manage` |
+| `POST` | `/api/fg-quality/decisions` | `fgquality:decide` |
+| `GET` | `/api/customers` | `masterdata:read` |
+| `POST` | `/api/customers` | `masterdata:write` |
+| `GET` | `/api/shipments`, `/api/shipments/:id` | `stock:read` |
+| `POST` | `/api/shipments`, `/conteneur`, `/palettes`, `/confirmation`, `/annulation` ; `DELETE` `/api/shipments/:id/palettes/:palletId` | `shipment:manage` |
+| `GET` | `/api/lots/:id/traceability-avant`, `/api/shipments/:id/traceability-arriere`, `/api/conteneurs/:numero/traceability-arriere` | `traceability:read` |
 
 Les erreurs renvoient `{ "code": "...", "message": "..." }`, le message étant
 directement affichable à l'opérateur.
@@ -444,8 +517,17 @@ directement affichable à l'opérateur.
 | Déviations | Liste et création de déviations de procédé, avec leurs actions correctives |
 | Sous-traitance | Envois, résultats multiples et bilan matière |
 | Qualité | Contrôles et lots bloqués |
-| Traçabilité | Recherche globale menant à la situation du lot |
-| Paramètres | Données de référence — **employées, standards de cadence, catégories d'arrêt, équipements, milieux de couverture, spécifications de remplissage et de sertissage, programmes de stérilisation, points de vérification de marquage** — et utilisateurs |
+| Lots PF | Liste des Lots PF, avec statut qualité et cartons physiques/disponibles |
+| Nouveau Lot PF | Création en une étape : Run source, cycle de stérilisation, format, date de production/DLC |
+| Situation du Lot PF | **Page unique** : vue générale (avec cartons physiques/bloqués/réservés/disponibles), origine production/stérilisation, emballage (sortie de cartonisation), palettes, expéditions, qualité (décisions et blocages), lien vers la traçabilité |
+| Palettes | Liste des palettes, avec statut, statut qualité, emplacement et réservation |
+| Nouvelle palette | Création à partir d'un Lot PF et d'un emplacement de destination configuré pour le stock PF |
+| Situation de la palette | Composition, mouvements de stock PF (avec transfert), expéditions, décisions qualité |
+| Stock PF | Cartes de synthèse (stock total, disponible, bloqué, réservé) et tableau par emplacement/produit |
+| Expéditions | Liste et création (client, destination, conteneur) |
+| Expédition | **Écran de chargement du conteneur** : informations conteneur/transport, chargement des palettes, confirmation transactionnelle, annulation |
+| Traçabilité | Recherche globale — Lot MP, Run, Lot PF, Palette, Expédition, Conteneur, Client — menant chacun à son propre écran |
+| Paramètres | Données de référence — **employées, standards de cadence, catégories d'arrêt, équipements, milieux de couverture, spécifications de remplissage et de sertissage, programmes de stérilisation, points de vérification de marquage, domaine de stock des emplacements, clients** — et utilisateurs |
 
 ---
 
