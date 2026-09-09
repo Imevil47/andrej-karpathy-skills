@@ -107,6 +107,21 @@ const BADGE_TONES: Readonly<Record<string, string>> = {
   NON_EFFICACE: 'alerte',
   EN_VIGUEUR: 'succes',
   OBSOLETE: 'avertissement',
+  // Phase 7: maintenance / CMMS - equipment/failure/work-order status and
+  // criticality, each its own distinct concept (never merged - section 9/12).
+  EN_SERVICE: 'succes',
+  EN_PANNE: 'alerte',
+  EN_MAINTENANCE: 'info',
+  HORS_SERVICE: 'avertissement',
+  EN_ATTENTE_PIECE: 'avertissement',
+  EN_ATTENTE_PRODUCTION: 'avertissement',
+  FAIBLE: 'info',
+  MOYENNE: 'info',
+  HAUTE: 'avertissement',
+  DECLAREE: 'avertissement',
+  PRISE_EN_CHARGE: 'info',
+  RESOLUE: 'succes',
+  OUVERT: 'avertissement',
 };
 
 export function Badge({ value }: { value: string | null }) {

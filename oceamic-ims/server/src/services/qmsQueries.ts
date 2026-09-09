@@ -25,6 +25,10 @@ const ENTITY_LABEL_LOOKUP: Readonly<Record<string, Readonly<{ table: string; col
   AUDIT_FINDING: { table: 'audit_findings', column: 'finding_code' },
   CUSTOMER_COMPLAINT: { table: 'customer_complaints', column: 'complaint_code' },
   SUPPLIER_QUALITY_INCIDENT: { table: 'supplier_quality_incidents', column: 'incident_code' },
+  // Phase 7 (section 63's seaming-defect scenario): a non-conformity can
+  // point back at the failure/work order investigated alongside it.
+  FAILURE_REPORT: { table: 'failure_reports', column: 'failure_code' },
+  MAINTENANCE_WORK_ORDER: { table: 'maintenance_work_orders', column: 'work_order_code' },
 };
 
 async function resolveEntityLabel(pool: pg.Pool, entityType: string, entityId: string): Promise<string | null> {

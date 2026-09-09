@@ -13,9 +13,12 @@ import { registerCapaRoutes } from './routes/capa.ts';
 import { registerComplaintRoutes } from './routes/complaints.ts';
 import { registerDeviationRoutes } from './routes/deviations.ts';
 import { registerDowntimeRoutes } from './routes/downtime.ts';
+import { registerEquipmentHistoryRoutes } from './routes/equipmentHistory.ts';
+import { registerFailureRoutes } from './routes/failures.ts';
 import { registerFillingRoutes } from './routes/filling.ts';
 import { registerHomeRoutes } from './routes/home.ts';
 import { registerLotRoutes } from './routes/lots.ts';
+import { registerMaintenancePlanRoutes } from './routes/maintenancePlans.ts';
 import { registerMasterDataRoutes } from './routes/masterdata.ts';
 import { registerNonconformityRoutes } from './routes/nonconformities.ts';
 import { registerPackagingRoutes } from './routes/packaging.ts';
@@ -28,11 +31,13 @@ import { registerRecallRoutes } from './routes/recall.ts';
 import { registerReceptionRoutes } from './routes/receptions.ts';
 import { registerSeamingRoutes } from './routes/seaming.ts';
 import { registerShipmentRoutes } from './routes/shipments.ts';
+import { registerSparePartRoutes } from './routes/spareParts.ts';
 import { registerSterilizationRoutes } from './routes/sterilization.ts';
 import { registerStockRoutes } from './routes/stock.ts';
 import { registerSubcontractingRoutes } from './routes/subcontracting.ts';
 import { registerTraceabilityRoutes } from './routes/traceability.ts';
 import { registerWorkforceRoutes } from './routes/workforce.ts';
+import { registerWorkOrderRoutes } from './routes/workOrders.ts';
 
 export type AppDependencies = Readonly<{ pool: pg.Pool; config: AppConfig }>;
 
@@ -108,6 +113,11 @@ export async function buildApp(dependencies: AppDependencies): Promise<FastifyIn
   await registerAuditRoutes(app, dependencies);
   await registerQualityDocumentRoutes(app, dependencies);
   await registerRecallRoutes(app, dependencies);
+  await registerFailureRoutes(app, dependencies);
+  await registerWorkOrderRoutes(app, dependencies);
+  await registerMaintenancePlanRoutes(app, dependencies);
+  await registerSparePartRoutes(app, dependencies);
+  await registerEquipmentHistoryRoutes(app, dependencies);
 
   return app;
 }

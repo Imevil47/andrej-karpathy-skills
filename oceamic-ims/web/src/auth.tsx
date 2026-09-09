@@ -8,7 +8,16 @@ export type CurrentUser = Readonly<{
   id: string;
   username: string;
   fullName: string;
-  role: 'ADMIN' | 'QUALITE' | 'STOCK' | 'PRODUCTION' | 'LECTURE' | 'RESPONSABLE_QUALITE' | 'AUDITEUR';
+  role:
+    | 'ADMIN'
+    | 'QUALITE'
+    | 'STOCK'
+    | 'PRODUCTION'
+    | 'LECTURE'
+    | 'RESPONSABLE_QUALITE'
+    | 'AUDITEUR'
+    | 'MAINTENANCE'
+    | 'RESPONSABLE_MAINTENANCE';
 }>;
 
 type Session = Readonly<{ user: CurrentUser; permissions: readonly Permission[] }>;

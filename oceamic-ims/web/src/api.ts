@@ -43,6 +43,10 @@ export function apiPost<T>(path: string, body: unknown): Promise<T> {
   return request<T>('POST', path, body);
 }
 
+export function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  return request<T>('PATCH', path, body);
+}
+
 export function buildQuery(parameters: Readonly<Record<string, string | null>>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(parameters)) {

@@ -1,4 +1,4 @@
-# Règles métier — OCEAMIC IMS Phases 1 à 6
+# Règles métier — OCEAMIC IMS Phases 1 à 7
 
 Ce document décrit le comportement attendu du système. Chaque règle est appliquée côté
 serveur (service, transaction ou contrainte de base) et non seulement dans l'interface.
@@ -1613,3 +1613,133 @@ sur la fiche. `audit_progress.open_finding_count` (et les autres compteurs de ce
 vue) sont désormais castés en `::integer` : laissés en `bigint` implicite, le pilote
 PostgreSQL les retournait en chaîne de caractères côté API, cassant silencieusement
 toute comparaison numérique côté client.
+
+---
+
+# Maintenance (Phase 7)
+
+## 118. Criticité, gravité et statut sont trois concepts jamais fusionnés
+
+La **criticité** d'un équipement (`equipment.criticality`,
+`FAIBLE`/`MOYENNE`/`HAUTE`/`CRITIQUE`) mesure l'importance de l'actif ; la
+**gravité** d'une panne (`failure_reports.severity`, même échelle) mesure la gravité
+de cet événement précis ; le **statut opérationnel** de l'équipement
+(`EN_SERVICE`/`EN_PANNE`/`EN_MAINTENANCE`/`HORS_SERVICE`/`EN_ATTENTE_PIECE`/`INACTIF`)
+mesure son état courant. Un équipement `FAIBLE` peut subir une panne `CRITIQUE` ; un
+équipement `CRITIQUE` peut être `EN_SERVICE`. Aucune de ces trois valeurs n'est jamais
+dérivée d'une autre, et le statut de l'ordre de travail (section 121) reste une
+quatrième valeur distincte.
+
+## 119. Une panne qui arrête la production ouvre le même arrêt que la Phase 3, jamais un doublon
+
+Quand une panne (`services/failures.ts::createFailureReport`) arrête réellement la
+production, elle appelle `startDowntimeWithClient` — la fonction que la Phase 3
+utilise pour tout arrêt de ligne — dans **la même transaction** que la création de la
+panne. Le `downtime_event_id` obtenu est stocké sur `failure_reports`, jamais
+recopié dans un second enregistrement : le Run, la ligne, l'équipement et la panne
+donnent tous la même durée d'arrêt en interrogeant `downtime_events`. Résoudre la
+panne (clôture de son ordre de travail, règle 122) referme ce même arrêt via
+`endDowntimeWithClient`, jamais une nouvelle table de fermeture.
+
+## 120. Une panne ne peut arrêter la production que sur un Run réellement actif
+
+`createFailureReport` exige un `productionRunId` quand `stopsProduction` est vrai, et
+`startDowntimeWithClient` refuse un Run qui n'accepte plus d'écritures
+(`runAcceptsEntries`) — la même contrainte que tout arrêt Phase 3. Une panne
+« déclarée sans arrêt » (`stopsProduction: false`) reste un enregistrement
+parfaitement valide : toutes les pannes ne stoppent pas une ligne.
+
+## 121. Transitions d'ordre de travail contraintes, clôture séparée et gérée à part
+
+`WORK_ORDER_ALLOWED_TRANSITIONS` (`server/src/domain/types.ts`) interdit à un ordre de
+travail `OUVERT` de sauter directement à `TERMINE` : il doit passer par `PLANIFIE`
+et/ou `EN_COURS`. `TERMINE` est **exclu** de cette table de transitions — il n'existe
+aucun moyen d'y atteindre par un simple changement de statut
+(`POST /api/work-orders/:id/statut` le refuse explicitement) ; seule la route dédiée
+`POST /api/work-orders/:id/cloture` (règle 122) peut y mener.
+
+## 122. Clôture d'un ordre de travail : porte à trois conditions
+
+`completeWorkOrder` refuse la clôture tant que : (1) aucune intervention ne porte une
+action réalisée documentée (`action_performed` non vide) ; (2) pour un équipement à
+criticité HAUTE/CRITIQUE, ou un ordre de travail de type URGENCE
+(`workOrderClosureRequiresApproval`), aucun résultat de vérification
+(`CONFORME`/`NON_CONFORME`) n'a été fourni. Une clôture avec un résultat
+`NON_CONFORME` (3) enregistre bien la clôture du travail mais **ne remet pas**
+l'équipement `EN_SERVICE` et **ne résout pas** la panne source, qui reste
+`PRISE_EN_CHARGE` — la vérification a constaté que la réparation n'a pas abouti, et un
+nouvel ordre de travail est nécessaire.
+
+## 123. Clôturer un ordre de travail « important » exige RESPONSABLE_MAINTENANCE
+
+`workorder:manage` (MAINTENANCE) suffit pour créer, assigner et travailler un ordre de
+travail. Le clôturer exige en plus `workorder:approve` (RESPONSABLE_MAINTENANCE)
+lorsque l'équipement est à criticité HAUTE/CRITIQUE ou que l'ordre de travail est de
+type URGENCE (règle 122, condition 2) — la même discipline de séparation des pouvoirs
+que `ncr:manage`/`ncr:approve` en Phase 6, appliquée cette fois à une condition
+dynamique lue en base plutôt qu'à une action toujours réservée. La route lit ce
+contexte (`getWorkOrderClosureContext`) avant même d'exiger la permission, pour ne
+jamais laisser MAINTENANCE clôturer seul un cas « important ».
+
+## 124. Une intervention ne peut se terminer sans action réalisée documentée
+
+`endIntervention` refuse de poser `ended_at` tant que `action_performed` reste vide
+(fourni à la clôture ou déjà enregistré via une mise à jour intermédiaire) — la même
+discipline que le CAPA/audit de la Phase 6 : aucune conclusion silencieuse. La durée
+(`duration_seconds`) est une colonne **générée** à partir de `started_at`/`ended_at`
+(identique à `downtime_events.duration_seconds`, Phase 3) : jamais saisie à la main,
+jamais un `ended_at` antérieur à `started_at`.
+
+## 125. Une pièce de rechange ne peut être soustraite du stock deux fois pour un même usage
+
+`recordPartUsage` crée, dans une seule transaction, un mouvement
+`spare_part_stock_movements` de type `SORTIE_INTERVENTION` puis une ligne
+`maintenance_part_usage` dont `stock_movement_id` est `NOT NULL UNIQUE` — un usage ne
+peut donc structurellement jamais produire deux mouvements. Le stock courant
+(`spare_part_stock.current_stock`) n'est jamais mis en cache : toujours
+`SUM(quantity_delta)`, la même discipline que le solde d'un lot matière première
+(Phase 1).
+
+## 126. Le retard préventif est toujours calculé, jamais un statut choisi
+
+`preventive_task_status.is_overdue` vaut `statut = PLANIFIEE AND due_at < now()` — il
+n'existe aucune valeur `EN_RETARD` dans `PREVENTIVE_TASK_STATUSES`. Compléter une
+tâche dont le plan a une fréquence calendaire (`frequency_interval_days` non nul)
+génère automatiquement, dans la même transaction, la tâche suivante à
+`due_at (de la tâche complétée) + intervalle` : un plan n'est jamais laissé sans
+prochaine échéance. Les plans à fréquence `OPERATING_HOURS`/`CUSTOM` ne génèrent rien
+automatiquement — Phase 7 n'intègre aucun compteur d'heures d'exploitation, et une
+échéance fabriquée serait plus trompeuse qu'une planification manuelle assumée.
+
+## 127. MTTR et pannes répétées ne produisent jamais de métrique trompeuse
+
+`equipment_mttr` (vue) ne compte que les ordres de travail correctifs réellement
+`TERMINE` avec au moins une intervention chronométrée ; un équipement sans historique
+suffisant n'y figure pas du tout, et l'écran affiche « Données insuffisantes » plutôt
+qu'une moyenne à zéro. `repeatedFailureAnalysis` regroupe les pannes d'un équipement
+par mode/cause sur une fenêtre glissante (`GROUP BY` simple, `HAVING COUNT(*) > 1`) —
+aucune inférence, aucun diagnostic automatique.
+
+## 128. Une non-conformité peut se lier à une panne ou un ordre de travail sans les dupliquer
+
+`QMS_ENTITY_TYPES` (Phase 6) est étendu de `FAILURE_REPORT` et
+`MAINTENANCE_WORK_ORDER` : une non-conformité peut pointer, via le même mécanisme
+polymorphe `nonconformity_links` que toutes les autres entités opérationnelles, vers la
+panne et l'ordre de travail investigués — jamais une copie de leurs données. La
+Qualité voit ainsi l'historique de maintenance correctif sans qu'aucun enregistrement
+ne soit dupliqué entre les deux modules (scénario d'acceptation 5).
+
+## 129. L'équipement, les données de référence maintenance et l'ajustement de stock ont leurs propres permissions
+
+`equipment:manage` (gestion des équipements et pièces de rechange, RESPONSABLE_MAINTENANCE
+ou ADMIN) et `sparepart:adjust` (ajustement de stock de pièces, RESPONSABLE_MAINTENANCE
+uniquement) sont des permissions dédiées, jamais `masterdata:write` : leur donner
+`masterdata:write` aurait accordé à RESPONSABLE_MAINTENANCE les droits génériques de
+données de référence des Phases 1 à 6, sans rapport avec son rôle.
+
+## 130. Chaque événement de maintenance sensible reste audité
+
+Déclaration et annulation de panne, création et changement de statut d'un ordre de
+travail, démarrage/mise à jour/clôture d'une intervention, consommation et ajustement
+de pièce, création d'un plan préventif et complétion d'une tâche sont tous enregistrés
+dans `audit_log`, au même titre que toute opération sensible des phases précédentes.

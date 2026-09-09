@@ -21,6 +21,8 @@ import { Deviations } from './pages/Deviations';
 import { DocumentDetail } from './pages/DocumentDetail';
 import { Documents } from './pages/Documents';
 import { EmballageNouveau } from './pages/EmballageNouveau';
+import { EquipementDetail } from './pages/EquipementDetail';
+import { Equipements } from './pages/Equipements';
 import { ExpeditionDetail } from './pages/ExpeditionDetail';
 import { ExpeditionNouvelle } from './pages/ExpeditionNouvelle';
 import { Expeditions } from './pages/Expeditions';
@@ -29,12 +31,18 @@ import { LotPFSituation } from './pages/LotPFSituation';
 import { LotSituation } from './pages/LotSituation';
 import { Lots } from './pages/Lots';
 import { LotsPF } from './pages/LotsPF';
+import { MaintenanceAccueil } from './pages/MaintenanceAccueil';
 import { NonConformiteDetail } from './pages/NonConformiteDetail';
 import { NonConformites } from './pages/NonConformites';
+import { OrdreDeTravailDetail } from './pages/OrdreDeTravailDetail';
+import { OrdresDeTravail } from './pages/OrdresDeTravail';
 import { PaletteNouvelle } from './pages/PaletteNouvelle';
 import { PaletteSituation } from './pages/PaletteSituation';
 import { Palettes } from './pages/Palettes';
+import { Pannes } from './pages/Pannes';
 import { Parametres } from './pages/Parametres';
+import { PiecesDeRechange } from './pages/PiecesDeRechange';
+import { Preventif } from './pages/Preventif';
 import { ProductionRunNouveau } from './pages/ProductionRunNouveau';
 import { ProductionRunSituation } from './pages/ProductionRunSituation';
 import { ProductionRuns } from './pages/ProductionRuns';
@@ -132,6 +140,14 @@ export function App() {
           <Route path="/qualite/incidents-fournisseurs" element={<IncidentsFournisseurs />} />
           <Route path="/qualite/retraits" element={<Retraits />} />
           <Route path="/qualite/retraits/:id" element={<RetraitDetail />} />
+          <Route path="/maintenance/accueil" element={<MaintenanceAccueil />} />
+          <Route path="/maintenance/equipements" element={<Equipements />} />
+          <Route path="/maintenance/equipements/:id" element={<EquipementDetail />} />
+          <Route path="/maintenance/pannes" element={<Pannes />} />
+          <Route path="/maintenance/ordres-de-travail" element={<OrdresDeTravail />} />
+          <Route path="/maintenance/ordres-de-travail/:id" element={<OrdreDeTravailDetail />} />
+          <Route path="/maintenance/preventif" element={<Preventif />} />
+          <Route path="/maintenance/pieces" element={<PiecesDeRechange />} />
           <Route path="/parametres" element={<Parametres />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

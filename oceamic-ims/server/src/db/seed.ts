@@ -59,6 +59,7 @@ import {
 } from '../services/audits.ts';
 import { createComplaint, createNonconformityFromComplaint } from '../services/complaints.ts';
 import {
+  addNonconformityLink,
   createNonconformity,
   recordInvestigation,
   recordRootCauseAnalysis,
@@ -75,6 +76,11 @@ import {
 } from '../services/qualityDocuments.ts';
 import { closeRecallEvent, createRecallEvent } from '../services/recall.ts';
 import { createSupplierIncident } from '../services/supplierIncidents.ts';
+import { createFailureReport } from '../services/failures.ts';
+import { completeWorkOrder, createWorkOrder } from '../services/workOrders.ts';
+import { endIntervention, startIntervention, updateIntervention } from '../services/interventions.ts';
+import { recordPartUsage, receiveSparePartStock } from '../services/spareParts.ts';
+import { completePreventiveTask, createMaintenancePlan } from '../services/maintenancePlans.ts';
 import { createPool, withTransaction } from './pool.ts';
 
 // Development / demonstration data only. Never run against production data:
@@ -88,6 +94,8 @@ const ROLE_NAMES: Readonly<Record<RoleCode, string>> = {
   LECTURE: 'Lecture seule',
   RESPONSABLE_QUALITE: 'Responsable Qualité',
   AUDITEUR: 'Auditeur',
+  MAINTENANCE: 'Technicien Maintenance',
+  RESPONSABLE_MAINTENANCE: 'Responsable Maintenance',
 };
 
 const DEMO_USERS: readonly Readonly<{
@@ -105,6 +113,18 @@ const DEMO_USERS: readonly Readonly<{
     password: 'rq123456',
   },
   { username: 'auditeur', fullName: 'Auditeur interne', role: 'AUDITEUR', password: 'auditeur123' },
+  {
+    username: 'rm',
+    fullName: 'Responsable Maintenance',
+    role: 'RESPONSABLE_MAINTENANCE',
+    password: 'rm123456',
+  },
+  {
+    username: 'maintenance',
+    fullName: 'Technicien Maintenance',
+    role: 'MAINTENANCE',
+    password: 'maintenance123',
+  },
   { username: 'stock', fullName: 'Responsable Stock', role: 'STOCK', password: 'stock123' },
   { username: 'production', fullName: 'Chef de Production', role: 'PRODUCTION', password: 'production123' },
   { username: 'lecture', fullName: 'Consultation', role: 'LECTURE', password: 'lecture123' },
@@ -225,12 +245,59 @@ const VESSELS: readonly Readonly<{ code: string; name: string; registration: str
 ];
 
 // Phase 4: filling, seaming, sterilization and marking demonstration data.
-const EQUIPMENT: readonly Readonly<{ code: string; name: string; equipmentType: string }>[] = [
-  { code: 'AUTOCLAVE-1', name: 'Autoclave 1', equipmentType: 'AUTOCLAVE' },
-  { code: 'AUTOCLAVE-2', name: 'Autoclave 2', equipmentType: 'AUTOCLAVE' },
-  { code: 'SERT-1', name: 'Sertisseuse 1', equipmentType: 'SERTISSEUSE' },
-  { code: 'SERT-2', name: 'Sertisseuse 2', equipmentType: 'SERTISSEUSE' },
-  { code: 'REMPL-1', name: 'Remplisseuse 1', equipmentType: 'REMPLISSEUSE' },
+// Phase 7 (section 8) extends each row with criticality - a business
+// judgment distinct from any failure that may later be reported against it
+// - and, for two of them, a production line and a parent (SONDE-AUTOCLAVE-1
+// demonstrates the equipment hierarchy: a probe that is part of Autoclave 1).
+const EQUIPMENT: readonly Readonly<{
+  code: string;
+  name: string;
+  equipmentType: string;
+  criticality: string;
+  productionLineCode: string | null;
+  parentCode: string | null;
+  manufacturer: string | null;
+  model: string | null;
+}>[] = [
+  { code: 'AUTOCLAVE-1', name: 'Autoclave 1', equipmentType: 'AUTOCLAVE', criticality: 'CRITIQUE', productionLineCode: null, parentCode: null, manufacturer: 'Steriflow', model: 'ST-2000' },
+  { code: 'AUTOCLAVE-2', name: 'Autoclave 2', equipmentType: 'AUTOCLAVE', criticality: 'CRITIQUE', productionLineCode: null, parentCode: null, manufacturer: 'Steriflow', model: 'ST-2000' },
+  { code: 'SERT-1', name: 'Sertisseuse 1', equipmentType: 'SERTISSEUSE', criticality: 'HAUTE', productionLineCode: 'L1', parentCode: null, manufacturer: null, model: null },
+  { code: 'SERT-2', name: 'Sertisseuse 2', equipmentType: 'SERTISSEUSE', criticality: 'HAUTE', productionLineCode: 'L2', parentCode: null, manufacturer: 'Angelus', model: '61L' },
+  { code: 'REMPL-1', name: 'Remplisseuse 1', equipmentType: 'REMPLISSEUSE', criticality: 'MOYENNE', productionLineCode: 'L1', parentCode: null, manufacturer: null, model: null },
+  { code: 'CONV-1', name: 'Convoyeur ligne 3', equipmentType: 'CONVOYEUR', criticality: 'FAIBLE', productionLineCode: 'L3', parentCode: null, manufacturer: null, model: null },
+  { code: 'SONDE-AUTOCLAVE-1', name: 'Sonde de température Autoclave 1', equipmentType: 'DETECTEUR', criticality: 'CRITIQUE', productionLineCode: null, parentCode: 'AUTOCLAVE-1', manufacturer: null, model: null },
+];
+
+// Phase 7: maintenance master data (section 46) - "cause non déterminée" is
+// a real row here, never a forced fake pick when the cause is genuinely
+// unknown.
+const FAILURE_MODES: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'BOURRAGE', name: 'Bourrage' },
+  { code: 'FUITE', name: 'Fuite' },
+  { code: 'SURCHAUFFE', name: 'Surchauffe' },
+  { code: 'VIBRATION_ANORMALE', name: 'Vibration anormale' },
+  { code: 'PANNE_ELECTRIQUE', name: 'Panne électrique' },
+  { code: 'CASSE_MECANIQUE', name: 'Casse mécanique' },
+  { code: 'DEFAUT_CAPTEUR', name: 'Défaut capteur' },
+  { code: 'AUTRE_MODE', name: 'Autre' },
+];
+
+const FAILURE_CAUSES: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'USURE_NORMALE', name: 'Usure normale' },
+  { code: 'MANQUE_ENTRETIEN', name: "Manque d'entretien" },
+  { code: 'MAUVAISE_UTILISATION', name: 'Mauvaise utilisation' },
+  { code: 'DEFAUT_PIECE', name: 'Défaut de pièce' },
+  { code: 'CORPS_ETRANGER_CAUSE', name: 'Corps étranger' },
+  { code: 'CAUSE_NON_DETERMINEE', name: 'Cause non déterminée' },
+  { code: 'AUTRE_CAUSE', name: 'Autre' },
+];
+
+// Spare parts (section 38): JNT-014 is deliberately left below its minimum
+// stock after seeding (see insertDemoOperations) - a genuine "Stock de
+// sécurité atteint" example, the same discipline as Phase 6's overdue CAPA.
+const SPARE_PARTS: readonly Readonly<{ code: string; name: string; unit: string; minimumStock: string }>[] = [
+  { code: 'BRG-002', name: 'Roulement BRG-002', unit: 'PIECE', minimumStock: '2' },
+  { code: 'JNT-014', name: "Joint d'étanchéité JNT-014", unit: 'PIECE', minimumStock: '5' },
 ];
 
 const FILLING_MEDIA: readonly Readonly<{ code: string; name: string }>[] = [
@@ -378,11 +445,37 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
     );
 
     for (const item of EQUIPMENT) {
-      await client.query('INSERT INTO equipment (code, name, equipment_type) VALUES ($1, $2, $3)', [
-        item.code,
-        item.name,
-        item.equipmentType,
-      ]);
+      await client.query(
+        `INSERT INTO equipment (code, name, equipment_type, criticality, production_line_id,
+                                parent_equipment_id, manufacturer, model)
+         VALUES ($1, $2, $3, $4,
+                 (SELECT id FROM production_lines WHERE code = $5),
+                 (SELECT id FROM equipment WHERE code = $6),
+                 $7, $8)`,
+        [
+          item.code,
+          item.name,
+          item.equipmentType,
+          item.criticality,
+          item.productionLineCode,
+          item.parentCode,
+          item.manufacturer,
+          item.model,
+        ],
+      );
+    }
+    for (const mode of FAILURE_MODES) {
+      await client.query('INSERT INTO failure_modes (code, name) VALUES ($1, $2)', [mode.code, mode.name]);
+    }
+    for (const cause of FAILURE_CAUSES) {
+      await client.query('INSERT INTO failure_causes (code, name) VALUES ($1, $2)', [cause.code, cause.name]);
+    }
+    for (const part of SPARE_PARTS) {
+      await client.query(
+        `INSERT INTO spare_parts (part_code, name, unit, minimum_stock, created_by)
+         VALUES ($1, $2, $3, $4, (SELECT id FROM users WHERE username = 'admin'))`,
+        [part.code, part.name, part.unit, part.minimumStock],
+      );
     }
     for (const medium of FILLING_MEDIA) {
       await client.query('INSERT INTO filling_media (code, name) VALUES ($1, $2)', [
@@ -480,13 +573,15 @@ async function idOf(pool: pg.Pool, table: string, code: string): Promise<string>
 async function insertDemoOperations(pool: pg.Pool): Promise<void> {
   const users = await pool.query<{ id: string; username: string }>(
     'SELECT id, username FROM users WHERE username = ANY($1)',
-    [['stock', 'qualite', 'rq', 'auditeur']],
+    [['stock', 'qualite', 'rq', 'auditeur', 'maintenance', 'rm']],
   );
   const stockUserId = users.rows.find((row) => row.username === 'stock')?.id;
   const qualityUserId = users.rows.find((row) => row.username === 'qualite')?.id;
   const rqUserId = users.rows.find((row) => row.username === 'rq')?.id;
   const auditeurUserId = users.rows.find((row) => row.username === 'auditeur')?.id;
-  if (!stockUserId || !qualityUserId || !rqUserId || !auditeurUserId) {
+  const maintenanceUserId = users.rows.find((row) => row.username === 'maintenance')?.id;
+  const rmUserId = users.rows.find((row) => row.username === 'rm')?.id;
+  if (!stockUserId || !qualityUserId || !rqUserId || !auditeurUserId || !maintenanceUserId || !rmUserId) {
     throw new Error('Utilisateurs de démonstration introuvables.');
   }
 
@@ -1569,6 +1664,246 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
     `Exercice complété avec succès : ${recallExercise.affectedCount} enregistrements identifiés (démo).`,
     qualityUserId,
   );
+
+  // ---------------------------------------------------------------------
+  // Phase 7: maintenance / CMMS layer.
+  // ---------------------------------------------------------------------
+
+  const sert2Id = await idOf(pool, 'equipment', 'SERT-2');
+  const rempl1Id = await idOf(pool, 'equipment', 'REMPL-1');
+  const autoclave1Id = await idOf(pool, 'equipment', 'AUTOCLAVE-1');
+  const autoclave2Id = await idOf(pool, 'equipment', 'AUTOCLAVE-2');
+  const bourrageMode = await idOf(pool, 'failure_modes', 'BOURRAGE');
+  const defautPieceCause = await idOf(pool, 'failure_causes', 'DEFAUT_PIECE');
+  const vibrationMode = await idOf(pool, 'failure_modes', 'VIBRATION_ANORMALE');
+  const usureCause = await idOf(pool, 'failure_causes', 'USURE_NORMALE');
+  const brgPart = (
+    await pool.query<{ id: string }>('SELECT id FROM spare_parts WHERE part_code = $1', ['BRG-002'])
+  ).rows[0]?.id;
+  const jntPart = (
+    await pool.query<{ id: string }>('SELECT id FROM spare_parts WHERE part_code = $1', ['JNT-014'])
+  ).rows[0]?.id;
+  if (!brgPart || !jntPart) {
+    throw new Error('Pièces de rechange de démonstration introuvables.');
+  }
+
+  // Initial spare part stock (section 38): BRG-002 well stocked, JNT-014
+  // deliberately left below its minimum (2 received, 5 required) - a real
+  // "Stock de sécurité atteint" example, not a fabricated flag.
+  await receiveSparePartStock(pool, brgPart, 'RECEPTION', '10', 'Réception initiale (démo).', rmUserId);
+  await receiveSparePartStock(pool, jntPart, 'RECEPTION', '2', 'Réception initiale (démo).', rmUserId);
+
+  // 9a. Acceptance scenarios 1 & 2 (sections 60-61): Sertisseuse 2 jams and
+  // stops the active Run's line 2 - a genuine downtime event is opened
+  // (visible from the Run, the line and the equipment alike), Maintenance
+  // opens a corrective work order, a technician diagnoses, replaces a
+  // roulement, and the equipment is returned to service. Sertisseuse 2's
+  // criticality is HAUTE, so closing this work order requires
+  // RESPONSABLE_MAINTENANCE (workorder:approve), not the technician alone.
+  const line2 = lines.rows.find((line) => line.code === 'L2');
+  const runLine2 = line2
+    ? await pool.query<{ id: string }>(
+        'SELECT id FROM production_run_lines WHERE production_run_id = $1 AND production_line_id = $2',
+        [run.id, line2.id],
+      )
+    : null;
+  const runLine2Id = runLine2?.rows[0]?.id ?? null;
+
+  const sert2Failure = await createFailureReport(
+    pool,
+    {
+      equipmentId: sert2Id,
+      severity: 'HAUTE',
+      description: 'Bourrage de la sertisseuse, arrêt de la ligne 2 (démo).',
+      productionRunId: run.id,
+      productionRunLineId: runLine2Id,
+      stopsProduction: true,
+      reportedAt: new Date(Date.now() - 90 * 60 * 1000),
+    },
+    productionUserId,
+  );
+
+  const sert2WorkOrder = await createWorkOrder(
+    pool,
+    {
+      equipmentId: sert2Id,
+      failureReportId: sert2Failure.id,
+      workOrderType: 'CORRECTIVE',
+      priority: 'HAUTE',
+      title: 'Réparation bourrage Sertisseuse 2',
+      description: 'Bourrage récurrent au poste de sertissage, intervention corrective (démo).',
+      assignedTo: maintenanceUserId,
+      dueAt: null,
+    },
+    maintenanceUserId,
+  );
+
+  const sert2Intervention = await startIntervention(
+    pool,
+    sert2WorkOrder.id,
+    new Date(Date.now() - 75 * 60 * 1000),
+    maintenanceUserId,
+  );
+  await updateIntervention(
+    pool,
+    sert2Intervention.id,
+    {
+      diagnostic: 'Roulement défectueux détecté après désassemblage (démo).',
+      actionPerformed: 'Remplacement du roulement défectueux.',
+      failureModeId: bourrageMode,
+      failureCauseId: defautPieceCause,
+    },
+    maintenanceUserId,
+  );
+  await recordPartUsage(pool, sert2Intervention.id, brgPart, '1', maintenanceUserId);
+  await endIntervention(pool, sert2Intervention.id, new Date(Date.now() - 30 * 60 * 1000), null, maintenanceUserId);
+  await completeWorkOrder(pool, sert2WorkOrder.id, { verificationResult: 'CONFORME' }, rmUserId);
+
+  // 9b. Acceptance scenario 5 (section 63): a seaming defect leads to an
+  // NCR whose investigation points at Sertisseuse 2 - the NCR links the
+  // equipment, the failure and the work order that fixed it, so Quality
+  // sees the corrective maintenance history without duplicating it.
+  const sertissageCategory = await idOf(pool, 'nonconformity_categories', 'SERTISSAGE');
+  const seamingNcr = await createNonconformity(
+    pool,
+    {
+      detectedAt: new Date(Date.now() - 60 * 60 * 1000),
+      sourceType: 'SEAMING_CONTROL',
+      sourceId: seamingControl.id,
+      categoryId: sertissageCategory,
+      title: 'Défaut de sertissage lié à un bourrage machine',
+      description: "Investigation du défaut de sertissage : bourrage de la Sertisseuse 2, roulement défectueux (démo).",
+      severity: 'MAJEURE',
+      priority: 'HAUTE',
+      ownerUserId: qualityUserId,
+      dueAt: null,
+      qualityBlockRequired: false,
+      confirmSeverityPriority: false,
+      detectedBy: qualityUserId,
+      links: [
+        { entityType: 'EQUIPMENT', entityId: sert2Id, relationshipType: 'SOURCE' },
+        { entityType: 'FAILURE_REPORT', entityId: sert2Failure.id, relationshipType: 'SOURCE' },
+      ],
+    },
+    qualityUserId,
+  );
+  await addNonconformityLink(
+    pool,
+    seamingNcr.id,
+    { entityType: 'MAINTENANCE_WORK_ORDER', entityId: sert2WorkOrder.id, relationshipType: 'SOURCE' },
+    qualityUserId,
+  );
+
+  // 9c. Acceptance scenario 3 (section 62): Autoclave 1 monthly preventive
+  // plan - the first occurrence is due and gets completed, which generates
+  // the next one automatically (never left without a next due date).
+  const autoclave1Plan = await createMaintenancePlan(
+    pool,
+    {
+      equipmentId: autoclave1Id,
+      name: 'Entretien préventif mensuel - Autoclave 1',
+      frequencyType: 'MONTHLY',
+      checklistLabels: [
+        'Vérifier les joints de porte',
+        'Contrôler la sonde de température',
+        'Vérifier la pression de la chaudière',
+      ],
+      firstDueAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+    },
+    rmUserId,
+  );
+  const autoclave1Task = await pool.query<{ id: string }>(
+    'SELECT id FROM preventive_tasks WHERE maintenance_plan_id = $1 ORDER BY due_at LIMIT 1',
+    [autoclave1Plan.id],
+  );
+  const autoclave1TaskId = autoclave1Task.rows[0]?.id;
+  if (!autoclave1TaskId) {
+    throw new Error('Tâche préventive de démonstration introuvable.');
+  }
+  const autoclave1ChecklistItems = await pool.query<{ id: string }>(
+    'SELECT id FROM maintenance_plan_checklist_items WHERE maintenance_plan_id = $1 ORDER BY display_order',
+    [autoclave1Plan.id],
+  );
+  await completePreventiveTask(
+    pool,
+    autoclave1TaskId,
+    {
+      completedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+      notes: 'Entretien mensuel réalisé, aucune anomalie relevée (démo).',
+      checklistResponses: autoclave1ChecklistItems.rows.map((item) => ({
+        checklistItemId: item.id,
+        completed: true,
+        comment: null,
+      })),
+    },
+    maintenanceUserId,
+  );
+
+  // A second plan, deliberately left overdue (section 56): Autoclave 2's
+  // quarterly plan was due 10 days ago and nobody has completed it yet - a
+  // genuine "En retard" example for the Préventifs en retard KPI, the same
+  // discipline as Phase 6's overdue CAPA.
+  await createMaintenancePlan(
+    pool,
+    {
+      equipmentId: autoclave2Id,
+      name: 'Entretien préventif trimestriel - Autoclave 2',
+      frequencyType: 'QUARTERLY',
+      checklistLabels: ['Vérifier les joints de porte', 'Contrôler la sonde de température'],
+      firstDueAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+    },
+    rmUserId,
+  );
+
+  // 9d. Acceptance scenario 4 (section 62): four similar failures on
+  // Remplisseuse 1 within 30 days, same mode/cause - Maintenance can
+  // identify the repeated failure without any AI (services/maintenanceQueries.ts's
+  // plain GROUP BY). Remplisseuse 1's criticality is MOYENNE, so closing
+  // these routine work orders does not require RESPONSABLE_MAINTENANCE.
+  for (const daysAgo of [25, 18, 10, 3]) {
+    const reportedAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+    const failure = await createFailureReport(
+      pool,
+      {
+        equipmentId: rempl1Id,
+        severity: 'MOYENNE',
+        description: 'Vibration anormale détectée sur la remplisseuse (démo).',
+        productionRunId: null,
+        productionRunLineId: null,
+        stopsProduction: false,
+        reportedAt,
+      },
+      maintenanceUserId,
+    );
+    const workOrder = await createWorkOrder(
+      pool,
+      {
+        equipmentId: rempl1Id,
+        failureReportId: failure.id,
+        workOrderType: 'CORRECTIVE',
+        priority: 'NORMALE',
+        title: 'Vibration anormale - Remplisseuse 1',
+        description: null,
+        assignedTo: maintenanceUserId,
+        dueAt: null,
+      },
+      maintenanceUserId,
+    );
+    const intervention = await startIntervention(pool, workOrder.id, new Date(reportedAt.getTime() + 30 * 60 * 1000), maintenanceUserId);
+    await updateIntervention(
+      pool,
+      intervention.id,
+      {
+        diagnostic: 'Vibration anormale confirmée au démarrage (démo).',
+        actionPerformed: 'Resserrage et réalignement des fixations.',
+        failureModeId: vibrationMode,
+        failureCauseId: usureCause,
+      },
+      maintenanceUserId,
+    );
+    await endIntervention(pool, intervention.id, new Date(reportedAt.getTime() + 75 * 60 * 1000), null, maintenanceUserId);
+    await completeWorkOrder(pool, workOrder.id, { verificationResult: null }, maintenanceUserId);
+  }
 }
 
 export async function seedDatabase(pool: pg.Pool): Promise<boolean> {

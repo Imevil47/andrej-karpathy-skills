@@ -10,6 +10,7 @@ import { productionHomeSummary } from '../services/productionQueries.ts';
 import { countReceptionsToday } from '../services/receptions.ts';
 import { qmsHomeSummary, qmsMetrics } from '../services/qmsQueries.ts';
 import { stockSummary } from '../services/stockQueries.ts';
+import { maintenanceHomeSummary } from '../services/maintenanceQueries.ts';
 
 /**
  * Lightweight operational summary of the home page. No analytics, no charts:
@@ -86,5 +87,24 @@ export async function registerHomeRoutes(
     requirePermission(request, 'qms:read');
     const users = await listUsers(pool);
     return users.filter((user) => user.isActive).map((user) => ({ id: user.id, fullName: user.fullName, role: user.role }));
+  });
+
+  // Section 48: Maintenance home KPIs - Pannes ouvertes/Équipements en
+  // panne/OT en cours/Préventifs en retard/Interventions aujourd'hui/Pièces
+  // sous minimum, no decorative analytics.
+  app.get('/api/maintenance/home-summary', async (request) => {
+    requirePermission(request, 'maintenance:read');
+    return maintenanceHomeSummary(pool);
+  });
+
+  // Technician/responsible pickers (section 43's screens) need to list
+  // MAINTENANCE/RESPONSABLE_MAINTENANCE users the same way QMS lists its
+  // own users above - /api/users itself stays users:manage/ADMIN-only.
+  app.get('/api/maintenance/users', async (request) => {
+    requirePermission(request, 'maintenance:read');
+    const users = await listUsers(pool);
+    return users
+      .filter((user) => user.isActive && (user.role === 'MAINTENANCE' || user.role === 'RESPONSABLE_MAINTENANCE'))
+      .map((user) => ({ id: user.id, fullName: user.fullName, role: user.role }));
   });
 }

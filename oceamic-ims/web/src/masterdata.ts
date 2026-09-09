@@ -153,6 +153,17 @@ export type Equipment = Readonly<{
   locationId: string | null;
   locationCode: string | null;
   isActive: boolean;
+  // Phase 7 (section 8): asset identity, hierarchy, criticality and status.
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  productionLineId: string | null;
+  productionLineCode: string | null;
+  parentEquipmentId: string | null;
+  parentEquipmentCode: string | null;
+  criticality: string;
+  commissionedAt: string | null;
+  status: string;
 }>;
 
 export type FillingMedium = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
@@ -291,4 +302,35 @@ export function useAuditChecklists() {
 }
 export function useAuditChecklistItems(auditChecklistId: string | null) {
   return useResource<readonly AuditChecklistItem[]>(`/api/audit-checklists/${auditChecklistId ?? 'aucun'}/items`);
+}
+
+// --- Phase 7: maintenance / CMMS --------------------------------------------
+
+export function useMaintenanceUsers() {
+  return useResource<readonly UserOption[]>('/api/maintenance/users');
+}
+
+export type FailureModeOrCause = Readonly<{ id: string; code: string; name: string }>;
+
+export function useFailureModes() {
+  return useResource<readonly FailureModeOrCause[]>('/api/failure-modes');
+}
+export function useFailureCauses() {
+  return useResource<readonly FailureModeOrCause[]>('/api/failure-causes');
+}
+
+export type SparePartOption = Readonly<{
+  id: string;
+  partCode: string;
+  name: string;
+  unit: string;
+  minimumStock: string;
+  currentStock: string;
+  belowMinimum: boolean;
+  locationCode: string | null;
+  isActive: boolean;
+}>;
+
+export function useSpareParts(belowMinimumOnly = false) {
+  return useResource<readonly SparePartOption[]>(`/api/spare-parts${belowMinimumOnly ? '?sousMinimum=true' : ''}`);
 }

@@ -4,6 +4,11 @@
 // Phase 6 adds RESPONSABLE_QUALITE (approves root cause / CAPA closure /
 // document approval, releases critical blocks, initiates recalls) and
 // AUDITEUR (conducts assigned audits, records findings) - see section 53.
+// Phase 7 adds MAINTENANCE (works failures, work orders, interventions,
+// preventive tasks, spare-part consumption) and RESPONSABLE_MAINTENANCE
+// (additionally configures preventive plans, closes important work orders,
+// manages equipment master data, authorizes stock adjustments) - see
+// permissions.ts for the exact split.
 export const ROLE_CODES = [
   'ADMIN',
   'QUALITE',
@@ -12,6 +17,8 @@ export const ROLE_CODES = [
   'LECTURE',
   'RESPONSABLE_QUALITE',
   'AUDITEUR',
+  'MAINTENANCE',
+  'RESPONSABLE_MAINTENANCE',
 ] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
 
@@ -212,7 +219,22 @@ export function performanceStatus(performancePercent: number | null): Performanc
 
 // --- Phase 4: filling, seaming, marking, sterilization, CCP, cooling -------
 
-export const EQUIPMENT_TYPES = ['SERTISSEUSE', 'AUTOCLAVE', 'REMPLISSEUSE', 'AUTRE'] as const;
+// Phase 7 widens this list (section 7): a configurable vocabulary, never
+// hardcoded per-type behaviour anywhere in the app.
+export const EQUIPMENT_TYPES = [
+  'SERTISSEUSE',
+  'AUTOCLAVE',
+  'REMPLISSEUSE',
+  'CONVOYEUR',
+  'POMPE',
+  'COMPRESSEUR',
+  'CHAUDIERE',
+  'CHAMBRE_FROIDE',
+  'BALANCE',
+  'DETECTEUR',
+  'MACHINE_TRAITEMENT',
+  'AUTRE',
+] as const;
 export type EquipmentType = (typeof EQUIPMENT_TYPES)[number];
 
 export const FILLING_OPERATION_STATUSES = ['PLANIFIE', 'EN_COURS', 'TERMINE', 'ANNULE'] as const;
@@ -468,6 +490,11 @@ export const QMS_ENTITY_TYPES = [
   'AUDIT_FINDING',
   'CUSTOMER_COMPLAINT',
   'SUPPLIER_QUALITY_INCIDENT',
+  // Phase 7: a non-conformity can point back at the failure/work order that
+  // caused or investigated it (section 63's seaming-defect scenario),
+  // reusing this same polymorphic mechanism rather than a new one.
+  'FAILURE_REPORT',
+  'MAINTENANCE_WORK_ORDER',
 ] as const;
 export type QmsEntityType = (typeof QMS_ENTITY_TYPES)[number];
 
@@ -623,3 +650,149 @@ export function isOverdue(dueAt: Date | string | null, isStillOpen: boolean): bo
   }
   return new Date(dueAt).getTime() < Date.now();
 }
+
+// --- Phase 7: maintenance / CMMS layer --------------------------------------
+
+// Equipment criticality (section 9): business importance of the ASSET. Kept
+// deliberately distinct from equipment status and from failure severity -
+// merging any of these would hide real information (a FAIBLE-criticality
+// machine can still have a CRITIQUE failure).
+export const EQUIPMENT_CRITICALITIES = ['FAIBLE', 'MOYENNE', 'HAUTE', 'CRITIQUE'] as const;
+export type EquipmentCriticality = (typeof EQUIPMENT_CRITICALITIES)[number];
+
+// Equipment operational status (section 12): distinct from work-order
+// status - an equipment can be EN_PANNE while its work order is still
+// OUVERT, or EN_MAINTENANCE while the work order is EN_COURS.
+export const EQUIPMENT_STATUSES = [
+  'EN_SERVICE',
+  'EN_PANNE',
+  'EN_MAINTENANCE',
+  'HORS_SERVICE',
+  'EN_ATTENTE_PIECE',
+  'INACTIF',
+] as const;
+export type EquipmentStatus = (typeof EQUIPMENT_STATUSES)[number];
+
+// Failure severity (section 9): how bad THIS event is, a distinct concept
+// from equipment.criticality (how important the asset is).
+export const FAILURE_SEVERITIES = ['FAIBLE', 'MOYENNE', 'HAUTE', 'CRITIQUE'] as const;
+export type FailureSeverity = (typeof FAILURE_SEVERITIES)[number];
+
+export const FAILURE_REPORT_STATUSES = ['DECLAREE', 'PRISE_EN_CHARGE', 'RESOLUE', 'ANNULEE'] as const;
+export type FailureReportStatus = (typeof FAILURE_REPORT_STATUSES)[number];
+
+// A failure's own lifecycle (section 66: FAILURE REPORT is the observed
+// event, distinct from the work order that authorizes repairing it) - driven
+// by the maintenance workflow itself (services/failures.ts), never a free
+// dropdown: reporting a failure is DECLAREE, opening a work order for it is
+// PRISE_EN_CHARGE, the work order finishing is RESOLUE.
+export const FAILURE_REPORT_ALLOWED_TRANSITIONS: Readonly<
+  Record<FailureReportStatus, readonly FailureReportStatus[]>
+> = {
+  DECLAREE: ['PRISE_EN_CHARGE', 'ANNULEE'],
+  PRISE_EN_CHARGE: ['RESOLUE', 'ANNULEE'],
+  RESOLUE: [],
+  ANNULEE: [],
+};
+
+// One table for every work-order type (section 22): configuration, not a
+// hardcoded split.
+export const WORK_ORDER_TYPES = [
+  'CORRECTIVE',
+  'PREVENTIVE',
+  'INSPECTION',
+  'REGLAGE',
+  'AMELIORATION',
+  'URGENCE',
+] as const;
+export type WorkOrderType = (typeof WORK_ORDER_TYPES)[number];
+
+export const WORK_ORDER_PRIORITIES = ['BASSE', 'NORMALE', 'HAUTE', 'URGENTE'] as const;
+export type WorkOrderPriority = (typeof WORK_ORDER_PRIORITIES)[number];
+
+export const WORK_ORDER_STATUSES = [
+  'OUVERT',
+  'PLANIFIE',
+  'EN_COURS',
+  'EN_ATTENTE_PIECE',
+  'EN_ATTENTE_PRODUCTION',
+  'TERMINE',
+  'ANNULE',
+] as const;
+export type WorkOrderStatus = (typeof WORK_ORDER_STATUSES)[number];
+
+export const WORK_ORDER_VERIFICATION_RESULTS = ['CONFORME', 'NON_CONFORME'] as const;
+export type WorkOrderVerificationResult = (typeof WORK_ORDER_VERIFICATION_RESULTS)[number];
+
+// Work order status workflow (section 21), the same "server validates every
+// transition" discipline as NONCONFORMITY_ALLOWED_TRANSITIONS: a work order
+// cannot jump straight from OUVERT to TERMINE without ever being worked.
+export const WORK_ORDER_ALLOWED_TRANSITIONS: Readonly<Record<WorkOrderStatus, readonly WorkOrderStatus[]>> = {
+  OUVERT: ['PLANIFIE', 'EN_COURS', 'ANNULE'],
+  PLANIFIE: ['EN_COURS', 'ANNULE'],
+  EN_COURS: ['EN_ATTENTE_PIECE', 'EN_ATTENTE_PRODUCTION', 'TERMINE', 'ANNULE'],
+  EN_ATTENTE_PIECE: ['EN_COURS', 'ANNULE'],
+  EN_ATTENTE_PRODUCTION: ['EN_COURS', 'ANNULE'],
+  TERMINE: [],
+  ANNULE: [],
+};
+
+export const WORK_ORDER_PRIMARY_NEXT_STATUS: Readonly<Partial<Record<WorkOrderStatus, WorkOrderStatus>>> = {
+  OUVERT: 'PLANIFIE',
+  PLANIFIE: 'EN_COURS',
+  EN_COURS: 'TERMINE',
+  EN_ATTENTE_PIECE: 'EN_COURS',
+  EN_ATTENTE_PRODUCTION: 'EN_COURS',
+};
+
+// "Important" work order (section 52's "close important work orders"
+// reserved to RESPONSABLE_MAINTENANCE): equipment whose criticality is
+// HAUTE/CRITIQUE, or an URGENCE-type work order - closing anything else
+// only needs workorder:manage. Centralized here so the route, the service
+// gate and any future screen read the exact same rule.
+export function workOrderClosureRequiresApproval(
+  equipmentCriticality: EquipmentCriticality,
+  workOrderType: WorkOrderType,
+): boolean {
+  return equipmentCriticality === 'HAUTE' || equipmentCriticality === 'CRITIQUE' || workOrderType === 'URGENCE';
+}
+
+// Preventive frequency (section 26): OPERATING_HOURS/CUSTOM plans have no
+// automatic next-due calculation (no operating-hours meter integration in
+// Phase 7 - section 28) and are scheduled manually instead of faking data.
+export const PREVENTIVE_FREQUENCY_TYPES = [
+  'DAILY',
+  'WEEKLY',
+  'MONTHLY',
+  'QUARTERLY',
+  'SEMIANNUAL',
+  'ANNUAL',
+  'OPERATING_HOURS',
+  'CUSTOM',
+] as const;
+export type PreventiveFrequencyType = (typeof PREVENTIVE_FREQUENCY_TYPES)[number];
+
+// Calendar-based frequencies only - the ones that get an automatic
+// frequency_interval_days and therefore an automatic next-due date.
+export const PREVENTIVE_FREQUENCY_INTERVAL_DAYS: Readonly<Partial<Record<PreventiveFrequencyType, number>>> = {
+  DAILY: 1,
+  WEEKLY: 7,
+  MONTHLY: 30,
+  QUARTERLY: 91,
+  SEMIANNUAL: 182,
+  ANNUAL: 365,
+};
+
+export const PREVENTIVE_TASK_STATUSES = ['PLANIFIEE', 'TERMINEE', 'ANNULEE'] as const;
+export type PreventiveTaskStatus = (typeof PREVENTIVE_TASK_STATUSES)[number];
+
+// Spare part stock ledger (section 38): its own movement vocabulary, never
+// shared with Phase 1's raw-material MOVEMENT_TYPES.
+export const SPARE_PART_MOVEMENT_TYPES = [
+  'RECEPTION',
+  'SORTIE_INTERVENTION',
+  'TRANSFERT',
+  'RETOUR',
+  'AJUSTEMENT',
+] as const;
+export type SparePartMovementType = (typeof SPARE_PART_MOVEMENT_TYPES)[number];

@@ -34,61 +34,74 @@ export async function startDowntime(
   input: StartDowntimeInput,
   actorId: string,
 ): Promise<DowntimeEvent> {
-  return withTransaction(pool, async (client) => {
-    const run = await requireRun(client, runId);
-    if (!runAcceptsEntries(run.status)) {
-      throw conflictError(
-        `L'ordre de production ${run.runCode} n'est pas actif : aucun arrêt ne peut y être déclaré.`,
-        { runId },
-      );
-    }
-    if (input.productionRunLineId !== null) {
-      await requireRunLine(client, run.id, input.productionRunLineId);
-    }
+  return withTransaction(pool, (client) => startDowntimeWithClient(client, runId, input, actorId));
+}
 
-    const inserted = await client.query<{ id: string; started_at: Date; ended_at: Date | null }>(
-      `INSERT INTO downtime_events (production_run_id, production_run_line_id, started_at,
-                                    downtime_category_id, reason_text, planned, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, started_at, ended_at`,
-      [
-        run.id,
-        input.productionRunLineId,
-        input.startedAt,
-        input.downtimeCategoryId,
-        input.reasonText,
-        input.planned,
-        actorId,
-      ],
+/**
+ * Same operation, composable within a caller's own transaction - used by
+ * Phase 7's failure-report service so a failure that stops production and
+ * the downtime event it opens commit atomically together (section 20: the
+ * same real event, never a duplicated record).
+ */
+export async function startDowntimeWithClient(
+  client: DatabaseClient,
+  runId: string,
+  input: StartDowntimeInput,
+  actorId: string,
+): Promise<DowntimeEvent> {
+  const run = await requireRun(client, runId);
+  if (!runAcceptsEntries(run.status)) {
+    throw conflictError(
+      `L'ordre de production ${run.runCode} n'est pas actif : aucun arrêt ne peut y être déclaré.`,
+      { runId },
     );
-    const row = inserted.rows[0];
-    if (!row) {
-      throw new Error("L'arrêt n'a pas pu être enregistré.");
-    }
+  }
+  if (input.productionRunLineId !== null) {
+    await requireRunLine(client, run.id, input.productionRunLineId);
+  }
 
-    await recordAudit(client, {
-      userId: actorId,
-      action: 'DOWNTIME_DEMARRAGE',
-      entityType: 'downtime_events',
-      entityId: row.id,
-      oldValues: null,
-      newValues: {
-        runCode: run.runCode,
-        productionRunLineId: input.productionRunLineId,
-        downtimeCategoryId: input.downtimeCategoryId,
-        planned: input.planned,
-      },
-      context: null,
-    });
+  const inserted = await client.query<{ id: string; started_at: Date; ended_at: Date | null }>(
+    `INSERT INTO downtime_events (production_run_id, production_run_line_id, started_at,
+                                  downtime_category_id, reason_text, planned, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, started_at, ended_at`,
+    [
+      run.id,
+      input.productionRunLineId,
+      input.startedAt,
+      input.downtimeCategoryId,
+      input.reasonText,
+      input.planned,
+      actorId,
+    ],
+  );
+  const row = inserted.rows[0];
+  if (!row) {
+    throw new Error("L'arrêt n'a pas pu être enregistré.");
+  }
 
-    return {
-      id: row.id,
-      productionRunId: run.id,
+  await recordAudit(client, {
+    userId: actorId,
+    action: 'DOWNTIME_DEMARRAGE',
+    entityType: 'downtime_events',
+    entityId: row.id,
+    oldValues: null,
+    newValues: {
+      runCode: run.runCode,
       productionRunLineId: input.productionRunLineId,
-      startedAt: row.started_at,
-      endedAt: row.ended_at,
-    };
+      downtimeCategoryId: input.downtimeCategoryId,
+      planned: input.planned,
+    },
+    context: null,
   });
+
+  return {
+    id: row.id,
+    productionRunId: run.id,
+    productionRunLineId: input.productionRunLineId,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+  };
 }
 
 /**
@@ -102,47 +115,55 @@ export async function endDowntime(
   endedAt: Date,
   actorId: string,
 ): Promise<{ durationSeconds: number }> {
-  return withTransaction(pool, async (client) => {
-    const existing = await client.query<{
-      started_at: Date;
-      ended_at: Date | null;
-      production_run_id: string;
-    }>('SELECT started_at, ended_at, production_run_id FROM downtime_events WHERE id = $1', [
+  return withTransaction(pool, (client) => endDowntimeWithClient(client, downtimeId, endedAt, actorId));
+}
+
+/** Composable variant of endDowntime, same reasoning as startDowntimeWithClient. */
+export async function endDowntimeWithClient(
+  client: DatabaseClient,
+  downtimeId: string,
+  endedAt: Date,
+  actorId: string,
+): Promise<{ durationSeconds: number }> {
+  const existing = await client.query<{
+    started_at: Date;
+    ended_at: Date | null;
+    production_run_id: string;
+  }>('SELECT started_at, ended_at, production_run_id FROM downtime_events WHERE id = $1', [
+    downtimeId,
+  ]);
+  const row = existing.rows[0];
+  if (!row) {
+    throw notFoundError('Arrêt', downtimeId);
+  }
+  if (row.ended_at !== null) {
+    throw conflictError('Cet arrêt est déjà terminé.', { downtimeId });
+  }
+  if (endedAt < row.started_at) {
+    throw validationError("L'heure de fin ne peut pas précéder l'heure de début.", {
       downtimeId,
-    ]);
-    const row = existing.rows[0];
-    if (!row) {
-      throw notFoundError('Arrêt', downtimeId);
-    }
-    if (row.ended_at !== null) {
-      throw conflictError('Cet arrêt est déjà terminé.', { downtimeId });
-    }
-    if (endedAt < row.started_at) {
-      throw validationError("L'heure de fin ne peut pas précéder l'heure de début.", {
-        downtimeId,
-        startedAt: row.started_at,
-        endedAt,
-      });
-    }
-
-    const updated = await client.query<{ duration_seconds: number }>(
-      'UPDATE downtime_events SET ended_at = $2, updated_at = now() WHERE id = $1 RETURNING duration_seconds',
-      [downtimeId, endedAt],
-    );
-    const durationSeconds = updated.rows[0]?.duration_seconds ?? 0;
-
-    await recordAudit(client, {
-      userId: actorId,
-      action: 'DOWNTIME_CLOTURE',
-      entityType: 'downtime_events',
-      entityId: downtimeId,
-      oldValues: { endedAt: null },
-      newValues: { endedAt, durationSeconds },
-      context: { runId: row.production_run_id },
+      startedAt: row.started_at,
+      endedAt,
     });
+  }
 
-    return { durationSeconds };
+  const updated = await client.query<{ duration_seconds: number }>(
+    'UPDATE downtime_events SET ended_at = $2, updated_at = now() WHERE id = $1 RETURNING duration_seconds',
+    [downtimeId, endedAt],
+  );
+  const durationSeconds = updated.rows[0]?.duration_seconds ?? 0;
+
+  await recordAudit(client, {
+    userId: actorId,
+    action: 'DOWNTIME_CLOTURE',
+    entityType: 'downtime_events',
+    entityId: downtimeId,
+    oldValues: { endedAt: null },
+    newValues: { endedAt, durationSeconds },
+    context: { runId: row.production_run_id },
   });
+
+  return { durationSeconds };
 }
 
 export type DowntimeEventRow = Readonly<{

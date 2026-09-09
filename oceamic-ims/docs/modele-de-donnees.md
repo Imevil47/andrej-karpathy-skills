@@ -1337,3 +1337,131 @@ quality_documents ──< quality_document_revisions ──< document_acknowledg
 
 raw_material_lots | finished_good_lots ──< recall_events ──< recall_affected_entities
 ```
+
+---
+
+## Équipement (extension Phase 7)
+
+### `equipment` (extension)
+La table existante depuis la Phase 4 (`code`, `name`, `equipment_type`, `location_id`)
+est étendue, jamais reconstruite : `manufacturer`, `model`, `serial_number`,
+`production_line_id` (ligne sur laquelle il est installé, facultatif),
+`parent_equipment_id` (hiérarchie — un composant d'un équipement plus grand, ex. une
+sonde d'autoclave), `criticality` (`FAIBLE`/`MOYENNE`/`HAUTE`/`CRITIQUE` — importance
+de l'actif) et `status` (`EN_SERVICE`/`EN_PANNE`/`EN_MAINTENANCE`/`HORS_SERVICE`/
+`EN_ATTENTE_PIECE`/`INACTIF` — état opérationnel). `equipment_type` est un vocabulaire
+élargi (`CONVOYEUR`, `POMPE`, `COMPRESSEUR`, `CHAUDIERE`, `CHAMBRE_FROIDE`, `BALANCE`,
+`DETECTEUR`, `MACHINE_TRAITEMENT` en plus des types Phase 4), une configuration, jamais
+un comportement codé en dur par type.
+
+## Pannes
+
+### `failure_modes` / `failure_causes`
+Données de référence configurables (`code`, `name`, `is_active`). `CAUSE_NON_DETERMINEE`
+est une vraie ligne de `failure_causes` : quand la cause est réellement inconnue, ce
+n'est jamais un choix fabriqué pour satisfaire un champ obligatoire.
+
+### `failure_reports`
+L'événement observé (section 66 : distinct de l'ordre de travail qui répare). `equipment_id`,
+`production_run_id`/`production_run_line_id` (facultatifs), `downtime_event_id`
+(pointeur vers le **même** arrêt Phase 3, jamais un doublon), `severity`
+(`FAIBLE`/`MOYENNE`/`HAUTE`/`CRITIQUE` — distincte de la criticité de l'équipement),
+`status` (`DECLAREE`/`PRISE_EN_CHARGE`/`RESOLUE`/`ANNULEE`, un cycle de vie piloté par
+le workflow lui-même, jamais un menu déroulant libre), `failure_mode_id`/
+`failure_cause_id` (renseignés une fois connus, souvent copiés depuis la dernière
+intervention diagnostiquée à la clôture de l'ordre de travail).
+
+## Ordres de travail et interventions
+
+### `maintenance_work_orders`
+Une seule table pour tous les types (`CORRECTIVE`, `PREVENTIVE`, `INSPECTION`,
+`REGLAGE`, `AMELIORATION`, `URGENCE`) — les séparer aurait dupliqué la même logique de
+statut et de clôture. `failure_report_id` (facultatif), `equipment_id`, `priority`,
+`status` (`OUVERT`/`PLANIFIE`/`EN_COURS`/`EN_ATTENTE_PIECE`/`EN_ATTENTE_PRODUCTION`/
+`TERMINE`/`ANNULE`), `assigned_to`, `due_at`. La remise en service
+(`restored_at`/`restored_by`/`verification_result`) est un jeu de colonnes
+délibérément distinct du statut : la fin du travail technique n'est pas la même
+décision que la libération de l'équipement pour la production. `closed_at`/`closed_by`
+complètent la trace de clôture.
+
+### `maintenance_interventions`
+L'exécution réelle (section 66) — un ordre de travail peut en porter plusieurs, jamais
+forcé à une relation 1:1. `technician_user_id` (réutilise `users`, jamais une identité
+employée dupliquée), `started_at`/`ended_at`, `duration_seconds` **généré**, à
+l'identique de `downtime_events.duration_seconds` (Phase 3) : la durée ne peut jamais
+diverger des horodatages. `diagnostic`, `action_performed`, `failure_mode_id`/
+`failure_cause_id` (peuvent affiner ceux de la panne source).
+
+## Maintenance préventive
+
+### `maintenance_plans`
+L'exigence récurrente (section 66). `equipment_id`, `frequency_type`
+(`DAILY`/`WEEKLY`/`MONTHLY`/`QUARTERLY`/`SEMIANNUAL`/`ANNUAL`/`OPERATING_HOURS`/
+`CUSTOM`), `frequency_interval_days` — rempli automatiquement pour les fréquences
+calendaires, laissé `NULL` pour `OPERATING_HOURS`/`CUSTOM` : Phase 7 n'intègre aucun
+compteur d'heures d'exploitation, la prochaine échéance de ces plans-là est donc
+planifiée manuellement plutôt que fabriquée.
+
+### `maintenance_plan_checklist_items` / `preventive_task_checklist_responses`
+Liste de contrôle propre à un plan (pas un modèle partagé entre plans, contrairement
+aux grilles d'audit de la Phase 6) et ses réponses par occurrence, avec une contrainte
+d'unicité (tâche, item) pour une réponse idempotente.
+
+### `preventive_tasks`
+Une occurrence planifiée (section 66, distincte du plan). `due_at`, `status`
+(`PLANIFIEE`/`TERMINEE`/`ANNULEE`) — **« En retard » n'est jamais stocké** : toujours
+`statut = PLANIFIEE AND échéance < maintenant`, lu depuis la vue
+`preventive_task_status`. Compléter une tâche dont le plan a une fréquence calendaire
+génère automatiquement la tâche suivante (échéance du plan + intervalle fixe) dans la
+même transaction ; un plan n'est jamais laissé sans prochaine échéance.
+
+## Pièces de rechange
+
+### `spare_parts`
+Une identité d'inventaire de maintenance entièrement séparée du moteur de stock
+matière première de la Phase 1 : ses propres tables, son propre vocabulaire de
+mouvement, aucun code partagé. `minimum_stock` est le seuil de l'alerte « Stock de
+sécurité atteint » — aucune commande automatique n'est déclenchée.
+
+### `spare_part_stock_movements`
+Le registre, sur le même principe que `stock_movements` (Phase 1) : `quantity_delta`
+signé (positif pour `RECEPTION`/`RETOUR`, négatif pour `SORTIE_INTERVENTION`, signé
+librement pour un `AJUSTEMENT` autorisé par RESPONSABLE_MAINTENANCE). `current_stock`
+n'est **jamais** une colonne mise en cache : toujours `SUM(quantity_delta)`, lu depuis
+la vue `spare_part_stock` — la même discipline que le solde des lots matière première.
+
+### `maintenance_part_usage`
+Les pièces consommées par une intervention (section 39/46). `stock_movement_id` est
+`NOT NULL UNIQUE` : chaque usage produit exactement un mouvement
+`SORTIE_INTERVENTION`, créé dans la même transaction — un usage ne peut structurellement
+jamais soustraire le stock deux fois.
+
+## Vues de calcul de la Phase 7
+
+| Vue | Contenu |
+|---|---|
+| `spare_part_stock` | Stock courant (`SUM(quantity_delta)`) et indicateur `below_minimum` par pièce |
+| `preventive_task_status` | `is_overdue` calculé (`PLANIFIEE` et échéance dépassée), jamais stocké |
+| `equipment_active_failure` | La panne encore ouverte la plus récente par équipement — lue par les pages équipement/ligne/Run pour la visibilité de panne active (section 47) |
+| `equipment_mttr` | Nombre de réparations correctives terminées et durée totale chronométrée par équipement ; aucune ligne si l'historique est insuffisant (jamais une moyenne à zéro) |
+
+## Relations de la Phase 7
+
+```
+production_lines >── equipment >── equipment (parent_equipment_id, hiérarchie)
+                          │
+                          ├──< failure_reports ──> downtime_events (Phase 3, même événement)
+                          │         │          ──> failure_modes / failure_causes
+                          │         │
+                          │         └──< maintenance_work_orders ──< maintenance_interventions ──< maintenance_part_usage >── spare_parts
+                          │                                                                                                        │
+                          │                                                                                    spare_part_stock_movements
+                          │
+                          └──< maintenance_plans ──< maintenance_plan_checklist_items
+                                        │
+                                        └──< preventive_tasks ──< preventive_task_checklist_responses
+                                                    │
+                                                    └──> maintenance_work_orders (facultatif)
+
+nonconformities ──< nonconformity_links >── failure_reports | maintenance_work_orders | equipment (QMS_ENTITY_TYPES, section 63)
+```

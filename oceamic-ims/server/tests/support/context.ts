@@ -11,6 +11,20 @@ import { hashPassword } from '../../src/services/auth.ts';
 // live in transactions, constraints and locks, which mocks cannot exercise.
 
 const TABLES_IN_TRUNCATION_ORDER = [
+  // Phase 7: maintenance / CMMS - most dependent tables first, mirroring
+  // the rest of this list.
+  'maintenance_part_usage',
+  'spare_part_stock_movements',
+  'spare_parts',
+  'preventive_task_checklist_responses',
+  'preventive_tasks',
+  'maintenance_plan_checklist_items',
+  'maintenance_plans',
+  'maintenance_interventions',
+  'maintenance_work_orders',
+  'failure_reports',
+  'failure_causes',
+  'failure_modes',
   // Phase 6: horizontal QMS - most dependent tables first, mirroring the
   // rest of this list.
   'recall_affected_entities',
@@ -142,6 +156,10 @@ export type Fixtures = Readonly<{
   nonconformityCategoryId: string;
   auditChecklistId: string;
   auditChecklistItemIds: readonly string[];
+  sertisseuse2Id: string;
+  failureModeBourrageId: string;
+  failureCauseDefautPieceId: string;
+  sparePartId: string;
 }>;
 
 export type TestContext = Readonly<{
@@ -178,6 +196,8 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     'LECTURE',
     'RESPONSABLE_QUALITE',
     'AUDITEUR',
+    'MAINTENANCE',
+    'RESPONSABLE_MAINTENANCE',
   ];
   const passwordHash = await hashPassword('test1234');
   const users: Record<string, string> = {};
@@ -266,11 +286,23 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
   );
 
   const equipment = await pool.query<{ id: string; code: string }>(
-    `INSERT INTO equipment (code, name, equipment_type)
-     VALUES ('AUTOCLAVE-1', 'Autoclave 1', 'AUTOCLAVE'),
-            ('AUTOCLAVE-2', 'Autoclave 2', 'AUTOCLAVE'),
-            ('SERT-1', 'Sertisseuse 1', 'SERTISSEUSE')
+    `INSERT INTO equipment (code, name, equipment_type, criticality)
+     VALUES ('AUTOCLAVE-1', 'Autoclave 1', 'AUTOCLAVE', 'CRITIQUE'),
+            ('AUTOCLAVE-2', 'Autoclave 2', 'AUTOCLAVE', 'CRITIQUE'),
+            ('SERT-1', 'Sertisseuse 1', 'SERTISSEUSE', 'MOYENNE'),
+            ('SERT-2', 'Sertisseuse 2', 'SERTISSEUSE', 'HAUTE')
      RETURNING id, code`,
+  );
+  const failureMode = await pool.query<{ id: string }>(
+    `INSERT INTO failure_modes (code, name) VALUES ('BOURRAGE', 'Bourrage') RETURNING id`,
+  );
+  const failureCause = await pool.query<{ id: string }>(
+    `INSERT INTO failure_causes (code, name) VALUES ('DEFAUT_PIECE', 'Défaut de pièce') RETURNING id`,
+  );
+  const sparePart = await pool.query<{ id: string }>(
+    `INSERT INTO spare_parts (part_code, name, minimum_stock, created_by)
+     VALUES ('BRG-TEST', 'Roulement test', 2, $1) RETURNING id`,
+    [users.ADMIN],
   );
   const fillingMedium = await pool.query<{ id: string }>(
     `INSERT INTO filling_media (code, name) VALUES ('HUILE_OLIVE', 'Huile olive') RETURNING id`,
@@ -355,6 +387,10 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     nonconformityCategoryId: nonconformityCategory.rows[0]?.id ?? '',
     auditChecklistId,
     auditChecklistItemIds: auditChecklistItems.rows.map((row) => row.id),
+    sertisseuse2Id: equipment.rows.find((row) => row.code === 'SERT-2')?.id ?? '',
+    failureModeBourrageId: failureMode.rows[0]?.id ?? '',
+    failureCauseDefautPieceId: failureCause.rows[0]?.id ?? '',
+    sparePartId: sparePart.rows[0]?.id ?? '',
   };
 }
 

@@ -1,4 +1,4 @@
-# OCEAMIC IMS — Phases 1, 2, 3, 4, 5 et 6
+# OCEAMIC IMS — Phases 1, 2, 3, 4, 5, 6 et 7
 
 Système de gestion industrielle pour la conserverie de poisson OCEAMIC.
 
@@ -51,6 +51,26 @@ Une passe ultérieure a appliqué l'**identité visuelle officielle OCEAMIC Laay
 d'un audit ciblé de la Phase 6 (transitions de statut, cohérence gravité/priorité,
 échéances CAPA, clarté du statut d'audit) — voir la [section 11](#11-identité-visuelle-et-corrections-qms-phase-6)
 pour le détail.
+
+La **Phase 7** ajoute la **couche maintenance (GMAO)**, native à OCEAMIC IMS plutôt
+qu'une application séparée : registre d'équipements (identité, hiérarchie, criticité
+et statut opérationnel - trois concepts distincts), déclaration de pannes avec arrêt de
+production réel et unique (le même événement `downtime_events` de la Phase 3, jamais
+dupliqué), ordres de travail (correctifs, préventifs, inspection, réglage,
+amélioration, urgence) avec transitions contraintes et clôture gérée par un
+formulaire dédié (remise en service = décision distincte de la fin de l'intervention),
+interventions techniciens (diagnostic, action réalisée, pièces utilisées, durée
+toujours calculée jamais saisie), maintenance préventive (plans, tâches, listes de
+contrôle, retard toujours dérivé de la date d'échéance), pièces de rechange (inventaire
+propre, séparé du moteur de stock matière première), historique équipement, MTTR et
+analyse des pannes répétées. Un ordre de travail sur un équipement à criticité
+haute/critique (ou de type urgence) ne peut être clôturé que par RESPONSABLE_MAINTENANCE
+(section 52). Elle réutilise directement l'équipement, les lignes de production, les
+Runs, l'arrêt de production, le journal d'audit et le RBAC des phases précédentes -
+aucun de ces modules n'a été reconstruit. Elle ne contient ni achat de pièces, ni
+comptabilité de maintenance, ni maintenance prédictive par IA, ni intégration capteurs/
+automates, ni calibration/métrologie complète, ni OEE complet, mais prépare les
+champs nécessaires à un futur sous-module de calibration.
 
 L'interface utilisateur est intégralement en français. Le code, les noms de tables et
 les commentaires techniques sont en anglais.
@@ -187,6 +207,12 @@ dans la table `schema_migrations`.
 | `023_quality_documents.sql` | Documents qualité, révisions de document, acquittements de formation |
 | `024_recall.sql` | Événements de retrait/rappel/exercice, entités affectées |
 | `025_qms_views.sql` | Vues de progression CAPA (actions, efficacité, résumé avec éligibilité à la clôture) et de progression d'audit |
+| `026_maintenance_roles_equipment.sql` | Ajout des rôles MAINTENANCE et RESPONSABLE_MAINTENANCE ; extension de `equipment` (fabricant, modèle, n° de série, ligne, parent, criticité, statut) et de son vocabulaire de types |
+| `027_maintenance_failures.sql` | Modes et causes de panne, pannes (`failure_reports`) |
+| `028_maintenance_work_orders.sql` | Ordres de travail, interventions (durée calculée) |
+| `029_maintenance_preventive.sql` | Plans préventifs, listes de contrôle, tâches préventives, réponses de liste de contrôle |
+| `030_maintenance_spare_parts.sql` | Pièces de rechange, mouvements de stock de pièces, usage de pièces en intervention |
+| `031_maintenance_views.sql` | Vues de stock de pièces, de statut de tâche préventive (retard calculé), de panne active par équipement et de MTTR |
 
 Pour ajouter une évolution du schéma : créer un nouveau fichier `005_....sql`.
 Ne jamais modifier une migration déjà appliquée en production.
@@ -253,7 +279,23 @@ Il crée :
 - un exercice de traçabilité (« EXERCICE DE TRACABILITE ») depuis le Lot MP de
   démonstration, retrouvant automatiquement le Run, le cycle de stérilisation, le
   Lot PF, les deux palettes, l'expédition et le client affectés, clôturé avec sa
-  durée d'exécution enregistrée.
+  durée d'exécution enregistrée ;
+- sept équipements enrichis (criticité, ligne, hiérarchie) dont une sonde composant
+  d'Autoclave 1, huit modes/causes de panne et deux pièces de rechange
+  (BRG-002 en stock suffisant, JNT-014 volontairement sous son minimum — une vraie
+  alerte « Stock de sécurité atteint », pas un indicateur fabriqué) ;
+- le scénario complet de panne Sertisseuse 2 (bourrage réel sur la ligne 2 du Run de
+  démonstration, arrêt de production ouvert et refermé, ordre de travail correctif,
+  intervention avec diagnostic/action/pièce consommée, clôture par
+  RESPONSABLE_MAINTENANCE avec vérification conforme — équipement à criticité HAUTE) ;
+- une non-conformité de sertissage liée à cette panne et à son ordre de travail
+  (`FAILURE_REPORT` / `MAINTENANCE_WORK_ORDER`), démontrant le lien qualité ↔
+  maintenance sans duplication d'enregistrement ;
+- un plan préventif mensuel Autoclave 1 dont la première échéance est complétée
+  (générant automatiquement la suivante) et un plan trimestriel Autoclave 2
+  volontairement laissé en retard — une alerte « Préventifs en retard » réelle ;
+- quatre pannes similaires sur Remplisseuse 1 en 30 jours (même mode/cause), pour
+  vérifier l'analyse de panne répétée sans aucune IA.
 
 > La répartition entrepôt / sous-traitant des partenaires externes est une hypothèse
 > de démonstration. Elle est portée par la configuration des emplacements et doit être
@@ -267,6 +309,8 @@ Il crée :
 | `qualite` | `qualite123` | Qualité |
 | `rq` | `rq123456` | Responsable Qualité |
 | `auditeur` | `auditeur123` | Auditeur |
+| `rm` | `rm123456` | Responsable Maintenance |
+| `maintenance` | `maintenance123` | Technicien Maintenance |
 | `stock` | `stock123` | Stock |
 | `production` | `production123` | Production |
 | `lecture` | `lecture123` | Lecture seule |
@@ -288,7 +332,9 @@ autorisé.
 | **RESPONSABLE_QUALITE** | Tout ce que QUALITE détient, **plus** les autorisations d'approbation : valider une cause racine, clôturer un CAPA, approuver et mettre en vigueur une révision de document, initier un retrait/rappel réel |
 | **AUDITEUR** | **Conduit uniquement les audits qui lui sont assignés** (réponses de grille, constats) — ne planifie jamais d'audit, ne décide jamais d'une non-conformité ou d'un blocage de sa propre initiative, consultation |
 | **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, **stock PF, transferts/ajustements de palette, préparation et confirmation d'expédition**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, consultation |
-| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, **emballage (lots d'emballage, Lots PF, palettes)**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, consultation |
+| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, **emballage (lots d'emballage, Lots PF, palettes)**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, **déclare une panne équipement (`failure:report`) et consulte le statut de maintenance, mais ne modifie jamais un ordre de travail ou une intervention**, consultation |
+| **MAINTENANCE** *(Phase 7)* | Déclare et gère les pannes, crée et travaille les ordres de travail, mène les interventions (diagnostic, action, pièces utilisées), complète les tâches préventives, consomme des pièces de rechange — **mais ne clôture jamais un ordre de travail « important » (équipement HAUTE/CRITIQUE ou OT urgent), ne configure pas les plans préventifs, ne gère pas les données de référence équipement, n'autorise pas d'ajustement de stock de pièces**, consultation |
+| **RESPONSABLE_MAINTENANCE** *(Phase 7)* | Tout ce que MAINTENANCE détient, **plus** : clôture les ordres de travail importants, configure les plans préventifs, gère les données de référence équipement (`equipment:manage`), autorise les ajustements de stock de pièces (`sparepart:adjust`) |
 | **LECTURE** | Consultation |
 
 Le rôle STOCK ne peut **jamais** libérer un blocage qualité, ni ajuster le stock, ni
@@ -301,6 +347,19 @@ traçabilité n'est jamais celui qui, seul, en approuve la clôture — `ncr:man
 `ncr:approve`, `capa:manage` / `capa:approve`, `document:manage` / `document:approve`,
 `recall:exercise` / `recall:manage` sont des permissions volontairement distinctes,
 réservées respectivement à QUALITE et RESPONSABLE_QUALITE.
+
+**Séparation stricte des autorisations maintenance (Phase 7)** : `workorder:manage`
+(MAINTENANCE) couvre la création et le travail courant d'un ordre de travail ;
+`workorder:approve` (RESPONSABLE_MAINTENANCE) est requis en plus pour clôturer un
+ordre de travail « important » — équipement à criticité HAUTE/CRITIQUE, ou type
+URGENCE (`workOrderClosureRequiresApproval`, `server/src/domain/types.ts`). La
+condition dépend de faits lus en base (la criticité de l'équipement) : la route
+`POST /api/work-orders/:id/cloture` lit d'abord ce contexte
+(`getWorkOrderClosureContext`) puis exige la permission adéquate, avant même
+d'invoquer le service de clôture. `equipment:manage` (données de référence
+équipement) et `sparepart:adjust` (ajustement de stock de pièces) suivent le même
+principe que `masterdata:write` mais restent des permissions dédiées, pour que
+RESPONSABLE_MAINTENANCE ne reçoive jamais les droits génériques des Phases 1-6.
 
 La correction d'une consommation de production reste ouverte au rôle PRODUCTION :
 c'est une annulation traçable suivie d'un remplacement, entièrement auditée, et une
@@ -361,6 +420,7 @@ série car ils partagent cette base.
 | `tests/phase4Acceptance.test.ts` | Les quatre scénarios d'acceptation de la Phase 4 (remplissage/poids, sertissage, stérilisation, traçabilité), via l'API HTTP |
 | `tests/phase5.test.ts` | Héritage du blocage Run/CCP sur un Lot PF nouvellement créé, unicité d'un Lot PF sur une palette, double affectation d'une palette à une expédition refusée (message exact), blocage qualité empêchant la confirmation d'expédition sans aucun mouvement de stock, transaction complète de confirmation d'expédition (mouvements, palettes, réservations cohérents), et le scénario complet d'acceptation (sections 54-59) : Lot PF → palettes → stock PF → expédition → traçabilité avant/arrière |
 | `tests/phase6.test.ts` | Création d'une non-conformité avec ses liens vers l'entité source (jamais isolée), droits (AUDITEUR ne peut pas créer de non-conformité), blocage qualité déclenché depuis une non-conformité en réutilisant `lot_blocks` (sans nouveau système de blocage), clôture d'une non-conformité bloquée tant qu'un CAPA lié reste ouvert (PRODUCTION ne peut jamais clôturer), CAPA restant ouvert tant que le contrôle d'efficacité requis n'a pas conclu positivement (message exact « Clôture impossible. Des actions obligatoires restent ouvertes. », QUALITE ne peut jamais approuver sa propre clôture), non-écrasement d'une révision de document (révision 01 en vigueur jusqu'à la mise en vigueur de la 02, approbation réservée à RESPONSABLE_QUALITE), traçabilité d'une réclamation client recalculée depuis l'expédition sans ressaisie manuelle, exercice de traçabilité depuis un Lot MP retrouvant Run/cycle/Lot PF/palettes/expédition/client affectés (STOCK ne peut pas lancer l'exercice), audit interne avec réponses de grille et constats menés par l'auditeur assigné, constat majeur générant une non-conformité |
+| `tests/phase7.test.ts` | Panne qui arrête la production ouvrant un vrai arrêt lié à l'équipement/la ligne/le Run (jamais dupliqué, visible identiquement depuis `/api/downtime`), panne sans arrêt de production, transition de statut d'ordre de travail invalide refusée, création d'un ordre de travail depuis une panne la faisant passer `PRISE_EN_CHARGE`, clôture refusée sans intervention à action réalisée documentée, clôture d'un ordre de travail sur équipement HAUTE exigeant `workorder:approve` (403 pour MAINTENANCE seul, 400 sans résultat de vérification, puis clôture réussie remettant l'équipement `EN_SERVICE` et la panne `RESOLUE`), durée d'intervention calculée (10:00→10:45 = 45 min), fin antérieure au début refusée, intervention sans action réalisée ne pouvant se terminer, consommation de pièce réduisant le stock exactement une fois (10 → 8, une seule ligne `SORTIE_INTERVENTION`), ajustement de stock réservé à RESPONSABLE_MAINTENANCE, plan préventif en retard détecté automatiquement puis complété générant sa prochaine occurrence, quatre pannes similaires en 30 jours regroupées par mode/cause sans IA, non-conformité liée à une panne et à un ordre de travail avec libellés résolus |
 
 ---
 
@@ -552,8 +612,9 @@ Toutes les routes sont préfixées par `/api` et exigent une session, sauf
 | `POST` | `/api/production/runs/:id/tours-controle`, `/api/cadence/control-rounds/:id/cloture`, `/annulation`, `/lignes`, `/api/cadence/line-controls/:id/cloture`, `/employes`, `/api/cadence/controles/:id/correction` | `cadence:control` |
 | `GET` | `/api/downtime` | `production:read` |
 | `POST` | `/api/production/runs/:id/arrets`, `/api/downtime/:id/cloture` | `downtime:record` |
-| `GET` | `/api/equipment`, `/api/filling-media`, `/api/filling-specs`, `/api/seaming-parameters`, `/api/seaming-specifications`, `/api/sterilization-programs`, `/api/marking-verification-items` | `masterdata:read` |
-| `POST` | mêmes ressources | `masterdata:write` |
+| `GET` | `/api/equipment`, `/api/equipment/:id`, `/api/filling-media`, `/api/filling-specs`, `/api/seaming-parameters`, `/api/seaming-specifications`, `/api/sterilization-programs`, `/api/marking-verification-items` | `masterdata:read` |
+| `POST`/`PATCH` | `/api/equipment`, `/api/equipment/:id` | `equipment:manage` *(Phase 7 : dédiée, jamais `masterdata:write`)* |
+| `POST` | autres ressources ci-dessus | `masterdata:write` |
 | `GET` | `/api/filling-operations`, `/api/filling-weight-controls`, `/api/filling-weight-controls/:id` | `production:read` |
 | `POST` | `/api/production/runs/:id/remplissage`, `/api/filling-operations/:id/cloture`, `/annulation` | `filling:manage` |
 | `POST` | `/api/filling-operations/:id/controles-poids`, `/api/filling-weight-controls/:id/echantillons`, `/api/filling-weight-samples/:id/correction` | `weight:control` |
@@ -605,6 +666,25 @@ Toutes les routes sont préfixées par `/api` et exigent une session, sauf
 | `GET` | `/api/recall-events`, `/api/recall-events/:id`, `/api/finished-good-lots/:id/bilan-matiere` | `qms:read` |
 | `POST` | `/api/recall-events` (`eventType: EXERCICE_TRACABILITE`), `/actualisation`, `/statut`, `/cloture`, `/api/recall-affected-entities/:id/statut` | `recall:exercise` |
 | `POST` | `/api/recall-events` (`eventType: RETRAIT` ou `RAPPEL`) | `recall:manage` |
+| `GET` | `/api/failure-modes`, `/api/failure-causes`, `/api/failures`, `/api/failures/:id` | `maintenance:read` |
+| `POST` | `/api/failure-modes`, `/api/failure-causes` | `equipment:manage` |
+| `POST` | `/api/failures` | `failure:report` |
+| `POST` | `/api/failures/:id/annulation` | `failure:manage` |
+| `GET` | `/api/work-orders`, `/api/work-orders/:id`, `/api/work-orders/:id/interventions` | `maintenance:read` |
+| `POST` | `/api/work-orders`, `/api/work-orders/:id/statut` | `workorder:manage` |
+| `POST` | `/api/work-orders/:id/cloture` | `workorder:manage` **ou** `workorder:approve` *(selon la criticité de l'équipement — voir section 5)* |
+| `POST` | `/api/work-orders/:id/interventions`, `/api/interventions/:id/cloture` | `intervention:manage` |
+| `PATCH` | `/api/interventions/:id` | `intervention:manage` |
+| `POST` | `/api/interventions/:id/pieces` | `sparepart:consume` |
+| `GET` | `/api/maintenance-plans`, `/api/maintenance-plans/:id`, `/api/preventive-tasks`, `/api/preventive-tasks/:id/checklist` | `maintenance:read` |
+| `POST` | `/api/maintenance-plans`, `/api/preventive-tasks/:id/annulation` | `preventive:manage` |
+| `POST` | `/api/preventive-tasks/:id/completion` | `preventive:complete` |
+| `GET` | `/api/spare-parts`, `/api/spare-parts/:id/mouvements` | `maintenance:read` |
+| `POST` | `/api/spare-parts` | `equipment:manage` |
+| `POST` | `/api/spare-parts/:id/reception` | `sparepart:consume` |
+| `POST` | `/api/spare-parts/:id/ajustement` | `sparepart:adjust` |
+| `GET` | `/api/equipment/:id/historique`, `/mttr`, `/pannes-repetees`, `/api/equipment/pannes-actives` | `maintenance:read` |
+| `GET` | `/api/maintenance/home-summary`, `/api/maintenance/users` | `maintenance:read` |
 
 Les erreurs renvoient `{ "code": "...", "message": "..." }`, le message étant
 directement affichable à l'opérateur.
@@ -659,6 +739,14 @@ directement affichable à l'opérateur.
 | Incidents fournisseur | Liste et déclaration, suivi de la performance fournisseur |
 | Retraits / rappels | Liste et fiche : entités affectées calculées (Run, cycle, Lot PF, palette, expédition, client) groupées par type, bilan matière du Lot PF, durée d'exécution |
 | Paramètres | Données de référence — **employées, standards de cadence, catégories d'arrêt, équipements, milieux de couverture, spécifications de remplissage et de sertissage, programmes de stérilisation, points de vérification de marquage, domaine de stock des emplacements, clients, catégories de non-conformité, grilles de contrôle d'audit** — et utilisateurs |
+| Maintenance — Vue d'ensemble | Six indicateurs opérationnels ciblés (pannes ouvertes, équipements en panne, OT en cours, préventifs en retard, interventions du jour, pièces sous minimum), « Accès rapides » distincts des « Actions rapides » |
+| Équipements | Liste (code/nom/type/ligne/criticité/statut, hiérarchie visible) et création |
+| Équipement | **Fiche en onglets** : vue générale (identité, MTTR, pannes répétées 30 j), pannes, ordres de travail, préventif, historique (pièces utilisées) — l'un des écrans les plus importants de la Phase 7, aucune donnée n'exige de visiter la Maintenance pour être découverte |
+| Pannes | Liste filtrable et **déclaration rapide terrain** (équipement, gravité, description, arrêt de production oui/non) |
+| Ordres de travail | Liste filtrable (OT/équipement/type/priorité/demandé le/assigné/échéance/statut) et création |
+| Ordre de travail | Fiche en onglets : vue générale (statut contraint, remise en service), clôture dédiée (résultat de vérification, `workorder:approve` si nécessaire), interventions (**flux technicien rapide** : démarrer → diagnostic → action → pièces utilisées → terminer) |
+| Préventif | Vues Aujourd'hui / 7 jours / 30 jours / En retard (jamais un Gantt complexe), création de plan, complétion de liste de contrôle en ligne |
+| Pièces de rechange | Inventaire (stock/minimum, alerte « Stock de sécurité atteint »), réception et ajustement (`sparepart:adjust`) |
 
 ---
 
@@ -740,3 +828,85 @@ consultation, jamais du texte d'affichage. Une vérification exhaustive confirme
 également qu'aucune valeur d'énumération brute n'est exposée à l'écran : les 105
 valeurs d'énumération de la Phase 6 passent toutes par `label()` ou une correspondance
 dédiée.
+
+---
+
+## 12. Maintenance (Phase 7)
+
+### Dix concepts jamais fusionnés
+
+Comme pour la Phase 6, chaque concept a sa propre table et son propre sens : ÉQUIPEMENT
+(identité de l'actif) ; PANNE (événement observé) ; ORDRE DE TRAVAIL (travail
+autorisé) ; INTERVENTION (exécution réelle, plusieurs par ordre de travail) ; PLAN
+PRÉVENTIF (exigence récurrente) ; TÂCHE PRÉVENTIVE (une occurrence planifiée) ; PIÈCE
+DE RECHANGE (identité d'inventaire de maintenance) ; USAGE DE PIÈCE (consommation) ;
+ARRÊT DE PRODUCTION (Phase 3, réutilisé, jamais dupliqué) ; REMISE EN SERVICE
+(décision opérationnelle de restauration). Trois paires de statuts restent
+délibérément distinctes et ne se dérivent jamais l'une de l'autre : la **criticité**
+d'un équipement (importance de l'actif) et la **gravité** d'une panne (gravité de
+l'événement) ; le **statut opérationnel** de l'équipement (`EN_SERVICE`, `EN_PANNE`,
+`EN_MAINTENANCE`...) et le **statut de l'ordre de travail** (`OUVERT`, `EN_COURS`,
+`TERMINE`...).
+
+### Panne → arrêt de production : le même événement, jamais dupliqué
+
+Quand une panne arrête réellement la production, `services/failures.ts` appelle
+`startDowntimeWithClient` — exactement la fonction que la Phase 3 utilise pour ses
+propres arrêts — **dans la même transaction** que la création de la panne. Ce n'est
+pas un nouvel arrêt qui ressemble à celui de la Phase 3 : c'est la même ligne de
+`downtime_events`, visible identiquement depuis le Run, la ligne, l'équipement et la
+panne. Pour permettre cette composition transactionnelle, `startDowntime`/
+`endDowntime` (Phase 3) ont été refactorisées en un mince appel à
+`startDowntimeWithClient`/`endDowntimeWithClient`, composables dans la transaction
+d'un appelant — le comportement public de la Phase 3 est inchangé (126 tests
+antérieurs toujours au vert), seule la composabilité interne a été ajoutée.
+
+### Transitions et clôture d'ordre de travail
+
+`WORK_ORDER_ALLOWED_TRANSITIONS`/`WORK_ORDER_PRIMARY_NEXT_STATUS`
+(`server/src/domain/types.ts`) appliquent la même discipline que les transitions de
+non-conformité de la Phase 6 : un ordre de travail `OUVERT` ne peut pas sauter
+directement à `TERMINE`. La clôture est volontairement **exclue** de cette table de
+transitions et passe par `completeWorkOrder`, avec une porte de clôture propre :
+
+1. au moins une intervention avec une action réalisée documentée doit exister ;
+2. pour un équipement à criticité HAUTE/CRITIQUE, ou un ordre de travail de type
+   URGENCE, un résultat de vérification (Conforme/Non conforme) est obligatoire —
+   `workOrderClosureRequiresApproval` centralise cette condition, lue par la route
+   AVANT de choisir entre `workorder:manage` et `workorder:approve` (section 5) ;
+3. une vérification `NON_CONFORME` clôture bien le travail effectué mais **ne** remet
+   **pas** l'équipement en service et **ne** résout **pas** la panne source — un
+   nouvel ordre de travail est nécessaire, l'équipement reste `EN_PANNE`.
+
+La remise en service (`restored_at`/`restored_by`/`verification_result`) est un jeu de
+colonnes distinct du statut : un technicien qui termine son intervention n'est pas le
+même fait que l'équipement libéré pour la production.
+
+### Durée d'intervention et pièces : jamais saisies, jamais doublées
+
+`maintenance_interventions.duration_seconds` est une colonne générée, à l'identique de
+`downtime_events.duration_seconds` (Phase 3) : la durée ne peut jamais diverger des
+horodatages de début/fin. Une pièce consommée (`recordPartUsage`) crée dans la même
+transaction exactement un mouvement `SORTIE_INTERVENTION` et une ligne
+`maintenance_part_usage` dont `stock_movement_id` est `UNIQUE` — une consommation ne
+peut structurellement jamais soustraire le stock deux fois.
+
+### Retard préventif : toujours dérivé, jamais choisi
+
+`preventive_task_status` (vue) calcule `is_overdue` comme `statut = PLANIFIEE AND
+échéance < maintenant`, exactement la même discipline que les CAPA/actions en retard
+de la Phase 6. Compléter une tâche dont le plan a une fréquence calendaire (mensuelle,
+trimestrielle...) génère automatiquement la tâche suivante (échéance + intervalle
+fixe) dans la même transaction — un plan n'est jamais laissé sans prochaine échéance.
+Les fréquences `OPERATING_HOURS`/`CUSTOM` ne génèrent rien automatiquement : Phase 7
+n'intègre aucun compteur d'heures d'exploitation, et planifier une fausse échéance
+serait pire que de laisser la planification manuelle.
+
+### MTTR et pannes répétées : jamais de métrique trompeuse
+
+`equipment_mttr` (vue) ne produit une ligne que pour un équipement ayant au moins un
+ordre de travail correctif réellement `TERMINE` avec une intervention chronométrée ;
+sans historique suffisant, l'écran affiche « Données insuffisantes », jamais une
+moyenne à zéro. L'analyse de panne répétée (`repeatedFailureAnalysis`) est un simple
+`GROUP BY` mode/cause sur une fenêtre glissante — aucune IA, conformément au
+scénario d'acceptation correspondant.

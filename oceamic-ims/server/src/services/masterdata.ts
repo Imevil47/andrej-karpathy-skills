@@ -1,6 +1,12 @@
 import type pg from 'pg';
-import { withTransaction } from '../db/pool.ts';
-import type { LocationStockDomain, LocationType, StockType } from '../domain/types.ts';
+import { withTransaction, type DatabaseClient } from '../db/pool.ts';
+import type {
+  EquipmentCriticality,
+  EquipmentStatus,
+  LocationStockDomain,
+  LocationType,
+  StockType,
+} from '../domain/types.ts';
 import { conflictError, notFoundError } from '../errors.ts';
 import { recordAudit } from './audit.ts';
 
@@ -899,6 +905,17 @@ export type EquipmentRow = Readonly<{
   locationId: string | null;
   locationCode: string | null;
   isActive: boolean;
+  // Phase 7 (section 8): asset identity, hierarchy, criticality and status.
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  productionLineId: string | null;
+  productionLineCode: string | null;
+  parentEquipmentId: string | null;
+  parentEquipmentCode: string | null;
+  criticality: EquipmentCriticality;
+  commissionedAt: string | null;
+  status: EquipmentStatus;
 }>;
 
 export async function listEquipment(
@@ -909,9 +926,17 @@ export async function listEquipment(
   const result = await pool.query<EquipmentRow>(
     `SELECT e.id AS "id", e.code AS "code", e.name AS "name",
             e.equipment_type AS "equipmentType", e.location_id AS "locationId",
-            l.code AS "locationCode", e.is_active AS "isActive"
+            l.code AS "locationCode", e.is_active AS "isActive",
+            e.manufacturer AS "manufacturer", e.model AS "model",
+            e.serial_number AS "serialNumber",
+            e.production_line_id AS "productionLineId", pl.code AS "productionLineCode",
+            e.parent_equipment_id AS "parentEquipmentId", parent.code AS "parentEquipmentCode",
+            e.criticality AS "criticality", e.commissioned_at AS "commissionedAt",
+            e.status AS "status"
        FROM equipment e
        LEFT JOIN locations l ON l.id = e.location_id
+       LEFT JOIN production_lines pl ON pl.id = e.production_line_id
+       LEFT JOIN equipment parent ON parent.id = e.parent_equipment_id
       WHERE ($1::boolean IS TRUE OR e.is_active IS TRUE)
         AND ($2::text IS NULL OR e.equipment_type = $2)
       ORDER BY e.equipment_type, e.code`,
@@ -920,11 +945,43 @@ export async function listEquipment(
   return result.rows;
 }
 
+export async function getEquipmentById(pool: pg.Pool, id: string): Promise<EquipmentRow> {
+  const result = await pool.query<EquipmentRow>(
+    `SELECT e.id AS "id", e.code AS "code", e.name AS "name",
+            e.equipment_type AS "equipmentType", e.location_id AS "locationId",
+            l.code AS "locationCode", e.is_active AS "isActive",
+            e.manufacturer AS "manufacturer", e.model AS "model",
+            e.serial_number AS "serialNumber",
+            e.production_line_id AS "productionLineId", pl.code AS "productionLineCode",
+            e.parent_equipment_id AS "parentEquipmentId", parent.code AS "parentEquipmentCode",
+            e.criticality AS "criticality", e.commissioned_at AS "commissionedAt",
+            e.status AS "status"
+       FROM equipment e
+       LEFT JOIN locations l ON l.id = e.location_id
+       LEFT JOIN production_lines pl ON pl.id = e.production_line_id
+       LEFT JOIN equipment parent ON parent.id = e.parent_equipment_id
+      WHERE e.id = $1`,
+    [id],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw notFoundError('Équipement', id);
+  }
+  return row;
+}
+
 export type EquipmentInput = Readonly<{
   code: string;
   name: string;
   equipmentType: string;
   locationId: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  productionLineId: string | null;
+  parentEquipmentId: string | null;
+  criticality: EquipmentCriticality;
+  commissionedAt: string | null;
 }>;
 
 export async function createEquipment(pool: pg.Pool, input: EquipmentInput, actorId: string) {
@@ -934,9 +991,23 @@ export async function createEquipment(pool: pg.Pool, input: EquipmentInput, acto
       throw conflictError(`L'équipement ${input.code} existe déjà.`, { code: input.code });
     }
     const inserted = await client.query<{ id: string }>(
-      `INSERT INTO equipment (code, name, equipment_type, location_id)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [input.code.toUpperCase(), input.name, input.equipmentType, input.locationId],
+      `INSERT INTO equipment (code, name, equipment_type, location_id, manufacturer, model,
+                              serial_number, production_line_id, parent_equipment_id,
+                              criticality, commissioned_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [
+        input.code.toUpperCase(),
+        input.name,
+        input.equipmentType,
+        input.locationId,
+        input.manufacturer,
+        input.model,
+        input.serialNumber,
+        input.productionLineId,
+        input.parentEquipmentId,
+        input.criticality,
+        input.commissionedAt,
+      ],
     );
     const id = inserted.rows[0]?.id;
     if (!id) {
@@ -953,6 +1024,131 @@ export async function createEquipment(pool: pg.Pool, input: EquipmentInput, acto
     });
     return { id };
   });
+}
+
+export type EquipmentUpdateInput = Readonly<{
+  name: string | null;
+  locationId: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  productionLineId: string | null;
+  parentEquipmentId: string | null;
+  criticality: EquipmentCriticality | null;
+  commissionedAt: string | null;
+  status: EquipmentStatus | null;
+}>;
+
+// A manual master-data correction (section 12), distinct from the automatic
+// status changes services/failures.ts and services/workOrders.ts make as
+// part of the maintenance workflow - both paths go through this same
+// column and the same audit trail, they just get here differently.
+export async function updateEquipment(
+  pool: pg.Pool,
+  id: string,
+  input: EquipmentUpdateInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const existing = await client.query<{ id: string }>('SELECT id FROM equipment WHERE id = $1 FOR UPDATE', [id]);
+    if (existing.rows.length === 0) {
+      throw notFoundError('Équipement', id);
+    }
+    await client.query(
+      `UPDATE equipment
+          SET name = COALESCE($2, name),
+              location_id = COALESCE($3, location_id),
+              manufacturer = COALESCE($4, manufacturer),
+              model = COALESCE($5, model),
+              serial_number = COALESCE($6, serial_number),
+              production_line_id = COALESCE($7, production_line_id),
+              parent_equipment_id = COALESCE($8, parent_equipment_id),
+              criticality = COALESCE($9, criticality),
+              commissioned_at = COALESCE($10, commissioned_at),
+              status = COALESCE($11, status),
+              updated_at = now()
+        WHERE id = $1`,
+      [
+        id,
+        input.name,
+        input.locationId,
+        input.manufacturer,
+        input.model,
+        input.serialNumber,
+        input.productionLineId,
+        input.parentEquipmentId,
+        input.criticality,
+        input.commissionedAt,
+        input.status,
+      ],
+    );
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_UPDATE',
+      entityType: 'equipment',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type Equipment = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  equipmentType: string;
+  productionLineId: string | null;
+  criticality: EquipmentCriticality;
+  status: EquipmentStatus;
+}>;
+
+/** Mirrors requireRun (services/production.ts): composable within a caller's
+ * own transaction, used by Phase 7's failure/work-order services. */
+export async function requireEquipment(client: DatabaseClient, equipmentId: string): Promise<Equipment> {
+  const result = await client.query<{
+    id: string;
+    code: string;
+    name: string;
+    equipment_type: string;
+    production_line_id: string | null;
+    criticality: EquipmentCriticality;
+    status: EquipmentStatus;
+  }>(
+    `SELECT id, code, name, equipment_type, production_line_id, criticality, status
+       FROM equipment WHERE id = $1`,
+    [equipmentId],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw notFoundError('Équipement', equipmentId);
+  }
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    equipmentType: row.equipment_type,
+    productionLineId: row.production_line_id,
+    criticality: row.criticality,
+    status: row.status,
+  };
+}
+
+/** Sets equipment.status as part of the maintenance workflow (a failure
+ * declared, a work order started, equipment restored) - always inside the
+ * caller's own transaction, so it can never disagree with the event that
+ * caused it (section 49's status-consistency requirement). */
+export async function setEquipmentStatus(
+  client: DatabaseClient,
+  equipmentId: string,
+  status: EquipmentStatus,
+): Promise<void> {
+  await client.query('UPDATE equipment SET status = $2, updated_at = now() WHERE id = $1', [
+    equipmentId,
+    status,
+  ]);
 }
 
 export type FillingMediumRow = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;

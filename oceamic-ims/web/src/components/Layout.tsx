@@ -99,6 +99,17 @@ const NAVIGATION: readonly NavigationGroup[] = [
     entries: [{ to: '/expeditions', label: 'Expéditions', permission: 'stock:read' }],
   },
   {
+    title: 'Maintenance',
+    entries: [
+      { to: '/maintenance/accueil', label: "Vue d'ensemble", permission: 'maintenance:read' },
+      { to: '/maintenance/equipements', label: 'Équipements', permission: 'maintenance:read' },
+      { to: '/maintenance/pannes', label: 'Pannes', permission: 'maintenance:read' },
+      { to: '/maintenance/ordres-de-travail', label: 'Ordres de travail', permission: 'maintenance:read' },
+      { to: '/maintenance/preventif', label: 'Préventif', permission: 'maintenance:read' },
+      { to: '/maintenance/pieces', label: 'Pièces de rechange', permission: 'maintenance:read' },
+    ],
+  },
+  {
     title: null,
     entries: [
       { to: '/tracabilite', label: 'Traçabilité', permission: 'traceability:read' },

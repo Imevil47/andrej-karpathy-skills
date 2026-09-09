@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { AppDependencies } from '../app.ts';
 import {
   CADENCE_ACTIVITIES,
+  EQUIPMENT_CRITICALITIES,
+  EQUIPMENT_STATUSES,
   EQUIPMENT_TYPES,
   LOCATION_STOCK_DOMAINS,
   LOCATION_TYPES,
@@ -35,6 +37,7 @@ import {
   createSubcontractor,
   createSupplier,
   createVessel,
+  getEquipmentById,
   listAuditChecklistItems,
   listAuditChecklists,
   listCadenceStandards,
@@ -59,6 +62,7 @@ import {
   listSuppliers,
   listVessels,
   setActivation,
+  updateEquipment,
 } from '../services/masterdata.ts';
 
 const includeInactiveSchema = z.object({
@@ -374,18 +378,56 @@ export async function registerMasterDataRoutes(
     return listEquipment(pool, query.inactifs, query.type ?? null);
   });
 
+  app.get('/api/equipment/:id', async (request) => {
+    requirePermission(request, 'masterdata:read');
+    const { id } = z.object({ id: uuidSchema }).parse(request.params);
+    return getEquipmentById(pool, id);
+  });
+
   app.post('/api/equipment', async (request, reply) => {
-    const user = requirePermission(request, 'masterdata:write');
+    // Phase 7 (section 52): equipment master data is managed by ADMIN or
+    // RESPONSABLE_MAINTENANCE, through the dedicated equipment:manage
+    // permission - never the generic masterdata:write, which would also
+    // grant unrelated Phase 1-6 master data rights.
+    const user = requirePermission(request, 'equipment:manage');
     const input = z
       .object({
         code: requiredTextSchema,
         name: requiredTextSchema,
         equipmentType: z.enum(EQUIPMENT_TYPES),
         locationId: uuidSchema.nullable(),
+        manufacturer: z.string().trim().min(1).nullish().transform((value) => value ?? null),
+        model: z.string().trim().min(1).nullish().transform((value) => value ?? null),
+        serialNumber: z.string().trim().min(1).nullish().transform((value) => value ?? null),
+        productionLineId: uuidSchema.nullish().transform((value) => value ?? null),
+        parentEquipmentId: uuidSchema.nullish().transform((value) => value ?? null),
+        criticality: z.enum(EQUIPMENT_CRITICALITIES).nullish().transform((value) => value ?? 'MOYENNE'),
+        commissionedAt: z.iso.date().nullish().transform((value) => value ?? null),
       })
       .parse(request.body);
     reply.status(201);
     return createEquipment(pool, input, user.id);
+  });
+
+  app.patch('/api/equipment/:id', async (request, reply) => {
+    const user = requirePermission(request, 'equipment:manage');
+    const { id } = z.object({ id: uuidSchema }).parse(request.params);
+    const input = z
+      .object({
+        name: requiredTextSchema.nullish().transform((value) => value ?? null),
+        locationId: uuidSchema.nullish().transform((value) => value ?? null),
+        manufacturer: z.string().trim().min(1).nullish().transform((value) => value ?? null),
+        model: z.string().trim().min(1).nullish().transform((value) => value ?? null),
+        serialNumber: z.string().trim().min(1).nullish().transform((value) => value ?? null),
+        productionLineId: uuidSchema.nullish().transform((value) => value ?? null),
+        parentEquipmentId: uuidSchema.nullish().transform((value) => value ?? null),
+        criticality: z.enum(EQUIPMENT_CRITICALITIES).nullish().transform((value) => value ?? null),
+        commissionedAt: z.iso.date().nullish().transform((value) => value ?? null),
+        status: z.enum(EQUIPMENT_STATUSES).nullish().transform((value) => value ?? null),
+      })
+      .parse(request.body);
+    reply.status(200);
+    return updateEquipment(pool, id, input, user.id);
   });
 
   app.get('/api/filling-media', async (request) => {

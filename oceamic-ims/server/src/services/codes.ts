@@ -24,7 +24,10 @@ export type CodePrefix =
   | 'INC'
   | 'AUD'
   | 'CST'
-  | 'RAP';
+  | 'RAP'
+  | 'PAN'
+  | 'OT'
+  | 'MP';
 
 const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   LOT: 3,
@@ -78,6 +81,14 @@ const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   // Recall / withdrawal / traceability exercise event (section 31). RAP
   // covers all three event_type values - they share one identity space.
   RAP: 3,
+  // Phase 7: maintenance / CMMS.
+  // Failure report. PAN (panne), never AVR or DEF: PAN is unambiguous and
+  // matches the French vocabulary used throughout the module.
+  PAN: 3,
+  // Maintenance work order ("OT-20260909-001" per section 65's example).
+  OT: 3,
+  // Preventive maintenance plan.
+  MP: 3,
 };
 
 /**
