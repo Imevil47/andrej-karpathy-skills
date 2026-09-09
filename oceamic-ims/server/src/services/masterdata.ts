@@ -273,7 +273,9 @@ export type ActivationTarget =
   | 'seaming_specifications'
   | 'sterilization_programs'
   | 'marking_verification_items'
-  | 'customers';
+  | 'customers'
+  | 'nonconformity_categories'
+  | 'audit_checklists';
 
 // The table name never comes from the request: it is looked up in this map,
 // keyed by a validated union.
@@ -297,6 +299,8 @@ const ACTIVATION_TABLES: Readonly<Record<ActivationTarget, string>> = {
   sterilization_programs: 'sterilization_programs',
   marking_verification_items: 'marking_verification_items',
   customers: 'customers',
+  nonconformity_categories: 'nonconformity_categories',
+  audit_checklists: 'audit_checklists',
 };
 
 export async function setActivation(
@@ -1395,6 +1399,205 @@ export async function createMarkingVerificationItem(
       entityId: id,
       oldValues: null,
       newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+// --- Phase 6: QMS reference data --------------------------------------------
+
+export type NonconformityCategoryRow = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
+
+export async function listNonconformityCategories(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly NonconformityCategoryRow[]> {
+  const result = await pool.query<NonconformityCategoryRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", is_active AS "isActive"
+       FROM nonconformity_categories
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY name`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type NonconformityCategoryInput = Readonly<{ code: string; name: string }>;
+
+export async function createNonconformityCategory(
+  pool: pg.Pool,
+  input: NonconformityCategoryInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM nonconformity_categories WHERE code = $1', [
+      input.code,
+    ]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`La catégorie ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      'INSERT INTO nonconformity_categories (code, name) VALUES ($1, $2) RETURNING id',
+      [input.code.toUpperCase(), input.name],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("La catégorie de non-conformité n'a pas pu être créée.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'nonconformity_categories',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type AuditChecklistRow = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  department: string | null;
+  process: string | null;
+  auditType: string | null;
+  standard: string | null;
+  isActive: boolean;
+}>;
+
+export async function listAuditChecklists(
+  pool: pg.Pool,
+  includeInactive: boolean,
+): Promise<readonly AuditChecklistRow[]> {
+  const result = await pool.query<AuditChecklistRow>(
+    `SELECT id AS "id", code AS "code", name AS "name", department AS "department",
+            process AS "process", audit_type AS "auditType", standard AS "standard",
+            is_active AS "isActive"
+       FROM audit_checklists
+      WHERE ($1::boolean IS TRUE OR is_active IS TRUE)
+      ORDER BY name`,
+    [includeInactive],
+  );
+  return result.rows;
+}
+
+export type AuditChecklistInput = Readonly<{
+  code: string;
+  name: string;
+  department: string | null;
+  process: string | null;
+  auditType: string | null;
+  standard: string | null;
+}>;
+
+export async function createAuditChecklist(pool: pg.Pool, input: AuditChecklistInput, actorId: string) {
+  return withTransaction(pool, async (client) => {
+    const duplicate = await client.query('SELECT id FROM audit_checklists WHERE code = $1', [input.code]);
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`La checklist ${input.code} existe déjà.`, { code: input.code });
+    }
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO audit_checklists (code, name, department, process, audit_type, standard)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [
+        input.code.toUpperCase(),
+        input.name,
+        input.department,
+        input.process,
+        input.auditType,
+        input.standard,
+      ],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("La checklist d'audit n'a pas pu être créée.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'audit_checklists',
+      entityId: id,
+      oldValues: null,
+      newValues: { ...input },
+      context: null,
+    });
+    return { id };
+  });
+}
+
+export type AuditChecklistItemRow = Readonly<{
+  id: string;
+  auditChecklistId: string;
+  displayOrder: number;
+  question: string;
+  expectedReference: string | null;
+  isActive: boolean;
+}>;
+
+export async function listAuditChecklistItems(
+  pool: pg.Pool,
+  auditChecklistId: string,
+): Promise<readonly AuditChecklistItemRow[]> {
+  const result = await pool.query<AuditChecklistItemRow>(
+    `SELECT id AS "id", audit_checklist_id AS "auditChecklistId", display_order AS "displayOrder",
+            question AS "question", expected_reference AS "expectedReference", is_active AS "isActive"
+       FROM audit_checklist_items
+      WHERE audit_checklist_id = $1
+      ORDER BY display_order`,
+    [auditChecklistId],
+  );
+  return result.rows;
+}
+
+export type AuditChecklistItemInput = Readonly<{
+  displayOrder: number;
+  question: string;
+  expectedReference: string | null;
+}>;
+
+export async function createAuditChecklistItem(
+  pool: pg.Pool,
+  auditChecklistId: string,
+  input: AuditChecklistItemInput,
+  actorId: string,
+) {
+  return withTransaction(pool, async (client) => {
+    const checklist = await client.query('SELECT id FROM audit_checklists WHERE id = $1', [
+      auditChecklistId,
+    ]);
+    if (checklist.rows.length === 0) {
+      throw notFoundError('Checklist audit', auditChecklistId);
+    }
+    const duplicate = await client.query(
+      'SELECT id FROM audit_checklist_items WHERE audit_checklist_id = $1 AND display_order = $2',
+      [auditChecklistId, input.displayOrder],
+    );
+    if (duplicate.rows.length > 0) {
+      throw conflictError(`Un point de contrôle occupe déjà l'ordre ${input.displayOrder}.`, {
+        auditChecklistId,
+        displayOrder: input.displayOrder,
+      });
+    }
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO audit_checklist_items (audit_checklist_id, display_order, question, expected_reference)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [auditChecklistId, input.displayOrder, input.question, input.expectedReference],
+    );
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      throw new Error("Le point de contrôle n'a pas pu être créé.");
+    }
+    await recordAudit(client, {
+      userId: actorId,
+      action: 'MASTERDATA_CREATION',
+      entityType: 'audit_checklist_items',
+      entityId: id,
+      oldValues: null,
+      newValues: { auditChecklistId, ...input },
       context: null,
     });
     return { id };

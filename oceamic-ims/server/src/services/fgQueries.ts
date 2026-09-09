@@ -626,12 +626,16 @@ export type ForwardTraceabilityRow = Readonly<{
   rawMaterialLotCode: string;
   productionRunId: string;
   runCode: string;
+  sterilizationCycleId: string;
+  cycleCode: string;
   finishedGoodLotId: string;
   finishedGoodLotCode: string;
   palletId: string | null;
   palletCode: string | null;
+  quantityCartons: number | null;
   shipmentId: string | null;
   shipmentCode: string | null;
+  customerId: string | null;
   customerName: string | null;
   shippedAt: string | null;
 }>;
@@ -639,7 +643,8 @@ export type ForwardTraceabilityRow = Readonly<{
 /**
  * Forward traceability (section 32): Lot MP -> Runs -> Cycles -> Lots PF ->
  * Pallets -> Shipments -> Customer. Used to answer "if this raw-material lot
- * has a problem, which customers are affected" (section 63).
+ * has a problem, which customers are affected" (section 63), and reused by
+ * Phase 6's recall impact analysis (section 33).
  */
 export async function forwardTraceabilityFromRawMaterialLot(
   pool: pg.Pool,
@@ -648,14 +653,17 @@ export async function forwardTraceabilityFromRawMaterialLot(
   const result = await pool.query<ForwardTraceabilityRow>(
     `SELECT DISTINCT lot.id AS "rawMaterialLotId", lot.lot_code AS "rawMaterialLotCode",
             r.id AS "productionRunId", r.run_code AS "runCode",
+            cy.id AS "sterilizationCycleId", cy.cycle_code AS "cycleCode",
             fgl.id AS "finishedGoodLotId", fgl.lot_code AS "finishedGoodLotCode",
             pal.id AS "palletId", pal.pallet_code AS "palletCode",
+            pc.quantity_cartons::integer AS "quantityCartons",
             sh.id AS "shipmentId", sh.shipment_code AS "shipmentCode",
-            c.name AS "customerName", sh.shipped_at AS "shippedAt"
+            c.id AS "customerId", c.name AS "customerName", sh.shipped_at AS "shippedAt"
        FROM raw_material_lots lot
        JOIN production_run_materials m ON m.raw_material_lot_id = lot.id
        JOIN production_runs r ON r.id = m.production_run_id
        JOIN finished_good_lot_sources src ON src.production_run_id = r.id
+       JOIN sterilization_cycles cy ON cy.id = src.sterilization_cycle_id
        JOIN finished_good_lots fgl ON fgl.id = src.finished_good_lot_id
        LEFT JOIN pallet_contents pc ON pc.finished_good_lot_id = fgl.id
        LEFT JOIN pallets pal ON pal.id = pc.pallet_id
@@ -665,6 +673,57 @@ export async function forwardTraceabilityFromRawMaterialLot(
       WHERE lot.id = $1
       ORDER BY r.run_code, fgl.lot_code, pal.pallet_code`,
     [rawMaterialLotId],
+  );
+  return result.rows;
+}
+
+export type FinishedGoodLotTraceabilityRow = Readonly<{
+  finishedGoodLotId: string;
+  finishedGoodLotCode: string;
+  productionRunId: string;
+  runCode: string;
+  sterilizationCycleId: string;
+  cycleCode: string;
+  palletId: string | null;
+  palletCode: string | null;
+  quantityCartons: number | null;
+  shipmentId: string | null;
+  shipmentCode: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  shippedAt: string | null;
+}>;
+
+/**
+ * Symmetric to forwardTraceabilityFromRawMaterialLot, anchored on a Lot PF
+ * instead of a raw-material lot (section 34): upstream Run(s)/cycle(s) and
+ * downstream pallets/shipments/customers in one query, reused by the recall
+ * impact analysis when the recall target is a Lot PF (section 34/38).
+ */
+export async function traceabilityFromFinishedGoodLot(
+  pool: pg.Pool,
+  finishedGoodLotId: string,
+): Promise<readonly FinishedGoodLotTraceabilityRow[]> {
+  const result = await pool.query<FinishedGoodLotTraceabilityRow>(
+    `SELECT DISTINCT fgl.id AS "finishedGoodLotId", fgl.lot_code AS "finishedGoodLotCode",
+            r.id AS "productionRunId", r.run_code AS "runCode",
+            cy.id AS "sterilizationCycleId", cy.cycle_code AS "cycleCode",
+            pal.id AS "palletId", pal.pallet_code AS "palletCode",
+            pc.quantity_cartons::integer AS "quantityCartons",
+            sh.id AS "shipmentId", sh.shipment_code AS "shipmentCode",
+            c.id AS "customerId", c.name AS "customerName", sh.shipped_at AS "shippedAt"
+       FROM finished_good_lots fgl
+       JOIN finished_good_lot_sources src ON src.finished_good_lot_id = fgl.id
+       JOIN production_runs r ON r.id = src.production_run_id
+       JOIN sterilization_cycles cy ON cy.id = src.sterilization_cycle_id
+       LEFT JOIN pallet_contents pc ON pc.finished_good_lot_id = fgl.id
+       LEFT JOIN pallets pal ON pal.id = pc.pallet_id
+       LEFT JOIN shipment_lines sl ON sl.pallet_id = pal.id
+       LEFT JOIN shipments sh ON sh.id = sl.shipment_id
+       LEFT JOIN customers c ON c.id = sh.customer_id
+      WHERE fgl.id = $1
+      ORDER BY r.run_code, pal.pallet_code`,
+    [finishedGoodLotId],
   );
   return result.rows;
 }

@@ -1,7 +1,18 @@
 // Shared operational vocabulary of Phase 1. The database enforces the same
 // values through CHECK constraints.
 
-export const ROLE_CODES = ['ADMIN', 'QUALITE', 'STOCK', 'PRODUCTION', 'LECTURE'] as const;
+// Phase 6 adds RESPONSABLE_QUALITE (approves root cause / CAPA closure /
+// document approval, releases critical blocks, initiates recalls) and
+// AUDITEUR (conducts assigned audits, records findings) - see section 53.
+export const ROLE_CODES = [
+  'ADMIN',
+  'QUALITE',
+  'STOCK',
+  'PRODUCTION',
+  'LECTURE',
+  'RESPONSABLE_QUALITE',
+  'AUDITEUR',
+] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
 
 export const STOCK_TYPES = ['INTERNE', 'EXTERNE'] as const;
@@ -366,3 +377,219 @@ export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
 
 export const PACKAGING_LABEL_RESULTS = ['CONFORME', 'NON_CONFORME'] as const;
 export type PackagingLabelResult = (typeof PACKAGING_LABEL_RESULTS)[number];
+
+// --- Phase 6: horizontal Quality Management System (QMS) --------------------
+
+// Shared severity scale (section 7), reused identically by non-conformities,
+// complaints, supplier incidents, audit findings and recall events - one
+// vocabulary across the whole QMS rather than a scale per entity.
+export const QMS_SEVERITIES = ['MINEURE', 'MAJEURE', 'CRITIQUE'] as const;
+export type QmsSeverity = (typeof QMS_SEVERITIES)[number];
+
+export const QMS_PRIORITIES = ['BASSE', 'NORMALE', 'HAUTE', 'URGENTE'] as const;
+export type QmsPriority = (typeof QMS_PRIORITIES)[number];
+
+export const NONCONFORMITY_STATUSES = [
+  'OUVERTE',
+  'EN_ANALYSE',
+  'ACTION_REQUISE',
+  'EN_ATTENTE',
+  'A_VERIFIER',
+  'CLOTUREE',
+  'ANNULEE',
+] as const;
+export type NonconformityStatus = (typeof NONCONFORMITY_STATUSES)[number];
+
+// Every open (non-final) NCR status - used both for "open" dashboard counts
+// and to gate a new active quality block from being opened twice.
+export const NONCONFORMITY_OPEN_STATUSES: readonly NonconformityStatus[] = [
+  'OUVERTE',
+  'EN_ANALYSE',
+  'ACTION_REQUISE',
+  'EN_ATTENTE',
+  'A_VERIFIER',
+];
+
+// Polymorphic linking (section 5): entity_type spans every module an NCR,
+// complaint, recall or audit finding can point back to - validated in the
+// service layer, never a real foreign key (the same reasoning as
+// finished_goods_quality_blocks in Phase 5).
+export const QMS_ENTITY_TYPES = [
+  'RAW_MATERIAL_LOT',
+  'RECEPTION',
+  'PRODUCTION_RUN',
+  'FILLING_OPERATION',
+  'FILLING_WEIGHT_CONTROL',
+  'SEAMING_OPERATION',
+  'SEAMING_CONTROL',
+  'MARKING_EVENT',
+  'STERILIZATION_CYCLE',
+  'CCP_CONTROL',
+  'PROCESS_DEVIATION',
+  'DOWNTIME_EVENT',
+  'SUBCONTRACTING_OPERATION',
+  'FINISHED_GOOD_LOT',
+  'PALLET',
+  'SHIPMENT',
+  'SUPPLIER',
+  'CUSTOMER',
+  'EQUIPMENT',
+  'AUDIT',
+  'AUDIT_FINDING',
+  'CUSTOMER_COMPLAINT',
+  'SUPPLIER_QUALITY_INCIDENT',
+] as const;
+export type QmsEntityType = (typeof QMS_ENTITY_TYPES)[number];
+
+export const NONCONFORMITY_LINK_RELATIONSHIPS = [
+  'SOURCE',
+  'AFFECTE',
+  'DETECTE_SUR',
+  'CONSEQUENCE',
+] as const;
+export type NonconformityLinkRelationship = (typeof NONCONFORMITY_LINK_RELATIONSHIPS)[number];
+
+// Entity types a non-conformity is allowed to open a quality block against
+// (section 9): reuses Phase 1's lot_blocks for raw material, Phase 5's
+// finished_goods_quality_blocks for finished goods and pallets - never a
+// third, independent block system.
+export const QMS_BLOCKABLE_ENTITY_TYPES = ['RAW_MATERIAL_LOT', 'FINISHED_GOOD_LOT', 'PALLET'] as const;
+export type QmsBlockableEntityType = (typeof QMS_BLOCKABLE_ENTITY_TYPES)[number];
+
+export const ROOT_CAUSE_METHODS = ['5_POURQUOI', 'ISHIKAWA', 'PARETO', 'ANALYSE_SIMPLE', 'AUTRE'] as const;
+export type RootCauseMethod = (typeof ROOT_CAUSE_METHODS)[number];
+
+export const CAPA_TYPES = ['CORRECTIVE', 'PREVENTIVE', 'CORRECTIVE_PREVENTIVE'] as const;
+export type CapaType = (typeof CAPA_TYPES)[number];
+
+export const CAPA_STATUSES = ['OUVERTE', 'EN_COURS', 'EN_VERIFICATION', 'CLOTUREE', 'ANNULEE'] as const;
+export type CapaStatus = (typeof CAPA_STATUSES)[number];
+
+export const CAPA_ACTION_TYPES = [
+  'CORRECTION',
+  'ACTION_CORRECTIVE',
+  'ACTION_PREVENTIVE',
+  'VERIFICATION',
+] as const;
+export type CapaActionType = (typeof CAPA_ACTION_TYPES)[number];
+
+export const CAPA_ACTION_STATUSES = ['OUVERTE', 'EN_COURS', 'TERMINEE', 'ANNULEE'] as const;
+export type CapaActionStatus = (typeof CAPA_ACTION_STATUSES)[number];
+
+export const CUSTOMER_COMPLAINT_TYPES = [
+  'QUALITE',
+  'POIDS',
+  'SERTISSAGE',
+  'BOITE_DEFORMEE',
+  'MARQUAGE',
+  'ODEUR',
+  'GOUT',
+  'CORPS_ETRANGER',
+  'QUANTITE',
+  'DOCUMENTATION',
+  'AUTRE',
+] as const;
+export type CustomerComplaintType = (typeof CUSTOMER_COMPLAINT_TYPES)[number];
+
+export const CUSTOMER_COMPLAINT_STATUSES = [
+  'OUVERTE',
+  'EN_ANALYSE',
+  'ACTION_REQUISE',
+  'CLOTUREE',
+  'ANNULEE',
+] as const;
+export type CustomerComplaintStatus = (typeof CUSTOMER_COMPLAINT_STATUSES)[number];
+
+export const SUPPLIER_INCIDENT_STATUSES = ['OUVERTE', 'EN_ANALYSE', 'CLOTUREE', 'ANNULEE'] as const;
+export type SupplierIncidentStatus = (typeof SUPPLIER_INCIDENT_STATUSES)[number];
+
+export const AUDIT_TYPES = [
+  'INTERNE',
+  'CLIENT',
+  'CERTIFICATION',
+  'AUTORITE',
+  'FOURNISSEUR',
+  'HYGIENE',
+  'PROCESS',
+  'AUTRE',
+] as const;
+export type AuditType = (typeof AUDIT_TYPES)[number];
+
+export const AUDIT_STATUSES = ['PLANIFIE', 'EN_COURS', 'TERMINE', 'ANNULE'] as const;
+export type AuditStatus = (typeof AUDIT_STATUSES)[number];
+
+export const AUDIT_RESPONSE_RESULTS = ['CONFORME', 'NON_CONFORME', 'OBSERVATION', 'NON_APPLICABLE'] as const;
+export type AuditResponseResult = (typeof AUDIT_RESPONSE_RESULTS)[number];
+
+export const AUDIT_FINDING_TYPES = ['NON_CONFORMITE', 'OBSERVATION', 'POINT_FORT'] as const;
+export type AuditFindingType = (typeof AUDIT_FINDING_TYPES)[number];
+
+export const AUDIT_FINDING_STATUSES = ['OUVERTE', 'ACTION_REQUISE', 'CLOTUREE', 'ANNULEE'] as const;
+export type AuditFindingStatus = (typeof AUDIT_FINDING_STATUSES)[number];
+
+export const QUALITY_DOCUMENT_TYPES = [
+  'PROCEDURE',
+  'INSTRUCTION',
+  'FORMULAIRE',
+  'PLAN',
+  'SPECIFICATION',
+  'MANUEL',
+  'POLITIQUE',
+  'ENREGISTREMENT_MODELE',
+  'AUTRE',
+] as const;
+export type QualityDocumentType = (typeof QUALITY_DOCUMENT_TYPES)[number];
+
+// Shared by quality_documents.status (cached, recomputed) and
+// quality_document_revisions.status (section 28): an obsolete revision is
+// never exposed as the document's current status.
+export const QUALITY_DOCUMENT_STATUSES = [
+  'BROUILLON',
+  'EN_REVISION',
+  'APPROUVE',
+  'EN_VIGUEUR',
+  'OBSOLETE',
+  'ANNULE',
+] as const;
+export type QualityDocumentStatus = (typeof QUALITY_DOCUMENT_STATUSES)[number];
+
+export const DOCUMENT_ACKNOWLEDGMENT_STATUSES = ['ASSIGNEE', 'ACQUITTEE', 'ANNULEE'] as const;
+export type DocumentAcknowledgmentStatus = (typeof DOCUMENT_ACKNOWLEDGMENT_STATUSES)[number];
+
+export const RECALL_EVENT_TYPES = ['EXERCICE_TRACABILITE', 'RETRAIT', 'RAPPEL'] as const;
+export type RecallEventType = (typeof RECALL_EVENT_TYPES)[number];
+
+export const RECALL_STATUSES = ['OUVERT', 'EN_COURS', 'CLOTURE', 'ANNULE'] as const;
+export type RecallStatus = (typeof RECALL_STATUSES)[number];
+
+// A recall/exercise always starts from one of these two identities (sections
+// 33-34): every other affected entity is derived by traceability from here.
+export const RECALL_TARGET_ENTITY_TYPES = ['RAW_MATERIAL_LOT', 'FINISHED_GOOD_LOT'] as const;
+export type RecallTargetEntityType = (typeof RECALL_TARGET_ENTITY_TYPES)[number];
+
+export const RECALL_AFFECTED_ENTITY_TYPES = [
+  'RAW_MATERIAL_LOT',
+  'PRODUCTION_RUN',
+  'STERILIZATION_CYCLE',
+  'FINISHED_GOOD_LOT',
+  'PALLET',
+  'SHIPMENT',
+  'CUSTOMER',
+] as const;
+export type RecallAffectedEntityType = (typeof RECALL_AFFECTED_ENTITY_TYPES)[number];
+
+export const RECALL_IMPACT_TYPES = ['ORIGINE', 'AFFECTE'] as const;
+export type RecallImpactType = (typeof RECALL_IMPACT_TYPES)[number];
+
+export const RECALL_AFFECTED_ENTITY_STATUSES = ['IDENTIFIE', 'EN_TRAITEMENT', 'TRAITE'] as const;
+export type RecallAffectedEntityStatus = (typeof RECALL_AFFECTED_ENTITY_STATUSES)[number];
+
+/** An action (CAPA action, audit finding, document acknowledgment...) with a
+ * due date is EN_RETARD when it is still open past that date - never a
+ * status a user selects (section 44), always this comparison. */
+export function isOverdue(dueAt: Date | string | null, isStillOpen: boolean): boolean {
+  if (dueAt === null || !isStillOpen) {
+    return false;
+  }
+  return new Date(dueAt).getTime() < Date.now();
+}

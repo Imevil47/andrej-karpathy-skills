@@ -11,6 +11,28 @@ import { hashPassword } from '../../src/services/auth.ts';
 // live in transactions, constraints and locks, which mocks cannot exercise.
 
 const TABLES_IN_TRUNCATION_ORDER = [
+  // Phase 6: horizontal QMS - most dependent tables first, mirroring the
+  // rest of this list.
+  'recall_affected_entities',
+  'recall_events',
+  'document_acknowledgments',
+  'quality_document_revisions',
+  'quality_documents',
+  'audit_findings',
+  'audit_responses',
+  'audit_checklist_items',
+  'audit_checklists',
+  'audits',
+  'capa_effectiveness_checks',
+  'capa_actions',
+  'capa_records',
+  'customer_complaints',
+  'supplier_quality_incidents',
+  'root_cause_analyses',
+  'nonconformity_investigations',
+  'nonconformity_links',
+  'nonconformities',
+  'nonconformity_categories',
   // Phase 5: packaging, finished goods, pallets, PF stock, shipments - most
   // dependent tables first, mirroring the rest of this list.
   'stock_reservations',
@@ -117,6 +139,9 @@ export type Fixtures = Readonly<{
   markingItemIds: readonly string[];
   stockPfALocationId: string;
   customerId: string;
+  nonconformityCategoryId: string;
+  auditChecklistId: string;
+  auditChecklistItemIds: readonly string[];
 }>;
 
 export type TestContext = Readonly<{
@@ -145,7 +170,15 @@ function testConfig(): AppConfig {
 }
 
 async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
-  const roles: readonly RoleCode[] = ['ADMIN', 'QUALITE', 'STOCK', 'PRODUCTION', 'LECTURE'];
+  const roles: readonly RoleCode[] = [
+    'ADMIN',
+    'QUALITE',
+    'STOCK',
+    'PRODUCTION',
+    'LECTURE',
+    'RESPONSABLE_QUALITE',
+    'AUDITEUR',
+  ];
   const passwordHash = await hashPassword('test1234');
   const users: Record<string, string> = {};
 
@@ -273,6 +306,21 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
      RETURNING id`,
   );
 
+  const nonconformityCategory = await pool.query<{ id: string }>(
+    `INSERT INTO nonconformity_categories (code, name) VALUES ('POIDS', 'Poids') RETURNING id`,
+  );
+  const auditChecklist = await pool.query<{ id: string }>(
+    `INSERT INTO audit_checklists (code, name, audit_type) VALUES ('CHK-TEST', 'Checklist test', 'HYGIENE')
+     RETURNING id`,
+  );
+  const auditChecklistId = auditChecklist.rows[0]?.id ?? '';
+  const auditChecklistItems = await pool.query<{ id: string }>(
+    `INSERT INTO audit_checklist_items (audit_checklist_id, display_order, question)
+     VALUES ($1, 1, 'Question test 1'), ($1, 2, 'Question test 2')
+     RETURNING id`,
+    [auditChecklistId],
+  );
+
   return {
     employeeNumbers: employees.rows.map((row) => row.employee_number),
     cadenceStandardId: cadenceStandard.rows[0]?.id ?? '',
@@ -304,6 +352,9 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     markingItemIds: markingItems.rows.map((row) => row.id),
     stockPfALocationId: locations.rows.find((row) => row.code === 'STOCK-PF-A')?.id ?? '',
     customerId: customer.rows[0]?.id ?? '',
+    nonconformityCategoryId: nonconformityCategory.rows[0]?.id ?? '',
+    auditChecklistId,
+    auditChecklistItemIds: auditChecklistItems.rows.map((row) => row.id),
   };
 }
 

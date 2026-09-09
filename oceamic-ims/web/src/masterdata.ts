@@ -255,3 +255,40 @@ export type Customer = Readonly<{
 export function useCustomers() {
   return useResource<readonly Customer[]>('/api/customers');
 }
+
+export type UserOption = Readonly<{ id: string; fullName: string; role: string }>;
+
+export function useUsers() {
+  return useResource<readonly UserOption[]>('/api/qms/users');
+}
+
+// --- Phase 6: horizontal QMS -------------------------------------------------
+
+export type NonconformityCategory = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
+
+export type AuditChecklist = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  auditType: string;
+  isActive: boolean;
+}>;
+
+export type AuditChecklistItem = Readonly<{
+  id: string;
+  auditChecklistId: string;
+  displayOrder: number;
+  question: string;
+  expectedReference: string | null;
+  isActive: boolean;
+}>;
+
+export function useNonconformityCategories() {
+  return useResource<readonly NonconformityCategory[]>('/api/nonconformity-categories');
+}
+export function useAuditChecklists() {
+  return useResource<readonly AuditChecklist[]>('/api/audit-checklists');
+}
+export function useAuditChecklistItems(auditChecklistId: string | null) {
+  return useResource<readonly AuditChecklistItem[]>(`/api/audit-checklists/${auditChecklistId ?? 'aucun'}/items`);
+}

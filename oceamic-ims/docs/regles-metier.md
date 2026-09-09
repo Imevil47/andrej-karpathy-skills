@@ -1,4 +1,4 @@
-# Règles métier — OCEAMIC IMS Phases 1, 2, 3 et 4
+# Règles métier — OCEAMIC IMS Phases 1 à 6
 
 Ce document décrit le comportement attendu du système. Chaque règle est appliquée côté
 serveur (service, transaction ou contrainte de base) et non seulement dans l'interface.
@@ -1356,3 +1356,205 @@ GMAO/maintenance complète, gestion de récupération d'huile, BI avancée, pré
 concepteur de documents ERP complet (seules des vues imprimables/exportables de base —
 liste de colisage, bon d'expédition, liste de palettes, traçabilité d'un lot —
 existent).
+
+---
+
+# Phase 6 — Qualité horizontale (QMS)
+
+## 94. Séparation des concepts de la Phase 6
+
+Non-conformité, investigation, cause racine, correction, CAPA, action CAPA, contrôle
+d'efficacité, réclamation client, incident qualité fournisseur, audit, constat
+d'audit, document qualité, révision de document et retrait/rappel sont **quatorze
+concepts distincts**, jamais fusionnés dans une table « problème qualité » générique
+(section 70). Une correction (capturée sur l'investigation) n'est pas une action
+corrective (une action CAPA) : la correction traite le symptôme immédiatement, l'action
+corrective traite la cause racine identifiée (section 49).
+
+## 95. Une non-conformité n'est jamais un enregistrement isolé
+
+Toute non-conformité porte une source (`source_type`/`source_id`, pointeur rapide) et
+peut porter d'autres liens (`nonconformity_links`, table autoritaire) vers n'importe
+quelle entité opérationnelle déjà existante — Lot MP, Lot PF, Run, contrôle poids,
+contrôle sertissage, cycle de stérilisation, expédition, audit, réclamation... Elle
+n'invente jamais une copie de cette entité (section 5).
+
+## 96. Blocage qualité depuis une non-conformité : réutilisation, jamais un troisième système
+
+Ouvrir un blocage depuis une non-conformité (section 9) réutilise directement
+`lot_blocks` (Phase 1, matière première) ou `finished_goods_quality_blocks` (Phase 5,
+Lot PF/palette) selon le type d'entité, via les fonctions de décision qualité
+existantes. La non-conformité enregistre ensuite la référence du blocage obtenu
+(`block_entity_type`/`block_entity_id`/`block_reference_id`). Ces fonctions gérant
+chacune leur propre transaction, l'opération s'exécute en deux étapes documentées
+plutôt que dans une seule transaction atomique — un compromis pragmatique assumé
+plutôt qu'une réécriture des services Phase 1/5.
+
+## 97. Clôture d'une non-conformité bloquée par un CAPA lié encore ouvert
+
+Une non-conformité ne peut pas passer `CLOTUREE` tant qu'un CAPA qu'elle a déclenché
+(`capa_records.source_nonconformity_id`) reste ouvert (statut hors `CLOTUREE`/
+`ANNULEE`) — la même discipline « pas de clôture tant qu'un enfant reste ouvert » que
+le contrôle d'efficacité d'un CAPA lui-même (règle 99), appliquée un niveau au-dessus.
+
+## 98. Une action préventive peut exister sans non-conformité source
+
+`capa_records.source_nonconformity_id` est **nullable** (section 50) : une action
+préventive peut naître d'une observation d'audit, d'une tendance identifiée ou d'une
+décision de management, sans qu'aucune non-conformité n'ait jamais été ouverte.
+
+## 99. Clôture d'un CAPA : jamais tant qu'une action reste ouverte ou que l'efficacité n'est pas prouvée
+
+Un CAPA ne se clôture jamais tant qu'une action obligatoire reste ouverte, ni — quand
+`effectiveness_required` est vrai — tant que le dernier contrôle d'efficacité n'a pas
+conclu positivement (section 15). L'éligibilité à la clôture (`capa_summary.can_close`)
+est une **vue calculée**, jamais une case cochée à la main, lue à la fois par
+l'opération de clôture (contrôle strict, qui refuse avec le message exact
+« Clôture impossible.\nDes actions obligatoires restent ouvertes. ») et par les écrans
+CAPA (explication de ce qui reste à faire). Un CAPA n'est jamais considéré efficace du
+seul fait que ses actions sont `TERMINEE` — l'efficacité exige sa propre preuve
+enregistrée (`capa_effectiveness_checks`).
+
+## 100. Statut CAPA : toujours calculé
+
+`capa_records.status` est une colonne mise en cache, jamais saisie directement :
+`OUVERTE` sans action, `EN_COURS` tant qu'une action reste ouverte, `EN_VERIFICATION`
+une fois toutes les actions terminées mais la clôture pas encore accordée, `CLOTUREE`/
+`ANNULEE` uniquement via leurs propres opérations gated — la même discipline que le
+statut calculé d'un contrôle poids ou d'un cycle de stérilisation en Phase 4.
+
+## 101. Réclamation client : jamais un CRM
+
+Une réclamation client (sections 16-18) reste un événement qualité à usage
+traçabilité — jamais un système de gestion de la relation client. Sa traçabilité
+(client → expédition → palettes → Lot PF → stérilisation → Run → Lots MP →
+fournisseur) est **recalculée** depuis les relations existantes à chaque consultation,
+jamais ressaisie manuellement ni stockée en dur sur la réclamation.
+
+## 102. Document qualité : une révision n'est jamais écrasée
+
+Chaque révision est un enregistrement permanent, ajouté (`INSERT`), jamais modifié pour
+représenter une nouvelle version (section 27). Un index unique partiel garantit **au
+plus une révision `EN_VIGUEUR` par document** ; mettre une nouvelle révision en vigueur
+bascule automatiquement l'ancienne en `OBSOLETE`, jamais supprimée. Une révision
+`OBSOLETE` n'est **jamais** exposée comme le statut courant du document — le statut du
+document est toujours mis en cache depuis sa révision `current_revision_id` (section
+28).
+
+## 103. Approbation d'un document : autorisation distincte de la rédaction
+
+Créer et soumettre une révision (`document:manage`) reste ouvert à QUALITE ;
+l'approuver et la mettre en vigueur (`document:approve`) exige RESPONSABLE_QUALITE
+(section 29). La même personne qui rédige un document n'est jamais, seule, celle qui
+en approuve la mise en vigueur.
+
+## 104. Retrait / rappel : l'impact est toujours calculé depuis la traçabilité existante
+
+L'ensemble des entités affectées par un retrait, un rappel ou un exercice de
+traçabilité (Runs, cycles de stérilisation, Lots PF, palettes, expéditions, clients)
+est **calculé** en réutilisant la traçabilité avant (Phase 5) depuis le Lot MP ou le
+Lot PF d'origine, jamais construit ou saisi à la main (sections 32-36). Réactualiser
+l'impact d'un événement ouvert fusionne les nouvelles entités trouvées avec l'ensemble
+déjà identifié ; il ne le rétrécit jamais.
+
+## 105. Bilan matière : jamais une réconciliation forcée
+
+Pour un Lot PF concerné par un retrait, produit / en stock / bloqué / expédié / ajusté
+sont calculés séparément depuis les registres existants (section 36) ; l'écart
+résiduel est explicitement rapporté comme **inexpliqué**, jamais forcé artificiellement
+à zéro quand les données sous-jacentes ne permettent pas une réconciliation parfaite.
+
+## 106. Exercice de traçabilité et retrait/rappel réel : deux autorisations distinctes
+
+Ouvrir un exercice de traçabilité de routine (`recall:exercise`) reste ouvert à
+QUALITE ; initier un vrai retrait ou rappel (`recall:manage`) exige RESPONSABLE_QUALITE
+(sections 53-54). Le type d'événement (`EXERCICE_TRACABILITE` contre `RETRAIT`/
+`RAPPEL`) détermine, côté route, quelle permission est vérifiée — jamais une seule
+permission générique couvrant les deux.
+
+## 107. Audit : planification et conduite restent deux permissions distinctes
+
+Planifier un audit (`audit:plan`, choisir son type, sa grille, son auditeur responsable
+et sa date) reste réservé à QUALITE/RESPONSABLE_QUALITE. Conduire un audit
+(`audit:conduct` : réponses de grille, constats, clôture) est la **seule** autorité
+que le rôle AUDITEUR détient au-delà de la consultation — un AUDITEUR ne planifie
+jamais son propre audit, et ne décide jamais d'une non-conformité ou d'un blocage de sa
+propre initiative en dehors des constats de l'audit qu'il conduit (section 21-24).
+
+## 108. Un constat d'audit majeur peut générer une non-conformité, jamais l'inverse implicitement
+
+Créer une non-conformité depuis un constat d'audit (`audit_findings.
+resulting_nonconformity_id`) reste une action explicite de l'auditeur ou de la
+Qualité, jamais un déclenchement automatique silencieux à la clôture de l'audit —
+chaque constat garde son propre statut de traitement (`OUVERTE`, `ACTION_REQUISE`,
+`CLOTUREE`, `ANNULEE`), indépendant de celui d'une éventuelle non-conformité liée.
+
+## 109. Séparation stricte des pouvoirs qualité (sections 53-54)
+
+Le même rôle qui déclare une non-conformité critique, rédige un CAPA, un document ou
+lance un exercice de traçabilité n'est **jamais**, seul, celui qui en approuve la
+clôture ou l'entrée en vigueur. Chaque paire manage/approve reste une permission
+distincte :
+
+| Action | Permission « faire » | Rôle | Permission « approuver/clôturer » | Rôle |
+|---|---|---|---|---|
+| Non-conformité | `ncr:manage` | QUALITE | `ncr:approve` (validation de la cause racine) | RESPONSABLE_QUALITE |
+| CAPA | `capa:manage` | QUALITE | `capa:approve` (clôture) | RESPONSABLE_QUALITE |
+| Document qualité | `document:manage` | QUALITE | `document:approve` (approbation + mise en vigueur) | RESPONSABLE_QUALITE |
+| Retrait / rappel | `recall:exercise` (exercice) | QUALITE | `recall:manage` (retrait/rappel réel) | RESPONSABLE_QUALITE |
+| Audit | `audit:plan` (planification) | QUALITE/RESPONSABLE_QUALITE | `audit:conduct` (conduite assignée) | AUDITEUR |
+
+STOCK et PRODUCTION peuvent compléter (`action:complete`) une action CAPA ou de suivi
+de constat d'audit qui leur est assignée, mais ne clôturent jamais, à eux seuls, une
+non-conformité, un CAPA, un audit ou un document.
+
+## 110. Audit de la Phase 6
+
+Sont tracés : création d'une non-conformité, ajout d'un lien, changement de gravité,
+changement de responsable, changement de statut (dont la clôture), création d'une
+investigation, création et validation d'une analyse de cause racine, déclenchement d'un
+blocage qualité ; création d'un CAPA, d'une action, complétion et annulation d'une
+action, enregistrement d'un contrôle d'efficacité, clôture et annulation d'un CAPA ;
+création d'une réclamation, changement de statut, liaison à une non-conformité/CAPA ;
+création et changement de statut d'un incident fournisseur ; création, démarrage,
+clôture et annulation d'un audit, enregistrement d'une réponse de grille, création d'un
+constat et changement de son statut, liaison d'un constat à une non-conformité ;
+création d'un document et de chaque révision, soumission, approbation, mise en
+vigueur, annulation d'une révision, assignation et confirmation d'un acquittement ;
+ouverture d'un retrait/rappel/exercice, actualisation de l'impact, changement de
+statut, clôture, changement de statut d'une entité affectée. Chaque entrée conserve
+l'auteur, la date et les valeurs utiles — la même discipline d'audit que les cinq
+phases précédentes.
+
+## 111. Rôles de la Phase 6
+
+| Permission | ADMIN | QUALITE | RESPONSABLE_QUALITE | AUDITEUR | STOCK | PRODUCTION | LECTURE |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| Consultation QMS (`qms:read`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Créer/gérer une non-conformité (`ncr:manage`) | ✓ | ✓ | ✓ | | | | |
+| Approuver une cause racine (`ncr:approve`) | ✓ | | ✓ | | | | |
+| Créer/gérer un CAPA (`capa:manage`) | ✓ | ✓ | ✓ | | | | |
+| Clôturer un CAPA (`capa:approve`) | ✓ | | ✓ | | | | |
+| Compléter une action assignée (`action:complete`) | ✓ | ✓ | ✓ | | ✓ | ✓ | |
+| Gérer une réclamation / un incident fournisseur | ✓ | ✓ | ✓ | | | | |
+| Planifier un audit (`audit:plan`) | ✓ | ✓ | ✓ | | | | |
+| Conduire un audit assigné (`audit:conduct`) | ✓ | ✓ | ✓ | ✓ | | | |
+| Rédiger un document qualité (`document:manage`) | ✓ | ✓ | ✓ | | | | |
+| Approuver/mettre en vigueur un document (`document:approve`) | ✓ | | ✓ | | | | |
+| Mener un exercice de traçabilité (`recall:exercise`) | ✓ | ✓ | ✓ | | | | |
+| Initier un retrait/rappel réel (`recall:manage`) | ✓ | | ✓ | | | | |
+
+RESPONSABLE_QUALITE détient l'intégralité des droits QUALITE, plus les autorisations
+d'approbation que la section 109 réserve explicitement à un rôle distinct.
+AUDITEUR ne détient que la consultation et la conduite d'un audit qui lui est assigné —
+jamais la planification, ni aucune permission de décision qualité.
+
+## 112. Hors périmètre de la Phase 6
+
+Explicitement non construits : comptabilité complète, ERP commercial, gestion complète
+des achats, GMAO/maintenance complète, LIMS de laboratoire, portail fournisseur,
+portail client, prédiction de cause racine assistée par IA, qualité prédictive,
+entrepôt de données BI avancé. La traçabilité et le calcul d'impact des retraits/
+rappels s'appuient exclusivement sur les relations opérationnelles déjà enregistrées
+dans les phases précédentes ; aucune donnée qualité n'est jamais déduite ou inventée
+en dehors de ce qui est explicitement saisi ou calculé.

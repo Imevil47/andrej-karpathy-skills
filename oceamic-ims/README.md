@@ -1,4 +1,4 @@
-# OCEAMIC IMS — Phases 1, 2, 3, 4 et 5
+# OCEAMIC IMS — Phases 1, 2, 3, 4, 5 et 6
 
 Système de gestion industrielle pour la conserverie de poisson OCEAMIC.
 
@@ -32,6 +32,19 @@ jusqu'au client et retour. Chaque Lot PF reste rattaché au(x) cycle(s) de
 stérilisation et Run(s) qui l'ont produit ; rien n'est dupliqué depuis la Phase 4.
 Elle ne contient ni gestion de rappel complète, ni CRM, ni facturation, ni
 comptabilité, mais l'architecture est conçue pour les accueillir sans refonte.
+
+La **Phase 6** ajoute la **couche qualité horizontale (QMS)**, transverse à toutes les
+phases précédentes : non-conformités et leur investigation, analyse de cause racine,
+CAPA (actions correctives et préventives) avec contrôle d'efficacité obligatoire,
+réclamations client et incidents qualité fournisseur, audits internes/externes avec
+grilles de contrôle et constats, documents qualité maîtrisés (révisions jamais
+écrasées), et retraits/rappels/exercices de traçabilité dont l'impact est toujours
+calculé depuis la traçabilité existante, jamais saisi à la main. Chaque événement
+qualité reste rattaché à une entité opérationnelle réelle (lot, Run, contrôle,
+expédition, audit...) ; il n'existe aucun enregistrement qualité isolé. Elle ne
+contient ni comptabilité complète, ni ERP commercial, ni gestion complète des achats,
+ni GMAO, ni portail fournisseur/client, ni prédiction assistée par IA, mais
+l'architecture est conçue pour les accueillir sans refonte.
 
 L'interface utilisateur est intégralement en français. Le code, les noms de tables et
 les commentaires techniques sont en anglais.
@@ -160,6 +173,14 @@ dans la table `schema_migrations`.
 | `015_pf_stock_quality.sql` | Registre de mouvements de stock PF, décisions et blocages qualité PF (polymorphes : Lot PF ou palette) |
 | `016_shipments.sql` | Clients, expéditions (avec identité conteneur), lignes d'expédition, réservations de stock |
 | `017_pf_views.sql` | Vues de registre et de solde de stock PF, résumé de palette, résumé de stock par Lot PF, stock PF par emplacement |
+| `018_qms_roles.sql` | Ajout des rôles RESPONSABLE_QUALITE et AUDITEUR |
+| `019_nonconformities.sql` | Catégories de non-conformité, non-conformités, liens polymorphes, investigations, analyses de cause racine |
+| `020_capa.sql` | CAPA, actions CAPA, contrôles d'efficacité |
+| `021_complaints_supplier.sql` | Réclamations client, incidents qualité fournisseur |
+| `022_audits.sql` | Grilles de contrôle d'audit et leurs questions, audits, réponses de grille, constats d'audit |
+| `023_quality_documents.sql` | Documents qualité, révisions de document, acquittements de formation |
+| `024_recall.sql` | Événements de retrait/rappel/exercice, entités affectées |
+| `025_qms_views.sql` | Vues de progression CAPA (actions, efficacité, résumé avec éligibilité à la clôture) et de progression d'audit |
 
 Pour ajouter une évolution du schéma : créer un nouveau fichier `005_....sql`.
 Ne jamais modifier une migration déjà appliquée en production.
@@ -208,7 +229,25 @@ Il crée :
   Stock PF A, la libération qualité du Lot PF et des deux palettes, une expédition vers
   CLIENT-X sur le conteneur CONT-001 chargeant les deux palettes et confirmée
   jusqu'à `EXPEDIEE` — la chaîne de traçabilité complète, du Lot MP jusqu'au client,
-  est donc réelle et interrogeable dès l'initialisation.
+  est donc réelle et interrogeable dès l'initialisation ;
+- quinze catégories de non-conformité et une grille de contrôle d'audit hygiène
+  (`CHK-HYG-001`, trois questions) ;
+- une non-conformité issue d'un contrôle poids réel, avec son CAPA (trois actions —
+  réglage machine, formation opérateur, vérification des trois productions suivantes
+  — et un contrôle d'efficacité positif, clôturé) ; une non-conformité issue d'un
+  constat d'audit majeur ; une non-conformité issue d'une réclamation client ;
+- un audit interne hygiène clôturé avec un constat majeur et deux observations, le
+  constat majeur étant lié à sa non-conformité ;
+- une réclamation client sur le Lot PF de démonstration, avec sa traçabilité complète
+  (palette, Lot PF, cycle de stérilisation, Run, Lot MP, fournisseur) recalculée
+  depuis l'expédition, jamais ressaisie ;
+- le document `PR-QA-004` (Maîtrise des non-conformités) avec quatre révisions : les
+  trois premières historiques (`OBSOLETE`), la quatrième `EN_VIGUEUR` — jamais
+  écrasées ;
+- un exercice de traçabilité (« EXERCICE DE TRACABILITE ») depuis le Lot MP de
+  démonstration, retrouvant automatiquement le Run, le cycle de stérilisation, le
+  Lot PF, les deux palettes, l'expédition et le client affectés, clôturé avec sa
+  durée d'exécution enregistrée.
 
 > La répartition entrepôt / sous-traitant des partenaires externes est une hypothèse
 > de démonstration. Elle est portée par la configuration des emplacements et doit être
@@ -220,6 +259,8 @@ Il crée :
 |---|---|---|
 | `admin` | `admin123` | Administrateur |
 | `qualite` | `qualite123` | Qualité |
+| `rq` | `rq123456` | Responsable Qualité |
+| `auditeur` | `auditeur123` | Auditeur |
 | `stock` | `stock123` | Stock |
 | `production` | `production123` | Production |
 | `lecture` | `lecture123` | Lecture seule |
@@ -237,14 +278,23 @@ autorisé.
 | Rôle | Droits |
 |---|---|
 | **ADMIN** | Toutes les permissions, dont l'ajustement de stock et l'annulation de mouvement |
-| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, contrôles poids, contrôles sertissage, vérification du marquage, **validation CCP**, gestion des déviations, **décisions qualité PF (blocage/libération de Lot PF ou palette)**, consultation |
-| **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, **stock PF, transferts/ajustements de palette, préparation et confirmation d'expédition**, consultation |
-| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, **emballage (lots d'emballage, Lots PF, palettes)**, consultation |
+| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, contrôles poids, contrôles sertissage, vérification du marquage, **validation CCP**, gestion des déviations, **décisions qualité PF (blocage/libération de Lot PF ou palette)**, **crée et gère non-conformités/CAPA/réclamations/incidents fournisseur, planifie et conduit les audits, rédige les documents qualité, mène les exercices de traçabilité** — mais n'approuve ni cause racine, ni clôture CAPA, ni document, et n'initie pas un vrai retrait/rappel, consultation |
+| **RESPONSABLE_QUALITE** | Tout ce que QUALITE détient, **plus** les autorisations d'approbation : valider une cause racine, clôturer un CAPA, approuver et mettre en vigueur une révision de document, initier un retrait/rappel réel |
+| **AUDITEUR** | **Conduit uniquement les audits qui lui sont assignés** (réponses de grille, constats) — ne planifie jamais d'audit, ne décide jamais d'une non-conformité ou d'un blocage de sa propre initiative, consultation |
+| **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, **stock PF, transferts/ajustements de palette, préparation et confirmation d'expédition**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, consultation |
+| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, **emballage (lots d'emballage, Lots PF, palettes)**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, consultation |
 | **LECTURE** | Consultation |
 
 Le rôle STOCK ne peut **jamais** libérer un blocage qualité, ni ajuster le stock, ni
 saisir des enregistrements de production. L'ajustement de stock et l'annulation d'un
 mouvement sont réservés à l'administrateur, exigent un motif et sont audités.
+
+**Séparation stricte des autorisations qualité (Phase 6)** : le même rôle qui déclare
+une non-conformité critique, rédige un CAPA, un document ou lance un exercice de
+traçabilité n'est jamais celui qui, seul, en approuve la clôture — `ncr:manage` /
+`ncr:approve`, `capa:manage` / `capa:approve`, `document:manage` / `document:approve`,
+`recall:exercise` / `recall:manage` sont des permissions volontairement distinctes,
+réservées respectivement à QUALITE et RESPONSABLE_QUALITE.
 
 La correction d'une consommation de production reste ouverte au rôle PRODUCTION :
 c'est une annulation traçable suivie d'un remplacement, entièrement auditée, et une
@@ -304,6 +354,7 @@ série car ils partagent cette base.
 | `tests/processTraceability.test.ts` | Généalogie complète d'un Run (remplissage, contrôle poids, sertissage, marquage, stérilisation) retrouvée sans liaison manuelle, vue d'ensemble du process |
 | `tests/phase4Acceptance.test.ts` | Les quatre scénarios d'acceptation de la Phase 4 (remplissage/poids, sertissage, stérilisation, traçabilité), via l'API HTTP |
 | `tests/phase5.test.ts` | Héritage du blocage Run/CCP sur un Lot PF nouvellement créé, unicité d'un Lot PF sur une palette, double affectation d'une palette à une expédition refusée (message exact), blocage qualité empêchant la confirmation d'expédition sans aucun mouvement de stock, transaction complète de confirmation d'expédition (mouvements, palettes, réservations cohérents), et le scénario complet d'acceptation (sections 54-59) : Lot PF → palettes → stock PF → expédition → traçabilité avant/arrière |
+| `tests/phase6.test.ts` | Création d'une non-conformité avec ses liens vers l'entité source (jamais isolée), droits (AUDITEUR ne peut pas créer de non-conformité), blocage qualité déclenché depuis une non-conformité en réutilisant `lot_blocks` (sans nouveau système de blocage), clôture d'une non-conformité bloquée tant qu'un CAPA lié reste ouvert (PRODUCTION ne peut jamais clôturer), CAPA restant ouvert tant que le contrôle d'efficacité requis n'a pas conclu positivement (message exact « Clôture impossible. Des actions obligatoires restent ouvertes. », QUALITE ne peut jamais approuver sa propre clôture), non-écrasement d'une révision de document (révision 01 en vigueur jusqu'à la mise en vigueur de la 02, approbation réservée à RESPONSABLE_QUALITE), traçabilité d'une réclamation client recalculée depuis l'expédition sans ressaisie manuelle, exercice de traçabilité depuis un Lot MP retrouvant Run/cycle/Lot PF/palettes/expédition/client affectés (STOCK ne peut pas lancer l'exercice), audit interne avec réponses de grille et constats menés par l'auditeur assigné, constat majeur générant une non-conformité |
 
 ---
 
@@ -404,6 +455,49 @@ Le détail est documenté dans [`docs/regles-metier.md`](docs/regles-metier.md).
     MP, la chaîne avant remonte jusqu'au(x) client(s) ayant reçu le produit ; depuis une
     expédition ou un conteneur, la chaîne arrière redescend jusqu'au(x) Lot(s) MP et
     fournisseur(s)/navire(s) d'origine.
+31. **Une non-conformité n'est jamais un enregistrement isolé.** Elle porte une source
+    (`source_type`/`source_id`) et peut porter d'autres liens (`nonconformity_links`)
+    vers n'importe quelle entité opérationnelle existante ; elle n'invente jamais un
+    doublon de cette entité.
+32. **Non-conformité, investigation, cause racine, correction, CAPA, contrôle
+    d'efficacité, réclamation, audit, constat d'audit, document, révision de document
+    et retrait/rappel sont onze concepts distincts**, jamais fusionnés dans une table
+    « problème qualité » générique.
+33. **Une correction n'est pas une action corrective.** La correction immédiate est
+    capturée sur l'investigation de la non-conformité ; l'action corrective qui traite
+    la cause racine est une action CAPA distincte, avec son propre responsable et sa
+    propre échéance.
+34. **Un CAPA ne se clôture jamais tant qu'une action obligatoire reste ouverte, ni tant
+    que le contrôle d'efficacité requis n'a pas conclu positivement.** L'éligibilité à
+    la clôture (`capa_summary.can_close`) est une vue calculée, jamais une case cochée
+    à la main ; c'est la même vue qui alimente le refus strict à la clôture et
+    l'explication affichée à l'écran.
+35. **Une action préventive peut exister sans non-conformité source.** Elle peut
+    provenir d'une observation d'audit, d'un risque identifié ou d'une décision de
+    management ; `capa_records.source_nonconformity_id` est nullable.
+36. **Une révision de document n'est jamais écrasée.** Chaque révision est un
+    enregistrement historique permanent, numéroté séquentiellement ; seule sa mise en
+    vigueur change quelle révision est « courante » (`current_revision_id`). Une
+    révision obsolète n'est jamais exposée comme la version en vigueur.
+37. **L'approbation d'une révision n'est pas ouverte à tout utilisateur.** Créer et
+    soumettre une révision reste une activité QUALITE ; l'approuver et la mettre en
+    vigueur exige `document:approve`, réservé à RESPONSABLE_QUALITE.
+38. **Un retrait/rappel/exercice de traçabilité calcule toujours son impact depuis la
+    traçabilité relationnelle existante**, jamais depuis une liste saisie à la main :
+    Runs, cycles, Lots PF, palettes, expéditions et clients affectés proviennent de
+    `forwardTraceabilityFromRawMaterialLot`/`traceabilityFromFinishedGoodLot`,
+    dédupliqués et enregistrés une seule fois (`recall_affected_entities`).
+39. **Le bilan matière d'un retrait ne prétend jamais à une réconciliation parfaite.**
+    Produit / en stock / bloqué / expédié / ajusté sont calculés séparément ; l'écart
+    résiduel est rapporté comme « inexpliqué », jamais forcé à zéro.
+40. **Une non-conformité critique n'est jamais créée, approuvée et close par le même
+    rôle.** QUALITE crée, gère et bloque ; seul RESPONSABLE_QUALITE valide une cause
+    racine, clôture un CAPA, approuve un document ou initie un vrai retrait/rappel — la
+    même discipline de séparation des pouvoirs qu'ailleurs dans OCEAMIC IMS,
+    explicitement appliquée à la qualité elle-même.
+41. **Chaque opération qualité sensible reste auditée** (`audit_log`), au même titre que
+    toute opération sensible des phases précédentes : création, changement de statut,
+    validation, approbation, clôture.
 
 ---
 
@@ -482,6 +576,29 @@ Toutes les routes sont préfixées par `/api` et exigent une session, sauf
 | `GET` | `/api/shipments`, `/api/shipments/:id` | `stock:read` |
 | `POST` | `/api/shipments`, `/conteneur`, `/palettes`, `/confirmation`, `/annulation` ; `DELETE` `/api/shipments/:id/palettes/:palletId` | `shipment:manage` |
 | `GET` | `/api/lots/:id/traceability-avant`, `/api/shipments/:id/traceability-arriere`, `/api/conteneurs/:numero/traceability-arriere` | `traceability:read` |
+| `GET` | `/api/nonconformity-categories`, `/api/audit-checklists`, `/api/audit-checklists/:id/items` | `masterdata:read` |
+| `POST` | mêmes ressources | `masterdata:write` |
+| `GET` | `/api/qms/home-summary`, `/api/qms/metrics`, `/api/qms/users` | `qms:read` |
+| `GET` | `/api/nonconformities`, `/api/nonconformities/:id`, `/api/nonconformities/repetitions` | `qms:read` |
+| `POST` | `/api/nonconformities`, `/liens`, `/gravite`, `/responsable`, `/statut`, `/investigation`, `/cause-racine`, `/blocage` | `ncr:manage` |
+| `POST` | `/api/root-cause-analyses/:id/validation` | `ncr:approve` |
+| `GET` | `/api/capa`, `/api/capa/:id` | `qms:read` |
+| `POST` | `/api/capa`, `/actions`, `/efficacite`, `/annulation` ; `/api/capa-actions/:id/annulation` | `capa:manage` |
+| `POST` | `/api/capa-actions/:id/completion` | `action:complete` |
+| `POST` | `/api/capa/:id/cloture` | `capa:approve` |
+| `GET` | `/api/complaints`, `/api/complaints/:id`, `/api/supplier-incidents`, `/api/suppliers/performance` | `qms:read` |
+| `POST` | `/api/complaints`, `/statut`, `/non-conformite`, `/capa` | `complaint:manage` |
+| `POST` | `/api/supplier-incidents`, `/statut` | `supplierincident:manage` |
+| `GET` | `/api/audits`, `/api/audits/:id` | `qms:read` |
+| `POST` | `/api/audits`, `/annulation` | `audit:plan` |
+| `POST` | `/api/audits/:id/demarrage`, `/cloture`, `/reponses`, `/constats`, `/api/audit-findings/:id/statut`, `/non-conformite` | `audit:conduct` |
+| `GET` | `/api/quality-documents`, `/api/quality-documents/:id`, `/api/document-revisions/:id/acquittements` | `qms:read` |
+| `POST` | `/api/quality-documents`, `/revisions`, `/api/document-revisions/:id/soumission`, `/annulation`, `/acquittements` | `document:manage` |
+| `POST` | `/api/document-revisions/:id/approbation`, `/mise-en-vigueur` | `document:approve` |
+| `POST` | `/api/acknowledgments/:id/confirmation` | `qms:read` (l'utilisateur assigné uniquement) |
+| `GET` | `/api/recall-events`, `/api/recall-events/:id`, `/api/finished-good-lots/:id/bilan-matiere` | `qms:read` |
+| `POST` | `/api/recall-events` (`eventType: EXERCICE_TRACABILITE`), `/actualisation`, `/statut`, `/cloture`, `/api/recall-affected-entities/:id/statut` | `recall:exercise` |
+| `POST` | `/api/recall-events` (`eventType: RETRAIT` ou `RAPPEL`) | `recall:manage` |
 
 Les erreurs renvoient `{ "code": "...", "message": "..." }`, le message étant
 directement affichable à l'opérateur.
@@ -527,7 +644,15 @@ directement affichable à l'opérateur.
 | Expéditions | Liste et création (client, destination, conteneur) |
 | Expédition | **Écran de chargement du conteneur** : informations conteneur/transport, chargement des palettes, confirmation transactionnelle, annulation |
 | Traçabilité | Recherche globale — Lot MP, Run, Lot PF, Palette, Expédition, Conteneur, Client — menant chacun à son propre écran |
-| Paramètres | Données de référence — **employées, standards de cadence, catégories d'arrêt, équipements, milieux de couverture, spécifications de remplissage et de sertissage, programmes de stérilisation, points de vérification de marquage, domaine de stock des emplacements, clients** — et utilisateurs |
+| Qualité — Vue d'ensemble | Six indicateurs qualité ciblés (non-conformités ouvertes, CAPA en retard, lots bloqués, réclamations ouvertes, audits à venir, actions en retard), sans graphique décoratif |
+| Non-conformités | Liste filtrable (N°/date/source/catégorie/gravité/responsable/échéance/statut) et **fiche en onglets** : vue générale, source & liens, investigation, cause racine, CAPA liés, blocage, historique |
+| CAPA | Liste (CAPA/source/responsable/ouverture/échéance/actions/efficacité/statut, retards visibles) et fiche : actions, contrôle d'efficacité, clôture bloquée tant que `can_close` est faux |
+| Audits | Liste (audit/type/date prévue/périmètre/auditeur/constats/actions ouvertes/statut) et fiche : grille de contrôle (réponses), constats, création d'une non-conformité depuis un constat |
+| Documents qualité | Liste (code/titre/type/révision/date d'effet/propriétaire/statut) et fiche : révision en vigueur, historique des révisions (jamais écrasées), acquittements |
+| Réclamations | Liste et fiche avec traçabilité recalculée depuis l'expédition (palette → Lot PF → stérilisation → Run → Lot MP → fournisseur), lien vers non-conformité/CAPA |
+| Incidents fournisseur | Liste et déclaration, suivi de la performance fournisseur |
+| Retraits / rappels | Liste et fiche : entités affectées calculées (Run, cycle, Lot PF, palette, expédition, client) groupées par type, bilan matière du Lot PF, durée d'exécution |
+| Paramètres | Données de référence — **employées, standards de cadence, catégories d'arrêt, équipements, milieux de couverture, spécifications de remplissage et de sertissage, programmes de stérilisation, points de vérification de marquage, domaine de stock des emplacements, clients, catégories de non-conformité, grilles de contrôle d'audit** — et utilisateurs |
 
 ---
 

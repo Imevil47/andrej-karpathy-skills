@@ -1,4 +1,4 @@
-# Modèle de données — OCEAMIC IMS Phases 1, 2, 3 et 4
+# Modèle de données — OCEAMIC IMS Phases 1 à 6
 
 Toutes les clés primaires sont des UUID. Les codes lisibles (`LOT-…`, `REC-…`) sont des
 identifiants opérationnels affichés aux utilisateurs ; les UUID ne sont jamais montrés.
@@ -1073,4 +1073,267 @@ production_runs ──< finished_good_lot_sources >── sterilization_cycles
                                                                                        └──< shipment_lines >── shipments
 
 raw_material_lots ──< production_run_materials >── production_runs   (traçabilité avant/arrière, sections 32-33)
+```
+
+---
+
+# Phase 6 — Qualité horizontale (QMS)
+
+Une couche **transverse** à toutes les phases précédentes, jamais un module isolé
+(section 1) : chaque enregistrement qualité pointe vers une entité opérationnelle
+réelle déjà existante (Lot MP, Lot PF, Run, cycle de stérilisation, contrôle poids,
+contrôle sertissage, expédition, fournisseur, équipement, audit...), jamais une copie
+de cette entité. Onze concepts restent structurellement distincts (section 70) :
+non-conformité ≠ investigation ≠ cause racine ≠ correction ≠ CAPA ≠ contrôle
+d'efficacité ≠ réclamation ≠ audit ≠ constat d'audit ≠ document qualité ≠ révision de
+document ≠ retrait/rappel — jamais fusionnés dans une table « problème qualité »
+générique.
+
+`roles_code_allowed` (migration `018_qms_roles.sql`) s'étend à RESPONSABLE_QUALITE et
+AUDITEUR, sans toucher aux rôles des Phases 1-5.
+
+## Non-conformités
+
+### `nonconformity_categories`
+Donnée de référence (`code`, `name`, `is_active`), la même discipline de
+désactivation-jamais-suppression que les autres tables de référence.
+
+### `nonconformities`
+Le point d'entrée du QMS (section 4). `nonconformity_code` (`NC-AAAAMMJJ-NNN`),
+`source_type`/`source_id` (pointeur rapide, dénormalisé et facultatif vers l'entité qui
+a déclenché la non-conformité), `category_id`, `severity` (`MINEURE`, `MAJEURE`,
+`CRITIQUE`), `priority`, `status` (`OUVERTE`, `EN_ANALYSE`, `ACTION_REQUISE`,
+`EN_ATTENTE`, `A_VERIFIER`, `CLOTUREE`, `ANNULEE`), `owner_user_id`, `due_at`,
+`quality_block_required`, et `block_entity_type`/`block_entity_id`/`block_reference_id`
+qui pointent, une fois un blocage déclenché, vers la ligne `lot_blocks` ou
+`finished_goods_quality_blocks` correspondante (jamais un troisième système de
+blocage — voir plus bas).
+
+### `nonconformity_links`
+La table **autoritaire** pour la vue multi-entités complète d'une non-conformité
+(section 5), séparée du pointeur rapide `source_type`/`source_id` ci-dessus.
+`entity_type` (`QMS_ENTITY_TYPES`, 23 valeurs couvrant toutes les phases) et
+`entity_id` sont **polymorphes**, validés en couche service (même motif que
+`finished_goods_quality_blocks` en Phase 5), jamais une vraie clé étrangère.
+`relationship_type` : `SOURCE`, `AFFECTE`, `DETECTE_SUR`, `CONSEQUENCE`. Contrainte
+d'unicité sur (non-conformité, type, id, relation) pour un lien idempotent.
+
+### `nonconformity_investigations`
+Les faits constatés et la **correction immédiate** (section 10) — jamais l'action
+corrective elle-même (section 49, voir CAPA plus bas). `investigator_user_id`,
+`facts`, `immediate_correction`, `impact_assessment`, `root_cause_required`.
+
+### `root_cause_analyses`
+`method` (`5_POURQUOI`, `ISHIKAWA`, `PARETO`, `ANALYSE_SIMPLE`, `AUTRE`),
+`analysis_text`, `root_cause`, `validated_by`/`validated_at` — la validation
+(`ncr:approve`, réservée à RESPONSABLE_QUALITE) est un acte distinct de la
+proposition (`ncr:manage`, QUALITE) : l'analyste qui propose une cause racine n'est
+jamais, seul, celui qui la valide (section 53/54).
+
+### Blocage qualité depuis une non-conformité
+**Décision de conception documentée** : une non-conformité n'introduit **aucun**
+troisième système de blocage. Elle réutilise directement `lot_blocks` (Phase 1, matière
+première) ou `finished_goods_quality_blocks` (Phase 5, Lot PF/palette) selon le type
+d'entité, via les fonctions de décision qualité existantes (`decideQuality`,
+`decideFgQuality`), puis enregistre la référence obtenue sur
+`nonconformities.block_reference_id`. Ces fonctions gèrent chacune leur propre
+transaction (elles n'acceptent qu'un `pool`, jamais un client externe) : ouvrir un
+blocage depuis une non-conformité s'exécute donc en deux étapes — ouverture du blocage
+via le service existant, puis mise à jour de la non-conformité — un compromis
+pragmatique documenté plutôt qu'une réécriture des services Phase 1/5 pour accepter un
+client transactionnel externe.
+
+---
+
+## CAPA
+
+### `capa_records`
+Actions systémiques adressant une cause racine ou un risque (section 70) — jamais le
+même concept que la correction immédiate déjà capturée sur l'investigation (section
+49). `capa_code` (`CAPA-AAAAMMJJ-NNN`), `source_nonconformity_id` **nullable**
+(section 50 : une action préventive peut naître d'une observation d'audit, d'une
+tendance ou d'une décision de management, sans non-conformité source), `capa_type`
+(`CORRECTIVE`, `PREVENTIVE`, `CORRECTIVE_PREVENTIVE`), `owner_user_id`, `due_at`,
+`effectiveness_required`, `status`. `status` est une **colonne mise en cache, jamais
+saisie** : recalculée (`refreshCapaStatus`) depuis `capa_summary`
+(`OUVERTE` sans action, `EN_COURS` avec des actions ouvertes, `EN_VERIFICATION` une
+fois toutes les actions terminées mais la clôture pas encore accordée ; `CLOTUREE`/
+`ANNULEE` uniquement via leurs propres opérations gated ci-dessous).
+
+### `capa_actions`
+`action_type` (`CORRECTION`, `ACTION_CORRECTIVE`, `ACTION_PREVENTIVE`,
+`VERIFICATION`), `responsible_user_id`, `planned_date`, `due_date`, `status`
+(`OUVERTE`, `EN_COURS`, `TERMINEE`, `ANNULEE`), `completion_evidence`. Terminer une
+action reste ouvert à `action:complete` (STOCK/PRODUCTION peuvent compléter une action
+qui leur est assignée) en plus de `capa:manage` — l'utilisateur assigné à une action ne
+doit pas avoir besoin de l'autorité CAPA complète pour la clôturer.
+
+### `capa_effectiveness_checks`
+La preuve que le CAPA a fonctionné (section 14) — un CAPA n'est **jamais** considéré
+efficace du seul fait que ses actions sont `TERMINEE`. `checked_at`, `checked_by`,
+`method`, `result`, `effective` (booléen), `notes`.
+
+### Clôture d'un CAPA (section 15)
+`closeCapa` (`capa:approve`, réservé à RESPONSABLE_QUALITE) lit `capa_summary.can_close`
+comme **unique source de vérité** du droit à la clôture — la même vue alimente à la
+fois ce contrôle strict et l'explication affichée sur les écrans CAPA. Si
+`can_close` est faux, l'opération échoue avec le message exact :
+« Clôture impossible.\nDes actions obligatoires restent ouvertes. »
+
+---
+
+## Réclamations et incidents fournisseur
+
+### `customer_complaints`
+Un événement qualité d'origine client (section 70) — **jamais un CRM** (section 16),
+usage traçabilité/qualité uniquement. `complaint_code` (`RECL-AAAAMMJJ-NNN`),
+`customer_id`, `shipment_id`/`finished_good_lot_id`/`pallet_id` (facultatifs, le point
+d'ancrage qui permet de recalculer la traçabilité), `complaint_type`, `severity`,
+`status`, `resulting_nonconformity_id`/`resulting_capa_id` (références rapides
+dénormalisées, renseignées quand une non-conformité ou un CAPA est créé depuis la
+réclamation — section 18).
+
+### `supplier_quality_incidents`
+Suivi qualité fournisseur (section 20), jamais un système d'achat. `supplier_id`,
+`raw_material_lot_id`/`reception_id` facultatifs, `category`, `severity`, `status`
+(`OUVERTE`, `EN_ANALYSE`, `CLOTUREE`, `ANNULEE`).
+
+---
+
+## Audits
+
+### `audit_checklists` / `audit_checklist_items`
+La grille de contrôle réutilisable (donnée de référence), et ses questions ordonnées
+(`display_order`, `question`, `expected_reference` facultatif, `is_active`).
+
+### `audits`
+`audit_code` (`AUD-AAAAMMJJ-NNN`), `audit_type` (`INTERNE`, `CLIENT`,
+`CERTIFICATION`, `AUTORITE`, `FOURNISSEUR`, `HYGIENE`, `PROCESS`, `AUTRE`),
+`audit_checklist_id` facultatif, `planned_date`, `scope`, `lead_auditor_user_id`,
+`status` (`PLANIFIE`, `EN_COURS`, `TERMINE`, `ANNULE`). Planifier un audit
+(`audit:plan`) reste réservé à QUALITE/RESPONSABLE_QUALITE ; le conduire
+(`audit:conduct`, réponses de grille et constats) est la **seule** permission
+qu'AUDITEUR détient au-delà de la consultation — jamais la planification, jamais une
+décision de non-conformité ou de blocage de sa propre initiative (section 53).
+
+### `audit_responses`
+Une réponse par (audit, item de grille) : `result` (`CONFORME`, `NON_CONFORME`,
+`OBSERVATION`, `NON_APPLICABLE`), `observation`, `evidence_reference`,
+`responded_by`/`responded_at`. Upsert (`ON CONFLICT ... DO UPDATE`) : une réponse peut
+être corrigée tant que l'audit est en cours.
+
+### `audit_findings`
+`finding_code` (`CST-AAAAMMJJ-NNN`), `finding_type` (`NON_CONFORMITE`,
+`OBSERVATION`, `POINT_FORT`), `severity`, `owner_user_id`, `due_at`, `status`
+(`OUVERTE`, `ACTION_REQUISE`, `CLOTUREE`, `ANNULEE`), `resulting_nonconformity_id`
+(référence rapide dénormalisée, renseignée quand un constat majeur donne naissance à
+une non-conformité).
+
+---
+
+## Documents qualité
+
+### `quality_documents`
+Une identité de document maîtrisé (section 26) — `document_code` **saisi par
+l'utilisateur** (ex. `PR-QA-004`, convention de nommage du service qualité, jamais un
+compteur de code opérationnel), `document_type` (`PROCEDURE`, `INSTRUCTION`,
+`FORMULAIRE`, `PLAN`, `SPECIFICATION`, `MANUEL`, `POLITIQUE`,
+`ENREGISTREMENT_MODELE`, `AUTRE`), `owner_user_id`, `current_revision_id` (FK ajoutée
+par `ALTER TABLE` après la création de `quality_document_revisions`, la même
+contrainte circulaire que `quality_documents.current_revision_id` en Phase 5 pour
+`finished_good_lots`/`packaging_batches`). `status` est **mis en cache**, recalculé
+(`refreshDocumentStatus`) à partir du statut de `current_revision_id`, jamais
+hand-typed — `BROUILLON` par défaut tant qu'aucune révision n'a jamais été mise en
+vigueur.
+
+### `quality_document_revisions`
+**Une révision n'est jamais écrasée** (section 27) : chaque nouvelle révision est un
+`INSERT`, jamais un `UPDATE` d'une révision existante. `revision_number` séquentiel par
+document, `status` (`BROUILLON` → `EN_REVISION` → `APPROUVE` → `EN_VIGUEUR` →
+`OBSOLETE` ou `ANNULE`), `change_summary`, `file_reference`, `approved_by`/
+`approved_at`, `effective_date`. Un index unique partiel garantit **au plus une
+révision `EN_VIGUEUR` par document** (`quality_document_revisions_one_current`) :
+mettre une nouvelle révision en vigueur bascule automatiquement l'ancienne en
+`OBSOLETE`, jamais supprimée, toujours consultable dans l'historique (section 28).
+Approuver et mettre en vigueur (`document:approve`) reste réservé à
+RESPONSABLE_QUALITE — jamais tout utilisateur (section 29).
+
+### `document_acknowledgments`
+Le socle d'acquittement de formation (section 30), volontairement léger — jamais une
+LMS complète. `status` (`ASSIGNEE`, `ACQUITTEE`, `ANNULEE`), unique par
+(révision, utilisateur). Seul l'utilisateur assigné peut acquitter sa propre ligne.
+
+---
+
+## Retrait / rappel
+
+### `recall_events`
+Un événement de traçabilité contrôlé, réel ou un exercice simulé (section 70),
+toujours ancré sur une entité concrète unique. `recall_code` (`RAP-AAAAMMJJ-NNN`),
+`event_type` (`EXERCICE_TRACABILITE`, `RETRAIT`, `RAPPEL`), `target_entity_type`
+(`RAW_MATERIAL_LOT` ou `FINISHED_GOOD_LOT` — sections 33-34, tout autre point affecté
+est **dérivé** par traçabilité depuis celui-ci, jamais saisi indépendamment),
+`target_entity_id`, `severity`, `status` (`OUVERT`, `EN_COURS`, `CLOTURE`, `ANNULE`),
+`initiated_by`, `opened_at`/`closed_at` (rend la durée d'exécution calculable, jamais
+prétendue avant la clôture effective). Ouvrir un exercice de routine
+(`recall:exercise`, QUALITE) et initier un vrai retrait/rappel (`recall:manage`,
+réservé à RESPONSABLE_QUALITE) restent deux autorisations distinctes — même logique de
+séparation des pouvoirs qu'ailleurs en Phase 6 (section 53/54).
+
+### `recall_affected_entities`
+L'ensemble d'impact (sections 32-36), **calculé** depuis
+`forwardTraceabilityFromRawMaterialLot`/`traceabilityFromFinishedGoodLot` (Phase 5,
+étendues au besoin) et jamais construit à la main. `entity_type`
+(`RAW_MATERIAL_LOT`, `PRODUCTION_RUN`, `STERILIZATION_CYCLE`, `FINISHED_GOOD_LOT`,
+`PALLET`, `SHIPMENT`, `CUSTOMER`), `impact_type` (`ORIGINE` pour l'entité de départ,
+`AFFECTE` pour tout ce qui en découle), `quantity` (cartons, quand applicable),
+`status` (`IDENTIFIE`, `EN_TRAITEMENT`, `TRAITE`). Contrainte d'unicité sur
+(événement, type, id) avec `ON CONFLICT DO NOTHING` : réactualiser l'impact
+(`refreshRecallImpact`) fusionne les nouvelles entités trouvées, ne rétrécit jamais
+l'ensemble déjà identifié.
+
+### Bilan matière (section 36)
+`massBalanceForFinishedGoodLot` calcule, pour un Lot PF, produit / en stock / bloqué /
+expédié / ajusté séparément, puis rapporte le résidu comme **inexpliqué** plutôt que de
+forcer une réconciliation parfaite quand les données sous-jacentes ne la permettent
+pas. L'attribution « expédié » s'appuie sur l'**immutabilité** de `pallet_contents`
+(section 25, Phase 5) : la part d'un Lot PF sur une palette ne change jamais après
+création, ce qui rend sûr le test « cette palette a-t-elle déjà été expédiée » par
+simple `EXISTS` sur `finished_goods_stock_movements`.
+
+---
+
+## Vues de calcul de la Phase 6
+
+Statut calculé, jamais une opinion saisie — la même discipline que partout ailleurs
+dans OCEAMIC IMS.
+
+| Vue | Contenu |
+|---|---|
+| `capa_action_progress` | Total / ouvertes / en retard des actions d'un CAPA |
+| `capa_effectiveness_status` | Dernier contrôle d'efficacité enregistré et son verdict, par CAPA |
+| `capa_summary` | Une ligne par CAPA : progression, efficacité et `can_close` calculé — lue à la fois par la clôture (contrôle strict) et par les écrans CAPA (explication) |
+| `audit_progress` | Réponses de grille enregistrées et constats (total/ouverts) d'un audit |
+
+## Relations de la Phase 6
+
+```
+nonconformity_categories >── nonconformities ──< nonconformity_links >── (toute entité QMS_ENTITY_TYPES)
+                                    │        ──< nonconformity_investigations
+                                    │        ──< root_cause_analyses
+                                    │        (block_entity_type/id) ──> lot_blocks | finished_goods_quality_blocks
+                                    │
+                                    └──< capa_records ──< capa_actions
+                                                       └──< capa_effectiveness_checks
+
+customers ──< customer_complaints ──> nonconformities (resulting_nonconformity_id)
+                                   └──> capa_records (resulting_capa_id)
+
+suppliers ──< supplier_quality_incidents >── raw_material_lots
+
+audit_checklists ──< audit_checklist_items ──< audit_responses >── audits ──< audit_findings ──> nonconformities
+
+quality_documents ──< quality_document_revisions ──< document_acknowledgments
+
+raw_material_lots | finished_good_lots ──< recall_events ──< recall_affected_entities
 ```

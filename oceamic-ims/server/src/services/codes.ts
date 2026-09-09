@@ -17,7 +17,14 @@ export type CodePrefix =
   | 'PF'
   | 'PAL'
   | 'MVP'
-  | 'EXP';
+  | 'EXP'
+  | 'NC'
+  | 'CAPA'
+  | 'RECL'
+  | 'INC'
+  | 'AUD'
+  | 'CST'
+  | 'RAP';
 
 const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   LOT: 3,
@@ -53,6 +60,24 @@ const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   MVP: 5,
   // Shipment (section 21).
   EXP: 3,
+  // Phase 6: horizontal QMS.
+  // Non-conformity (section 4: "NC-20260909-001").
+  NC: 3,
+  // CAPA record (section 63: "NC-20260909-001" sources a CAPA - the CAPA
+  // itself gets its own, distinct prefix).
+  CAPA: 3,
+  // Customer complaint. RECL (réclamation), never REC: REC is already the
+  // Phase 1 reception prefix.
+  RECL: 3,
+  // Supplier quality incident.
+  INC: 3,
+  // Audit.
+  AUD: 3,
+  // Audit finding. CST (constat).
+  CST: 3,
+  // Recall / withdrawal / traceability exercise event (section 31). RAP
+  // covers all three event_type values - they share one identity space.
+  RAP: 3,
 };
 
 /**

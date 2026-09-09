@@ -42,6 +42,39 @@ import { decideFgQuality } from '../services/finishedGoodsQuality.ts';
 import { createFinishedGoodLot, createPackagingBatch, recordLabelCheck, recordPackagingOutput } from '../services/packaging.ts';
 import { createPallet } from '../services/pallets.ts';
 import { addPalletToShipment, confirmShipment, createShipment } from '../services/shipments.ts';
+import {
+  addCapaAction,
+  closeCapa,
+  completeCapaAction,
+  createCapa,
+  recordEffectivenessCheck,
+} from '../services/capa.ts';
+import {
+  createAudit,
+  createAuditFinding,
+  createNonconformityFromFinding,
+  completeAudit,
+  recordAuditResponse,
+  startAudit,
+} from '../services/audits.ts';
+import { createComplaint, createNonconformityFromComplaint } from '../services/complaints.ts';
+import {
+  createNonconformity,
+  recordInvestigation,
+  recordRootCauseAnalysis,
+  updateNonconformityStatus,
+  validateRootCause,
+} from '../services/nonconformities.ts';
+import {
+  acknowledgeDocument,
+  activateRevision,
+  approveRevision,
+  assignAcknowledgment,
+  createQualityDocument,
+  createRevision,
+} from '../services/qualityDocuments.ts';
+import { closeRecallEvent, createRecallEvent } from '../services/recall.ts';
+import { createSupplierIncident } from '../services/supplierIncidents.ts';
 import { createPool, withTransaction } from './pool.ts';
 
 // Development / demonstration data only. Never run against production data:
@@ -53,6 +86,8 @@ const ROLE_NAMES: Readonly<Record<RoleCode, string>> = {
   STOCK: 'Service Stock',
   PRODUCTION: 'Production',
   LECTURE: 'Lecture seule',
+  RESPONSABLE_QUALITE: 'Responsable Qualité',
+  AUDITEUR: 'Auditeur',
 };
 
 const DEMO_USERS: readonly Readonly<{
@@ -62,7 +97,14 @@ const DEMO_USERS: readonly Readonly<{
   password: string;
 }>[] = [
   { username: 'admin', fullName: 'Administrateur OCEAMIC', role: 'ADMIN', password: 'admin123' },
-  { username: 'qualite', fullName: 'Responsable Qualité', role: 'QUALITE', password: 'qualite123' },
+  { username: 'qualite', fullName: 'Inspectrice Qualité', role: 'QUALITE', password: 'qualite123' },
+  {
+    username: 'rq',
+    fullName: 'Responsable Qualité',
+    role: 'RESPONSABLE_QUALITE',
+    password: 'rq123456',
+  },
+  { username: 'auditeur', fullName: 'Auditeur interne', role: 'AUDITEUR', password: 'auditeur123' },
   { username: 'stock', fullName: 'Responsable Stock', role: 'STOCK', password: 'stock123' },
   { username: 'production', fullName: 'Chef de Production', role: 'PRODUCTION', password: 'production123' },
   { username: 'lecture', fullName: 'Consultation', role: 'LECTURE', password: 'lecture123' },
@@ -212,6 +254,25 @@ const MARKING_VERIFICATION_ITEMS: readonly Readonly<{ code: string; name: string
   { code: 'DATE_CORRECTE', name: 'Date correcte' },
   { code: 'LOT_CORRECT', name: 'Lot correct' },
   { code: 'PRODUIT_CORRECT', name: 'Produit correct' },
+];
+
+// Phase 6: non-conformity categories (section 6).
+const NONCONFORMITY_CATEGORIES: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'MATIERE_PREMIERE', name: 'Matière première' },
+  { code: 'POIDS', name: 'Poids' },
+  { code: 'SERTISSAGE', name: 'Sertissage' },
+  { code: 'STERILISATION', name: 'Stérilisation' },
+  { code: 'CCP', name: 'CCP' },
+  { code: 'MARQUAGE', name: 'Marquage' },
+  { code: 'EMBALLAGE', name: 'Emballage' },
+  { code: 'STOCKAGE', name: 'Stockage' },
+  { code: 'EXPEDITION', name: 'Expédition' },
+  { code: 'HYGIENE', name: 'Hygiène' },
+  { code: 'TRACABILITE', name: 'Traçabilité' },
+  { code: 'FOURNISSEUR', name: 'Fournisseur' },
+  { code: 'CLIENT', name: 'Client' },
+  { code: 'DOCUMENTATION', name: 'Documentation' },
+  { code: 'AUTRE', name: 'Autre' },
 ];
 
 async function insertReferenceData(pool: pg.Pool): Promise<void> {
@@ -372,6 +433,34 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
        VALUES ('STE-SPSA-HO', 'Barème SPSA-HO', (SELECT id FROM products WHERE code = 'SPSA-HO'),
                121.10, 1.80, 8.00, 6.00, 12.00, 2400)`,
     );
+
+    // Phase 6: non-conformity categories (section 6), configurable reference
+    // data, never hardcoded into the UI.
+    for (const category of NONCONFORMITY_CATEGORIES) {
+      await client.query('INSERT INTO nonconformity_categories (code, name) VALUES ($1, $2)', [
+        category.code,
+        category.name,
+      ]);
+    }
+
+    // A hygiene audit checklist template (section 22), reused by the demo
+    // internal hygiene audit below.
+    await client.query(
+      `INSERT INTO audit_checklists (code, name, department, process, audit_type, standard)
+       VALUES ('CHK-HYG-001', 'Contrôle hygiène atelier', 'Production', 'Hygiène', 'HYGIENE', 'ISO 22000')`,
+    );
+    const checklistItems: readonly Readonly<{ order: number; question: string }>[] = [
+      { order: 1, question: 'Les surfaces de travail sont-elles propres et désinfectées ?' },
+      { order: 2, question: 'Le personnel porte-t-il les équipements de protection requis ?' },
+      { order: 3, question: 'Les températures de stockage sont-elles conformes ?' },
+    ];
+    for (const item of checklistItems) {
+      await client.query(
+        `INSERT INTO audit_checklist_items (audit_checklist_id, display_order, question)
+         VALUES ((SELECT id FROM audit_checklists WHERE code = 'CHK-HYG-001'), $1, $2)`,
+        [item.order, item.question],
+      );
+    }
   });
 }
 
@@ -391,11 +480,13 @@ async function idOf(pool: pg.Pool, table: string, code: string): Promise<string>
 async function insertDemoOperations(pool: pg.Pool): Promise<void> {
   const users = await pool.query<{ id: string; username: string }>(
     'SELECT id, username FROM users WHERE username = ANY($1)',
-    [['stock', 'qualite']],
+    [['stock', 'qualite', 'rq', 'auditeur']],
   );
   const stockUserId = users.rows.find((row) => row.username === 'stock')?.id;
   const qualityUserId = users.rows.find((row) => row.username === 'qualite')?.id;
-  if (!stockUserId || !qualityUserId) {
+  const rqUserId = users.rows.find((row) => row.username === 'rq')?.id;
+  const auditeurUserId = users.rows.find((row) => row.username === 'auditeur')?.id;
+  if (!stockUserId || !qualityUserId || !rqUserId || !auditeurUserId) {
     throw new Error('Utilisateurs de démonstration introuvables.');
   }
 
@@ -1096,6 +1187,350 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
   await addPalletToShipment(pool, shipment.id, palletOne.id, stockUserId);
   await addPalletToShipment(pool, shipment.id, palletTwo.id, stockUserId);
   await confirmShipment(pool, shipment.id, stockUserId);
+
+  // 8. Phase 6: the horizontal QMS layer, exercised through its own six
+  //    acceptance scenarios (sections 62-67) on top of the Phase 1-5 chain
+  //    built above, so every non-conformity, CAPA, audit, complaint,
+  //    document and recall points at real operational records.
+  const poidsCategory = await idOf(pool, 'nonconformity_categories', 'POIDS');
+  const hygieneCategory = await idOf(pool, 'nonconformity_categories', 'HYGIENE');
+  const clientCategory = await idOf(pool, 'nonconformity_categories', 'CLIENT');
+
+  // 8a. Scenario 1 (section 62): NCR raised directly from the weight
+  //     control, without re-typing the control/Run/product/date it already
+  //     carries.
+  const weightNcr = await createNonconformity(
+    pool,
+    {
+      detectedAt: new Date(),
+      sourceType: 'FILLING_WEIGHT_CONTROL',
+      sourceId: weightControl.id,
+      categoryId: poidsCategory,
+      title: 'Sous-poids répétés au contrôle de remplissage',
+      description: '2 boîtes sous-poids détectées sur le contrôle de 20 échantillons (démo).',
+      severity: 'MAJEURE',
+      priority: 'HAUTE',
+      ownerUserId: qualityUserId,
+      dueAt: null,
+      qualityBlockRequired: false,
+      detectedBy: qualityUserId,
+      links: [{ entityType: 'PRODUCTION_RUN', entityId: run.id, relationshipType: 'AFFECTE' }],
+    },
+    qualityUserId,
+  );
+
+  await recordInvestigation(
+    pool,
+    weightNcr.id,
+    {
+      startedAt: new Date(),
+      completedAt: new Date(),
+      investigatorUserId: qualityUserId,
+      facts: 'Écart de réglage constaté sur la remplisseuse REMPL-1 (démo).',
+      immediateCorrection: 'Réglage immédiat de la remplisseuse et recontrôle des boîtes du lot en cours.',
+      impactAssessment: 'Impact limité au Run en cours, aucune expédition concernée.',
+      rootCauseRequired: true,
+      notes: null,
+    },
+    qualityUserId,
+  );
+
+  const rootCause = await recordRootCauseAnalysis(
+    pool,
+    weightNcr.id,
+    {
+      method: '5_POURQUOI',
+      analysisText: 'Analyse 5 Pourquoi menée avec le chef de ligne (démo).',
+      rootCause: 'Réglage incorrect de la remplisseuse (démo).',
+    },
+    qualityUserId,
+  );
+  await validateRootCause(pool, rootCause.id, rqUserId);
+  await updateNonconformityStatus(pool, weightNcr.id, 'ACTION_REQUISE', null, qualityUserId);
+
+  // 8b. Scenario 2 (section 63): CAPA with three actions, tracked to
+  //     effectiveness before it can close.
+  const weightCapa = await createCapa(
+    pool,
+    {
+      sourceNonconformityId: weightNcr.id,
+      title: 'Correction du réglage de la remplisseuse REMPL-1',
+      description: 'Actions correctives suite aux sous-poids répétés (démo).',
+      capaType: 'CORRECTIVE',
+      priority: 'HAUTE',
+      ownerUserId: productionUserId,
+      openedAt: new Date(),
+      dueAt: null,
+      effectivenessRequired: true,
+    },
+    qualityUserId,
+  );
+  const capaActionOne = await addCapaAction(
+    pool,
+    weightCapa.id,
+    {
+      actionType: 'ACTION_CORRECTIVE',
+      description: 'Réglage machine',
+      responsibleUserId: productionUserId,
+      plannedDate: null,
+      dueDate: null,
+    },
+    qualityUserId,
+  );
+  const capaActionTwo = await addCapaAction(
+    pool,
+    weightCapa.id,
+    {
+      actionType: 'ACTION_CORRECTIVE',
+      description: 'Former opérateur',
+      responsibleUserId: productionUserId,
+      plannedDate: null,
+      dueDate: null,
+    },
+    qualityUserId,
+  );
+  const capaActionThree = await addCapaAction(
+    pool,
+    weightCapa.id,
+    {
+      actionType: 'VERIFICATION',
+      description: 'Vérifier 3 productions suivantes',
+      responsibleUserId: qualityUserId,
+      plannedDate: null,
+      dueDate: null,
+    },
+    qualityUserId,
+  );
+  await completeCapaAction(pool, capaActionOne.id, 'Réglage effectué et documenté (démo).', productionUserId);
+  await completeCapaAction(pool, capaActionTwo.id, 'Formation réalisée le jour même (démo).', productionUserId);
+  await completeCapaAction(pool, capaActionThree.id, '3 productions suivantes conformes (démo).', qualityUserId);
+  await recordEffectivenessCheck(
+    pool,
+    weightCapa.id,
+    {
+      checkedAt: new Date(),
+      method: 'Contrôle poids sur 3 productions suivantes',
+      result: 'Aucun sous-poids constaté (démo).',
+      effective: true,
+      notes: null,
+    },
+    rqUserId,
+  );
+  await closeCapa(pool, weightCapa.id, rqUserId);
+  await updateNonconformityStatus(pool, weightNcr.id, 'CLOTUREE', null, qualityUserId);
+
+  // 8c. Scenario 3 (section 64): internal hygiene audit, 1 major finding
+  //     (which generates an NCR) and 2 observations.
+  const hygieneChecklistId = await idOf(pool, 'audit_checklists', 'CHK-HYG-001');
+  const hygieneAudit = await createAudit(
+    pool,
+    {
+      auditType: 'HYGIENE',
+      title: 'Audit interne hygiène atelier',
+      auditChecklistId: hygieneChecklistId,
+      plannedDate: new Date().toISOString().slice(0, 10),
+      scope: 'Atelier de production, ligne L1 (démo).',
+      leadAuditorUserId: auditeurUserId,
+      notes: null,
+    },
+    rqUserId,
+  );
+  await startAudit(pool, hygieneAudit.id, auditeurUserId);
+  const checklistItems = await pool.query<{ id: string; display_order: number }>(
+    'SELECT id, display_order FROM audit_checklist_items WHERE audit_checklist_id = $1 ORDER BY display_order',
+    [hygieneChecklistId],
+  );
+  const [itemOne, itemTwo, itemThree] = checklistItems.rows;
+  if (itemOne) {
+    await recordAuditResponse(
+      pool,
+      hygieneAudit.id,
+      { checklistItemId: itemOne.id, result: 'NON_CONFORME', observation: 'Surface non désinfectée en fin de poste (démo).', evidenceReference: null },
+      auditeurUserId,
+    );
+  }
+  if (itemTwo) {
+    await recordAuditResponse(
+      pool,
+      hygieneAudit.id,
+      { checklistItemId: itemTwo.id, result: 'OBSERVATION', observation: 'Port des gants à rappeler en début de poste (démo).', evidenceReference: null },
+      auditeurUserId,
+    );
+  }
+  if (itemThree) {
+    await recordAuditResponse(
+      pool,
+      hygieneAudit.id,
+      { checklistItemId: itemThree.id, result: 'OBSERVATION', observation: 'Relevé de température à horodater plus précisément (démo).', evidenceReference: null },
+      auditeurUserId,
+    );
+  }
+  const majorFinding = await createAuditFinding(
+    pool,
+    hygieneAudit.id,
+    {
+      findingType: 'NON_CONFORMITE',
+      description: 'Surface de travail non désinfectée en fin de poste (démo).',
+      severity: 'MAJEURE',
+      ownerUserId: qualityUserId,
+      dueAt: null,
+    },
+    auditeurUserId,
+  );
+  await createAuditFinding(
+    pool,
+    hygieneAudit.id,
+    {
+      findingType: 'OBSERVATION',
+      description: 'Port des gants à rappeler en début de poste (démo).',
+      severity: 'MINEURE',
+      ownerUserId: null,
+      dueAt: null,
+    },
+    auditeurUserId,
+  );
+  await createAuditFinding(
+    pool,
+    hygieneAudit.id,
+    {
+      findingType: 'OBSERVATION',
+      description: 'Relevé de température à horodater plus précisément (démo).',
+      severity: 'MINEURE',
+      ownerUserId: null,
+      dueAt: null,
+    },
+    auditeurUserId,
+  );
+  await completeAudit(pool, hygieneAudit.id, auditeurUserId);
+  await createNonconformityFromFinding(
+    pool,
+    majorFinding.id,
+    {
+      detectedAt: new Date(),
+      categoryId: hygieneCategory,
+      title: 'Constat majeur audit hygiène : surface non désinfectée',
+      severity: 'MAJEURE',
+      ownerUserId: qualityUserId,
+    },
+    rqUserId,
+  );
+
+  // 8d. Scenario 4 (section 65): customer complaint on the shipped Lot PF,
+  //     recovering the full chain (shipment/container/sterilization/run/raw
+  //     material) without manual reconstruction.
+  const complaint = await createComplaint(
+    pool,
+    {
+      receivedAt: new Date(),
+      customerId: clientX,
+      shipmentId: shipment.id,
+      finishedGoodLotId: finishedGoodLot.id,
+      palletId: palletOne.id,
+      complaintType: 'CORPS_ETRANGER',
+      description: 'Client signale un corps étranger dans une boîte du lot (démo).',
+      severity: 'CRITIQUE',
+      ownerUserId: qualityUserId,
+    },
+    stockUserId,
+  );
+  await createNonconformityFromComplaint(
+    pool,
+    complaint.id,
+    {
+      detectedAt: new Date(),
+      categoryId: clientCategory,
+      title: `Réclamation client - corps étranger - ${finishedGoodLot.lotCode}`,
+      description: 'Corps étranger signalé par le client sur le Lot PF livré (démo).',
+      severity: 'CRITIQUE',
+      ownerUserId: qualityUserId,
+    },
+    qualityUserId,
+  );
+
+  // 8e. Scenario 5 (section 66): PR-QA-004 reaches revision 03 as current,
+  //     then revision 04 is drafted, approved and put into effect - 03
+  //     becomes historical, never overwritten.
+  const document = await createQualityDocument(
+    pool,
+    {
+      documentCode: 'PR-QA-004',
+      title: 'Maîtrise des non-conformités',
+      documentType: 'PROCEDURE',
+      department: 'Qualité',
+      ownerUserId: rqUserId,
+      changeSummary: 'Version initiale (démo).',
+    },
+    rqUserId,
+  );
+  await approveRevision(pool, document.revisionId, rqUserId);
+  await activateRevision(pool, document.revisionId, rqUserId);
+
+  const revisionTwo = await createRevision(
+    pool,
+    document.id,
+    { changeSummary: 'Clarification du circuit de validation (démo).', fileReference: null },
+    rqUserId,
+  );
+  await approveRevision(pool, revisionTwo.id, rqUserId);
+  await activateRevision(pool, revisionTwo.id, rqUserId);
+
+  const revisionThree = await createRevision(
+    pool,
+    document.id,
+    { changeSummary: 'Ajout du lien avec le CAPA (démo).', fileReference: null },
+    rqUserId,
+  );
+  await approveRevision(pool, revisionThree.id, rqUserId);
+  await activateRevision(pool, revisionThree.id, rqUserId);
+
+  const revisionFour = await createRevision(
+    pool,
+    document.id,
+    { changeSummary: 'Intégration du lien avec les réclamations client (démo).', fileReference: null },
+    rqUserId,
+  );
+  await approveRevision(pool, revisionFour.id, rqUserId);
+  await activateRevision(pool, revisionFour.id, rqUserId);
+
+  const acknowledgment = await assignAcknowledgment(pool, revisionFour.id, productionUserId, rqUserId);
+  await acknowledgeDocument(pool, acknowledgment.id, productionUserId);
+
+  // 8f. Supplier quality incident (section 19), for the supplier
+  //     performance foundation.
+  await createSupplierIncident(
+    pool,
+    {
+      supplierId: supplier,
+      rawMaterialLotId: sardineReception.lotId,
+      receptionId: null,
+      detectedAt: new Date(),
+      category: 'Température',
+      description: 'Température de réception légèrement au-dessus de la tolérance (démo).',
+      severity: 'MINEURE',
+    },
+    qualityUserId,
+  );
+
+  // 8g. Scenario 6 (section 67): mock traceability exercise from LOT-MP-001,
+  //     impact computed from existing traceability, never a manual list.
+  const recallExercise = await createRecallEvent(
+    pool,
+    {
+      eventType: 'EXERCICE_TRACABILITE',
+      targetEntityType: 'RAW_MATERIAL_LOT',
+      targetEntityId: sardineReception.lotId,
+      reason: 'Exercice périodique de traçabilité (démo).',
+      severity: 'MINEURE',
+      scopeDescription: 'Exercice trimestriel de traçabilité amont/aval.',
+    },
+    qualityUserId,
+  );
+  await closeRecallEvent(
+    pool,
+    recallExercise.id,
+    `Exercice complété avec succès : ${recallExercise.affectedCount} enregistrements identifiés (démo).`,
+    qualityUserId,
+  );
 }
 
 export async function seedDatabase(pool: pg.Pool): Promise<boolean> {

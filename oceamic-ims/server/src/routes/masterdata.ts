@@ -13,6 +13,8 @@ import { requirePermission } from '../http/context.ts';
 import { decimalSchema, requiredTextSchema, uuidSchema } from '../http/schemas.ts';
 import { listUsers } from '../services/auth.ts';
 import {
+  createAuditChecklist,
+  createAuditChecklistItem,
   createCadenceStandard,
   createCustomer,
   createDowntimeCategory,
@@ -23,6 +25,7 @@ import {
   createLocation,
   createLossReason,
   createMarkingVerificationItem,
+  createNonconformityCategory,
   createProduct,
   createProductionLine,
   createSeamingParameter,
@@ -32,6 +35,8 @@ import {
   createSubcontractor,
   createSupplier,
   createVessel,
+  listAuditChecklistItems,
+  listAuditChecklists,
   listCadenceStandards,
   listCustomers,
   listDowntimeCategories,
@@ -42,6 +47,7 @@ import {
   listLocations,
   listLossReasons,
   listMarkingVerificationItems,
+  listNonconformityCategories,
   listProductionLines,
   listProductionStages,
   listProducts,
@@ -83,6 +89,8 @@ const activationSchema = z.object({
     'sterilization_programs',
     'marking_verification_items',
     'customers',
+    'nonconformity_categories',
+    'audit_checklists',
   ]),
   id: uuidSchema,
 });
@@ -514,5 +522,61 @@ export async function registerMasterDataRoutes(
     const { isActive } = z.object({ isActive: z.boolean() }).parse(request.body);
     await setActivation(pool, target, id, isActive, user.id);
     return { status: 'ok' };
+  });
+
+  // Phase 6: QMS reference data.
+  app.get('/api/nonconformity-categories', async (request) => {
+    requirePermission(request, 'qms:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listNonconformityCategories(pool, inactifs);
+  });
+
+  app.post('/api/nonconformity-categories', async (request, reply) => {
+    const user = requirePermission(request, 'masterdata:write');
+    const input = z.object({ code: requiredTextSchema, name: requiredTextSchema }).parse(request.body);
+    reply.status(201);
+    return createNonconformityCategory(pool, input, user.id);
+  });
+
+  app.get('/api/audit-checklists', async (request) => {
+    requirePermission(request, 'qms:read');
+    const { inactifs } = includeInactiveSchema.parse(request.query);
+    return listAuditChecklists(pool, inactifs);
+  });
+
+  app.post('/api/audit-checklists', async (request, reply) => {
+    const user = requirePermission(request, 'audit:plan');
+    const input = z
+      .object({
+        code: requiredTextSchema,
+        name: requiredTextSchema,
+        department: z.string().trim().min(1).nullable(),
+        process: z.string().trim().min(1).nullable(),
+        auditType: z.string().trim().min(1).nullable(),
+        standard: z.string().trim().min(1).nullable(),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createAuditChecklist(pool, input, user.id);
+  });
+
+  app.get('/api/audit-checklists/:id/items', async (request) => {
+    requirePermission(request, 'qms:read');
+    const { id } = z.object({ id: uuidSchema }).parse(request.params);
+    return listAuditChecklistItems(pool, id);
+  });
+
+  app.post('/api/audit-checklists/:id/items', async (request, reply) => {
+    const user = requirePermission(request, 'audit:plan');
+    const { id } = z.object({ id: uuidSchema }).parse(request.params);
+    const input = z
+      .object({
+        displayOrder: z.number().int().positive(),
+        question: requiredTextSchema,
+        expectedReference: z.string().trim().min(1).nullable(),
+      })
+      .parse(request.body);
+    reply.status(201);
+    return createAuditChecklistItem(pool, id, input, user.id);
   });
 }

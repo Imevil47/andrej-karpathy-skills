@@ -114,6 +114,33 @@ export function EmptyState({ text }: { text: string }) {
   return <div className="vide">{text}</div>;
 }
 
+/** A small set of named sections shown one at a time - used by detail
+ * screens with too many concerns for a single scrolling form (section 40). */
+export function Tabs({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: readonly Readonly<{ key: string; label: string }>[];
+  active: string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <div className="onglets">
+      {tabs.map((tab) => (
+        <button
+          key={tab.key}
+          type="button"
+          className={tab.key === active ? 'onglet actif' : 'onglet'}
+          onClick={() => onSelect(tab.key)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function DataTable({
   columns,
   children,

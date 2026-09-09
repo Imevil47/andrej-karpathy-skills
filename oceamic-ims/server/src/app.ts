@@ -6,19 +6,25 @@ import { ZodError } from 'zod';
 import type { AppConfig } from './config.ts';
 import { AppError } from './errors.ts';
 import { loadSessionUser } from './http/context.ts';
+import { registerAuditRoutes } from './routes/audits.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerCadenceRoutes } from './routes/cadence.ts';
+import { registerCapaRoutes } from './routes/capa.ts';
+import { registerComplaintRoutes } from './routes/complaints.ts';
 import { registerDeviationRoutes } from './routes/deviations.ts';
 import { registerDowntimeRoutes } from './routes/downtime.ts';
 import { registerFillingRoutes } from './routes/filling.ts';
 import { registerHomeRoutes } from './routes/home.ts';
 import { registerLotRoutes } from './routes/lots.ts';
 import { registerMasterDataRoutes } from './routes/masterdata.ts';
+import { registerNonconformityRoutes } from './routes/nonconformities.ts';
 import { registerPackagingRoutes } from './routes/packaging.ts';
 import { registerPalletRoutes } from './routes/pallets.ts';
 import { registerProcessRoutes } from './routes/process.ts';
 import { registerProductionRoutes } from './routes/production.ts';
 import { registerQualityRoutes } from './routes/quality.ts';
+import { registerQualityDocumentRoutes } from './routes/qualityDocuments.ts';
+import { registerRecallRoutes } from './routes/recall.ts';
 import { registerReceptionRoutes } from './routes/receptions.ts';
 import { registerSeamingRoutes } from './routes/seaming.ts';
 import { registerShipmentRoutes } from './routes/shipments.ts';
@@ -96,6 +102,12 @@ export async function buildApp(dependencies: AppDependencies): Promise<FastifyIn
   await registerPackagingRoutes(app, dependencies);
   await registerPalletRoutes(app, dependencies);
   await registerShipmentRoutes(app, dependencies);
+  await registerNonconformityRoutes(app, dependencies);
+  await registerCapaRoutes(app, dependencies);
+  await registerComplaintRoutes(app, dependencies);
+  await registerAuditRoutes(app, dependencies);
+  await registerQualityDocumentRoutes(app, dependencies);
+  await registerRecallRoutes(app, dependencies);
 
   return app;
 }

@@ -3,6 +3,7 @@ import { apiPost } from '../api';
 import { Badge, Card, DataTable, Field, Message, PageHeader } from '../components/ui';
 import { label } from '../format';
 import {
+  useAuditChecklists,
   useCadenceStandards,
   useCustomers,
   useDowntimeCategories,
@@ -13,6 +14,7 @@ import {
   useLocations,
   useLossReasons,
   useMarkingVerificationItems,
+  useNonconformityCategories,
   useProductionLines,
   useProducts,
   useSeamingParameters,
@@ -26,6 +28,7 @@ import {
 import { useResource } from '../hooks';
 
 const EQUIPMENT_TYPES = ['SERTISSEUSE', 'AUTOCLAVE', 'REMPLISSEUSE', 'AUTRE'] as const;
+const AUDIT_TYPES = ['INTERNE', 'CLIENT', 'CERTIFICATION', 'AUTORITE', 'FOURNISSEUR', 'HYGIENE', 'PROCESS', 'AUTRE'] as const;
 
 type UserRow = Readonly<{
   id: string;
@@ -59,6 +62,8 @@ export function Parametres() {
   const sterilizationPrograms = useSterilizationPrograms();
   const markingItems = useMarkingVerificationItems();
   const customers = useCustomers();
+  const nonconformityCategories = useNonconformityCategories();
+  const auditChecklists = useAuditChecklists();
   const users = useResource<readonly UserRow[]>('/api/users');
 
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +148,8 @@ export function Parametres() {
     maximumF0: '',
   });
   const [markingItemForm, setMarkingItemForm] = useState({ code: '', name: '' });
+  const [nonconformityCategoryForm, setNonconformityCategoryForm] = useState({ code: '', name: '' });
+  const [auditChecklistForm, setAuditChecklistForm] = useState({ code: '', name: '', auditType: 'INTERNE' });
 
   const run = async (action: () => Promise<unknown>, message: string, reload: () => void) => {
     setError(null);
@@ -1606,6 +1613,125 @@ export function Parametres() {
             <tr key={row.id}>
               <td>{row.code}</td>
               <td>{row.name}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Catégories de non-conformité">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/nonconformity-categories', nonconformityCategoryForm),
+              'Catégorie créée.',
+              nonconformityCategories.reload,
+            ).then(() => setNonconformityCategoryForm({ code: '', name: '' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={nonconformityCategoryForm.code}
+              onChange={(event) => setNonconformityCategoryForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={nonconformityCategoryForm.name}
+              onChange={(event) => setNonconformityCategoryForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(nonconformityCategories.data ?? []).length === 0}
+          emptyText="Aucune catégorie."
+        >
+          {(nonconformityCategories.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{row.isActive ? 'Oui' : 'Non'}</td>
+            </tr>
+          ))}
+        </DataTable>
+      </Card>
+
+      <Card title="Grilles de contrôle d'audit">
+        <form
+          className="filtres"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => apiPost('/api/audit-checklists', auditChecklistForm),
+              'Grille créée.',
+              auditChecklists.reload,
+            ).then(() => setAuditChecklistForm({ code: '', name: '', auditType: 'INTERNE' }));
+          }}
+        >
+          <Field label="Code" hint={null}>
+            <input
+              value={auditChecklistForm.code}
+              onChange={(event) => setAuditChecklistForm((f) => ({ ...f, code: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Nom" hint={null}>
+            <input
+              value={auditChecklistForm.name}
+              onChange={(event) => setAuditChecklistForm((f) => ({ ...f, name: event.target.value }))}
+              required
+            />
+          </Field>
+          <Field label="Type d'audit" hint={null}>
+            <select
+              value={auditChecklistForm.auditType}
+              onChange={(event) => setAuditChecklistForm((f) => ({ ...f, auditType: event.target.value }))}
+            >
+              {AUDIT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {label(type)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button type="submit" className="secondaire">
+              Ajouter
+            </button>
+          </div>
+        </form>
+        <p style={{ color: 'var(--texte-doux)' }}>
+          Les questions de chaque grille se gèrent une fois la grille créée (voir la documentation).
+        </p>
+        <DataTable
+          columns={[
+            { key: 'code', label: 'Code', numeric: false },
+            { key: 'nom', label: 'Nom', numeric: false },
+            { key: 'type', label: "Type d'audit", numeric: false },
+            { key: 'actif', label: 'Actif', numeric: false },
+          ]}
+          isEmpty={(auditChecklists.data ?? []).length === 0}
+          emptyText="Aucune grille de contrôle."
+        >
+          {(auditChecklists.data ?? []).map((row) => (
+            <tr key={row.id}>
+              <td>{row.code}</td>
+              <td>{row.name}</td>
+              <td>{label(row.auditType)}</td>
               <td>{row.isActive ? 'Oui' : 'Non'}</td>
             </tr>
           ))}

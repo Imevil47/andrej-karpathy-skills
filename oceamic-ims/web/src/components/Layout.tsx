@@ -50,12 +50,20 @@ const NAVIGATION: readonly NavigationGroup[] = [
   {
     title: 'Qualité',
     entries: [
+      { to: '/qualite/accueil', label: "Vue d'ensemble", permission: 'qms:read' },
       { to: '/qualite/controles', label: 'Contrôles', permission: 'quality:read' },
       { to: '/qualite/controles-poids', label: 'Contrôles poids', permission: 'production:read' },
       { to: '/qualite/controles-sertissage', label: 'Contrôles sertissage', permission: 'production:read' },
       { to: '/qualite/ccp', label: 'CCP', permission: 'production:read' },
       { to: '/qualite/lots-bloques', label: 'Lots bloqués', permission: 'quality:read' },
       { to: '/qualite/deviations', label: 'Déviations', permission: 'production:read' },
+      { to: '/qualite/non-conformites', label: 'Non-conformités', permission: 'qms:read' },
+      { to: '/qualite/capa', label: 'CAPA', permission: 'qms:read' },
+      { to: '/qualite/reclamations', label: 'Réclamations', permission: 'qms:read' },
+      { to: '/qualite/incidents-fournisseurs', label: 'Incidents fournisseur', permission: 'qms:read' },
+      { to: '/qualite/audits', label: 'Audits', permission: 'qms:read' },
+      { to: '/qualite/documents', label: 'Documents', permission: 'qms:read' },
+      { to: '/qualite/retraits', label: 'Retraits / Rappels', permission: 'qms:read' },
     ],
   },
   {
