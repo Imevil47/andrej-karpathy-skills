@@ -151,10 +151,13 @@ export async function createNonconformityFromComplaint(
       title: input.title,
       description: input.description,
       severity: input.severity,
-      priority: 'NORMALE',
+      // Same reasoning as audits.ts: a critical complaint-derived NCR must
+      // not silently land at normal priority (section 7.3).
+      priority: input.severity === 'CRITIQUE' ? 'HAUTE' : 'NORMALE',
       ownerUserId: input.ownerUserId,
       dueAt: null,
       qualityBlockRequired: false,
+      confirmSeverityPriority: true,
       detectedBy: actorId,
       links: [],
     },

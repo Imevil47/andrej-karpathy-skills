@@ -1213,12 +1213,14 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       ownerUserId: qualityUserId,
       dueAt: null,
       qualityBlockRequired: false,
+      confirmSeverityPriority: false,
       detectedBy: qualityUserId,
       links: [{ entityType: 'PRODUCTION_RUN', entityId: run.id, relationshipType: 'AFFECTE' }],
     },
     qualityUserId,
   );
 
+  await updateNonconformityStatus(pool, weightNcr.id, 'EN_ANALYSE', null, qualityUserId);
   await recordInvestigation(
     pool,
     weightNcr.id,
@@ -1250,6 +1252,8 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
 
   // 8b. Scenario 2 (section 63): CAPA with three actions, tracked to
   //     effectiveness before it can close.
+  const weightCapaOpenedAt = new Date();
+  const inTwoDays = new Date(weightCapaOpenedAt.getTime() + 2 * 24 * 60 * 60 * 1000);
   const weightCapa = await createCapa(
     pool,
     {
@@ -1259,8 +1263,8 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       capaType: 'CORRECTIVE',
       priority: 'HAUTE',
       ownerUserId: productionUserId,
-      openedAt: new Date(),
-      dueAt: null,
+      openedAt: weightCapaOpenedAt,
+      dueAt: inTwoDays,
       effectivenessRequired: true,
     },
     qualityUserId,
@@ -1273,7 +1277,7 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       description: 'Réglage machine',
       responsibleUserId: productionUserId,
       plannedDate: null,
-      dueDate: null,
+      dueDate: weightCapaOpenedAt.toISOString().slice(0, 10),
     },
     qualityUserId,
   );
@@ -1285,7 +1289,7 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       description: 'Former opérateur',
       responsibleUserId: productionUserId,
       plannedDate: null,
-      dueDate: null,
+      dueDate: weightCapaOpenedAt.toISOString().slice(0, 10),
     },
     qualityUserId,
   );
@@ -1297,7 +1301,7 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       description: 'Vérifier 3 productions suivantes',
       responsibleUserId: qualityUserId,
       plannedDate: null,
-      dueDate: null,
+      dueDate: inTwoDays.toISOString().slice(0, 10),
     },
     qualityUserId,
   );
@@ -1317,6 +1321,7 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
     rqUserId,
   );
   await closeCapa(pool, weightCapa.id, rqUserId);
+  await updateNonconformityStatus(pool, weightNcr.id, 'A_VERIFIER', null, qualityUserId);
   await updateNonconformityStatus(pool, weightNcr.id, 'CLOTUREE', null, qualityUserId);
 
   // 8c. Scenario 3 (section 64): internal hygiene audit, 1 major finding
@@ -1373,7 +1378,7 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       description: 'Surface de travail non désinfectée en fin de poste (démo).',
       severity: 'MAJEURE',
       ownerUserId: qualityUserId,
-      dueAt: null,
+      dueAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
     },
     auditeurUserId,
   );
@@ -1402,7 +1407,7 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
     auditeurUserId,
   );
   await completeAudit(pool, hygieneAudit.id, auditeurUserId);
-  await createNonconformityFromFinding(
+  const hygieneNcr = await createNonconformityFromFinding(
     pool,
     majorFinding.id,
     {
@@ -1413,6 +1418,39 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
       ownerUserId: qualityUserId,
     },
     rqUserId,
+  );
+
+  // A genuinely overdue CAPA and action (section 7.4/22): demo data must
+  // show the "CAPA en retard"/"Actions en retard" KPIs actually firing,
+  // never leave every due date null.
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const hygieneCapa = await createCapa(
+    pool,
+    {
+      sourceNonconformityId: hygieneNcr.id,
+      title: 'Renforcer le protocole de nettoyage de fin de poste',
+      description: 'Actions correctives suite au constat majeur d’audit hygiène (démo).',
+      capaType: 'CORRECTIVE',
+      priority: 'HAUTE',
+      ownerUserId: productionUserId,
+      openedAt: tenDaysAgo,
+      dueAt: threeDaysAgo,
+      effectivenessRequired: true,
+    },
+    qualityUserId,
+  );
+  await addCapaAction(
+    pool,
+    hygieneCapa.id,
+    {
+      actionType: 'ACTION_CORRECTIVE',
+      description: 'Réviser et afficher le protocole de nettoyage de fin de poste',
+      responsibleUserId: productionUserId,
+      plannedDate: null,
+      dueDate: threeDaysAgo.toISOString().slice(0, 10),
+    },
+    qualityUserId,
   );
 
   // 8d. Scenario 4 (section 65): customer complaint on the shipped Lot PF,

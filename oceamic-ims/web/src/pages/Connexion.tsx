@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import oceamicMark from '../assets/oceamic-mark.png';
 import { useAuth } from '../auth';
 import { Card, Field, Message } from '../components/ui';
 
@@ -25,12 +26,14 @@ export function Connexion() {
   return (
     <div className="page-connexion">
       <Card title={null}>
-        <h1 style={{ fontSize: 22, marginTop: 0 }}>
-          OCEAMIC <span style={{ color: 'var(--accent)' }}>IMS</span>
-        </h1>
-        <p style={{ color: 'var(--texte-doux)', marginTop: 0 }}>
-          Gestion matière première, stock et qualité
-        </p>
+        <div className="connexion-marque">
+          <img src={oceamicMark} alt="OCEAMIC" />
+          <h1>
+            OCEAMIC
+            <span>Laayoune II</span>
+          </h1>
+          <p>Système de gestion industrielle — IMS</p>
+        </div>
         <Message kind="erreur" text={error} />
         <form onSubmit={submit}>
           <div style={{ display: 'grid', gap: 14 }}>

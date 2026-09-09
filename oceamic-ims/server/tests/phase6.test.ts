@@ -367,6 +367,18 @@ describe('Phase 6 — QMS : non-conformités, CAPA, réclamations, audits, docum
     assert.equal(capa.statusCode, 201, capa.body);
     const capaId = (capa.json() as { id: string }).id;
 
+    // Walk the NCR to A_VERIFIER first: the workflow never lets an OUVERTE
+    // record jump straight to CLOTUREE (section 7.1).
+    for (const status of ['EN_ANALYSE', 'ACTION_REQUISE', 'A_VERIFIER']) {
+      const step = await context.app.inject({
+        method: 'POST',
+        url: `/api/nonconformities/${ncrId}/statut`,
+        headers: { cookie: qualiteCookie },
+        payload: { status, reason: null },
+      });
+      assert.equal(step.statusCode, 200, step.body);
+    }
+
     const closeAttempt = await context.app.inject({
       method: 'POST',
       url: `/api/nonconformities/${ncrId}/statut`,
@@ -896,8 +908,165 @@ describe('Phase 6 — QMS : non-conformités, CAPA, réclamations, audits, docum
       url: `/api/audits/${auditId}`,
       headers: { cookie: qualiteCookie },
     });
-    const payload = detail.json() as { audit: { status: string }; findings: readonly { resultingNonconformityId: string | null }[] };
+    const payload = detail.json() as {
+      audit: { status: string; openFindingCount: number };
+      findings: readonly { resultingNonconformityId: string | null }[];
+    };
     assert.equal(payload.audit.status, 'TERMINE');
     assert.ok(payload.findings[0]?.resultingNonconformityId);
+    // Audit execution status and finding follow-up status are two different
+    // things (section 7.7): an audit can be TERMINE while its finding is
+    // still open - this is what the "Audit terminé - N actions ouvertes"
+    // UI wording relies on, never silently implying everything is closed.
+    // (Also a numeric-typing regression test: audit_progress's COUNT(*)
+    // columns must be cast to ::integer, or the pg driver returns them as
+    // strings and this comparison would silently fail.)
+    assert.equal(payload.audit.openFindingCount, 1);
+
+    const listing = await context.app.inject({
+      method: 'GET',
+      url: '/api/audits',
+      headers: { cookie: qualiteCookie },
+    });
+    const auditRow = (listing.json() as readonly { id: string; status: string; openFindingCount: number }[]).find(
+      (row) => row.id === auditId,
+    );
+    assert.equal(auditRow?.status, 'TERMINE');
+    assert.equal(auditRow?.openFindingCount, 1);
+  });
+
+  it('une transition de statut de non-conformité invalide est refusée (section 7.1)', async () => {
+    const lotId = await newRawMaterialLot('LOT-MP-NCR-004');
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/api/nonconformities',
+      headers: { cookie: qualiteCookie },
+      payload: {
+        detectedAt: new Date().toISOString(),
+        sourceType: 'RAW_MATERIAL_LOT',
+        sourceId: lotId,
+        categoryId: context.fixtures.nonconformityCategoryId,
+        title: 'Test transition',
+        description: 'Test transition de statut.',
+        severity: 'MINEURE',
+        priority: 'NORMALE',
+        ownerUserId: null,
+        dueAt: null,
+        qualityBlockRequired: false,
+        links: [],
+      },
+    });
+    const ncrId = (created.json() as { id: string }).id;
+
+    // A fresh OUVERTE record can never jump straight to CLOTUREE.
+    const invalid = await context.app.inject({
+      method: 'POST',
+      url: `/api/nonconformities/${ncrId}/statut`,
+      headers: { cookie: qualiteCookie },
+      payload: { status: 'CLOTUREE', reason: null },
+    });
+    assert.equal(invalid.statusCode, 409, invalid.body);
+    assert.match((invalid.json() as { message: string }).message, /Transition de statut invalide/);
+
+    // Nor can it jump to ACTION_REQUISE, skipping the investigation step.
+    const skipped = await context.app.inject({
+      method: 'POST',
+      url: `/api/nonconformities/${ncrId}/statut`,
+      headers: { cookie: qualiteCookie },
+      payload: { status: 'ACTION_REQUISE', reason: null },
+    });
+    assert.equal(skipped.statusCode, 409, skipped.body);
+
+    // The one allowed next step succeeds.
+    const valid = await context.app.inject({
+      method: 'POST',
+      url: `/api/nonconformities/${ncrId}/statut`,
+      headers: { cookie: qualiteCookie },
+      payload: { status: 'EN_ANALYSE', reason: null },
+    });
+    assert.equal(valid.statusCode, 200, valid.body);
+  });
+
+  it("une non-conformité critique avec une priorité basse exige une confirmation explicite (section 7.3)", async () => {
+    const lotId = await newRawMaterialLot('LOT-MP-NCR-005');
+    const attempt = await context.app.inject({
+      method: 'POST',
+      url: '/api/nonconformities',
+      headers: { cookie: qualiteCookie },
+      payload: {
+        detectedAt: new Date().toISOString(),
+        sourceType: 'RAW_MATERIAL_LOT',
+        sourceId: lotId,
+        categoryId: context.fixtures.nonconformityCategoryId,
+        title: 'Anomalie critique',
+        description: 'Gravité critique avec priorité basse (test).',
+        severity: 'CRITIQUE',
+        priority: 'BASSE',
+        ownerUserId: null,
+        dueAt: null,
+        qualityBlockRequired: false,
+        links: [],
+      },
+    });
+    assert.equal(attempt.statusCode, 409, attempt.body);
+    assert.equal((attempt.json() as { code: string }).code, 'CONFIRMATION_REQUISE');
+
+    const confirmed = await context.app.inject({
+      method: 'POST',
+      url: '/api/nonconformities',
+      headers: { cookie: qualiteCookie },
+      payload: {
+        detectedAt: new Date().toISOString(),
+        sourceType: 'RAW_MATERIAL_LOT',
+        sourceId: lotId,
+        categoryId: context.fixtures.nonconformityCategoryId,
+        title: 'Anomalie critique',
+        description: 'Gravité critique avec priorité basse (test).',
+        severity: 'CRITIQUE',
+        priority: 'BASSE',
+        ownerUserId: null,
+        dueAt: null,
+        qualityBlockRequired: false,
+        links: [],
+        confirmSeverityPriority: true,
+      },
+    });
+    assert.equal(confirmed.statusCode, 201, confirmed.body);
+  });
+
+  it('un CAPA en retard est détecté correctement et remonte dans le tableau de bord qualité (section 7.4)', async () => {
+    const pastDue = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const capa = await context.app.inject({
+      method: 'POST',
+      url: '/api/capa',
+      headers: { cookie: qualiteCookie },
+      payload: {
+        sourceNonconformityId: null,
+        title: 'CAPA en retard (test)',
+        description: 'Test de détection de retard.',
+        capaType: 'PREVENTIVE',
+        priority: 'HAUTE',
+        ownerUserId: context.fixtures.users.QUALITE,
+        openedAt: pastDue,
+        dueAt: pastDue,
+        effectivenessRequired: false,
+      },
+    });
+    assert.equal(capa.statusCode, 201, capa.body);
+    const capaId = (capa.json() as { id: string }).id;
+
+    const detail = await context.app.inject({
+      method: 'GET',
+      url: `/api/capa/${capaId}`,
+      headers: { cookie: qualiteCookie },
+    });
+    assert.equal((detail.json() as { capa: { isOverdue: boolean } }).capa.isOverdue, true);
+
+    const summary = await context.app.inject({
+      method: 'GET',
+      url: '/api/qms/home-summary',
+      headers: { cookie: qualiteCookie },
+    });
+    assert.ok((summary.json() as { overdueCapa: number }).overdueCapa >= 1);
   });
 });

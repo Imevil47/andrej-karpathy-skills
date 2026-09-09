@@ -1,12 +1,23 @@
 :root {
+  /* Brand palette extracted from the official OCEAMIC Laayoune II logo:
+     the dark hull/wordmark blue as the primary brand color, the wave's
+     light cyan as the secondary accent. Primary actions (buttons, links,
+     the active nav state) use the brand color; green stays reserved for
+     semantic success only (see --succes below). */
   --fond: #eef0f4;
   --surface: #ffffff;
   --surface-2: #f7f8fa;
   --bordure: #e2e5eb;
   --texte: #1c2230;
   --texte-doux: #6b7280;
-  --accent: #1f6f5c;
-  --accent-doux: #e6f2ee;
+  --marque: #1c3a80;
+  --marque-doux: #e8ecf7;
+  --marque-cyan: #4fb0de;
+  --marque-cyan-doux: #eaf6fc;
+  /* Same hue, darkened for text use - #4fb0de fails WCAG AA as text on white. */
+  --marque-cyan-texte: #1f6f93;
+  --accent: var(--marque);
+  --accent-doux: var(--marque-doux);
   --alerte: #b42318;
   --alerte-doux: #fdecea;
   --avertissement: #b54708;
@@ -59,13 +70,36 @@ a:hover {
 }
 
 .sidebar .marque {
-  font-size: 19px;
-  font-weight: 700;
-  padding: 4px 10px 18px;
-  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 20px;
 }
-.sidebar .marque span {
-  color: var(--accent);
+.marque-logo {
+  height: 34px;
+  width: auto;
+  flex-shrink: 0;
+}
+.marque-texte {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.marque-nom {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--texte);
+  white-space: nowrap;
+}
+.marque-site {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--texte-doux);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .sidebar nav a {
@@ -178,11 +212,11 @@ a:hover {
   margin-left: 4px;
 }
 .indicateur.accent {
-  background: var(--texte);
+  background: var(--marque);
   color: #fff;
 }
 .indicateur.accent .titre {
-  color: #cbd2dd;
+  color: #c6d0ee;
 }
 
 /* --- Tableaux --------------------------------------------------------- */
@@ -461,6 +495,38 @@ button.lien {
 .page-connexion .carte {
   width: min(420px, 100%);
   margin: 0;
+}
+.connexion-marque {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.connexion-marque img {
+  height: 64px;
+  width: auto;
+}
+.connexion-marque h1 {
+  font-size: 22px;
+  margin: 0;
+  letter-spacing: -0.01em;
+  color: var(--texte);
+}
+.connexion-marque h1 span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--marque-cyan-texte);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 2px;
+}
+.connexion-marque p {
+  color: var(--texte-doux);
+  margin: 0;
+  font-size: 14px;
 }
 
 /* --- Responsive ------------------------------------------------------- */

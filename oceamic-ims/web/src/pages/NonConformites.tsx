@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { apiPost, buildQuery } from '../api';
+import { apiPost, buildQuery, RequestFailed } from '../api';
 import { useAuth } from '../auth';
 import { Badge, Card, DataTable, Field, Message, PageHeader } from '../components/ui';
 import { formatDate, label } from '../format';
@@ -41,7 +41,7 @@ export function NonConformites() {
   const [priority, setPriority] = useState('NORMALE');
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const create = async (event: React.FormEvent) => {
+  const create = async (event: React.FormEvent, confirmSeverityPriority = false) => {
     event.preventDefault();
     setCreateError(null);
     try {
@@ -58,9 +58,19 @@ export function NonConformites() {
         dueAt: null,
         qualityBlockRequired: false,
         links: [],
+        confirmSeverityPriority,
       });
       navigate(`/qualite/non-conformites/${created.id}`);
     } catch (failure) {
+      // Gravité critique + priorité basse/normale (section 7.3) : demander
+      // confirmation plutôt que refuser silencieusement ou bloquer sans recours.
+      if (failure instanceof RequestFailed && failure.code === 'CONFIRMATION_REQUISE') {
+        if (window.confirm(`${failure.message}\n\nConfirmer et créer quand même ?`)) {
+          await create(event, true);
+          return;
+        }
+        return;
+      }
       setCreateError((failure as Error).message);
     }
   };
@@ -72,7 +82,7 @@ export function NonConformites() {
 
       {can('ncr:manage') ? (
         <Card title="Déclarer une non-conformité">
-          <form onSubmit={create}>
+          <form id="creation" onSubmit={create}>
             <div className="grille-champs">
               <Field label="Catégorie" hint={null}>
                 <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>

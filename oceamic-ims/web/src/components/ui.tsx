@@ -101,6 +101,12 @@ const BADGE_TONES: Readonly<Record<string, string>> = {
   EXPEDIEE: 'succes',
   PLANIFIEE: 'info',
   CONSOMMEE: 'succes',
+  // Phase 6: QMS - "Efficace" stays distinct from "Conforme" (section 7.6):
+  // CAPA effectiveness is not product/process conformity.
+  EFFICACE: 'succes',
+  NON_EFFICACE: 'alerte',
+  EN_VIGUEUR: 'succes',
+  OBSOLETE: 'avertissement',
 };
 
 export function Badge({ value }: { value: string | null }) {

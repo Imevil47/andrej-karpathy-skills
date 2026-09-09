@@ -257,6 +257,8 @@ const LABELS: Readonly<Record<string, string>> = {
   APPROUVE: 'Approuvé',
   EN_VIGUEUR: 'En vigueur',
   OBSOLETE: 'Obsolète',
+  EFFICACE: 'Efficace',
+  NON_EFFICACE: 'Non efficace',
   ASSIGNEE: 'Assignée',
   ACQUITTEE: 'Acquittée',
   EXERCICE_TRACABILITE: 'Exercice de traçabilité',

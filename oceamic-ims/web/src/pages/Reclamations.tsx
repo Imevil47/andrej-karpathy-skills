@@ -78,7 +78,7 @@ export function Reclamations() {
 
       {can('complaint:manage') ? (
         <Card title="Enregistrer une réclamation">
-          <form onSubmit={create}>
+          <form id="creation" onSubmit={create}>
             <div className="grille-champs">
               <Field label="Client" hint={null}>
                 <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} required>

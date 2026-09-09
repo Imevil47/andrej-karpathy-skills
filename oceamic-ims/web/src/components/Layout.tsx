@@ -1,6 +1,23 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import oceamicMark from '../assets/oceamic-mark.png';
 import { useAuth } from '../auth';
 import { label } from '../format';
+
+// React Router does not scroll to a URL's #hash on client-side navigation
+// the way a full page load does - this restores that behavior so a link
+// like "#creation" (the "Actions rapides" shortcuts) actually lands on the
+// creation form, not just the top of the list.
+function useScrollToHash(): void {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash === '') {
+      return;
+    }
+    const target = document.getElementById(hash.slice(1));
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [hash]);
+}
 
 type NavigationEntry = Readonly<{ to: string; label: string; permission: string | null }>;
 
@@ -92,12 +109,17 @@ const NAVIGATION: readonly NavigationGroup[] = [
 
 export function Layout() {
   const { session, signOut, can } = useAuth();
+  useScrollToHash();
 
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="marque">
-          OCEAMIC <span>IMS</span>
+          <img src={oceamicMark} alt="OCEAMIC" className="marque-logo" />
+          <div className="marque-texte">
+            <span className="marque-nom">OCEAMIC</span>
+            <span className="marque-site">Laayoune II · IMS</span>
+          </div>
         </div>
         <nav>
           {NAVIGATION.map((group, index) => {

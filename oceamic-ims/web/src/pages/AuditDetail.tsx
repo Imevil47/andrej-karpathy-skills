@@ -86,7 +86,17 @@ export function AuditDetail() {
 
   return (
     <>
-      <PageHeader title={`Audit ${audit.auditCode}`} subtitle={audit.title} actions={<Badge value={audit.status} />} />
+      <PageHeader
+        title={`Audit ${audit.auditCode}`}
+        subtitle={
+          // Execution status and follow-up status are two different things
+          // (section 7.7) : a completed audit can still have open findings.
+          audit.status === 'TERMINE' && audit.openFindingCount > 0
+            ? `${audit.title} — ${audit.openFindingCount} action${audit.openFindingCount > 1 ? 's' : ''} ouverte${audit.openFindingCount > 1 ? 's' : ''}`
+            : audit.title
+        }
+        actions={<Badge value={audit.status} />}
+      />
       <Message kind="erreur" text={error} />
       <Message kind="succes" text={success} />
 

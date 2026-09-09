@@ -410,6 +410,36 @@ export const NONCONFORMITY_OPEN_STATUSES: readonly NonconformityStatus[] = [
   'A_VERIFIER',
 ];
 
+/**
+ * Allowed next statuses for a non-conformity, keyed by current status
+ * (section 4/57-style discipline extended to the workflow itself): a fresh
+ * OUVERTE record can never jump straight to CLOTUREE, and CLOTUREE is only
+ * reachable from A_VERIFIER, so closing always passes through a
+ * verification step. Enforced server-side in `updateNonconformityStatus`,
+ * never only a UI convention - the same list also drives which transitions
+ * the screen offers.
+ */
+export const NONCONFORMITY_ALLOWED_TRANSITIONS: Readonly<Record<NonconformityStatus, readonly NonconformityStatus[]>> = {
+  OUVERTE: ['EN_ANALYSE', 'ANNULEE'],
+  EN_ANALYSE: ['ACTION_REQUISE', 'EN_ATTENTE', 'ANNULEE'],
+  ACTION_REQUISE: ['EN_ATTENTE', 'A_VERIFIER', 'ANNULEE'],
+  EN_ATTENTE: ['ACTION_REQUISE', 'A_VERIFIER', 'ANNULEE'],
+  A_VERIFIER: ['ACTION_REQUISE', 'CLOTUREE', 'ANNULEE'],
+  CLOTUREE: [],
+  ANNULEE: [],
+};
+
+/** The single most logical next step from a given status, shown as the
+ * primary action; every other allowed transition stays reachable through a
+ * secondary "Changer le statut" control (section 7.1). */
+export const NONCONFORMITY_PRIMARY_NEXT_STATUS: Readonly<Partial<Record<NonconformityStatus, NonconformityStatus>>> = {
+  OUVERTE: 'EN_ANALYSE',
+  EN_ANALYSE: 'ACTION_REQUISE',
+  ACTION_REQUISE: 'A_VERIFIER',
+  EN_ATTENTE: 'ACTION_REQUISE',
+  A_VERIFIER: 'CLOTUREE',
+};
+
 // Polymorphic linking (section 5): entity_type spans every module an NCR,
 // complaint, recall or audit finding can point back to - validated in the
 // service layer, never a real foreign key (the same reasoning as

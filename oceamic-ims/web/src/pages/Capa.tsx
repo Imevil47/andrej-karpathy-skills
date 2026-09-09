@@ -38,9 +38,16 @@ export function Capa() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [capaType, setCapaType] = useState('CORRECTIVE');
+  const [priority, setPriority] = useState('NORMALE');
+  const [dueAt, setDueAt] = useState('');
   const [ownerUserId, setOwnerUserId] = useState('');
   const [effectivenessRequired, setEffectivenessRequired] = useState(true);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // A HAUTE/URGENTE CAPA without a due date defeats the "CAPA en retard" KPI
+  // before it can ever fire (section 7.4) - the deadline is required for
+  // those priorities, only encouraged for BASSE/NORMALE.
+  const dueDateRequired = priority === 'HAUTE' || priority === 'URGENTE';
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -51,10 +58,10 @@ export function Capa() {
         title: title.trim(),
         description: description.trim(),
         capaType,
-        priority: 'NORMALE',
+        priority,
         ownerUserId,
         openedAt: new Date().toISOString(),
-        dueAt: null,
+        dueAt: dueAt === '' ? null : new Date(dueAt).toISOString(),
         effectivenessRequired,
       });
       navigate(`/qualite/capa/${created.id}`);
@@ -70,7 +77,7 @@ export function Capa() {
 
       {can('capa:manage') ? (
         <Card title={sourceNonconformityId ? 'Créer un CAPA depuis la non-conformité' : 'Créer un CAPA'}>
-          <form onSubmit={create}>
+          <form id="creation" onSubmit={create}>
             <div className="grille-champs">
               <Field label="Titre" hint={null}>
                 <input value={title} onChange={(event) => setTitle(event.target.value)} required />
@@ -84,6 +91,17 @@ export function Capa() {
                   <option value="PREVENTIVE">Préventive</option>
                   <option value="CORRECTIVE_PREVENTIVE">Corrective et préventive</option>
                 </select>
+              </Field>
+              <Field label="Priorité" hint={null}>
+                <select value={priority} onChange={(event) => setPriority(event.target.value)}>
+                  <option value="BASSE">Basse</option>
+                  <option value="NORMALE">Normale</option>
+                  <option value="HAUTE">Haute</option>
+                  <option value="URGENTE">Urgente</option>
+                </select>
+              </Field>
+              <Field label="Échéance" hint={dueDateRequired ? 'Obligatoire pour une priorité haute ou urgente.' : 'Recommandée.'}>
+                <input type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} required={dueDateRequired} />
               </Field>
               <Field label="Responsable" hint={null}>
                 <select value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} required>
@@ -164,9 +182,9 @@ export function Capa() {
                     row.latestEffective === null ? (
                       <Badge value="A_VERIFIER" />
                     ) : row.latestEffective ? (
-                      <Badge value="CONFORME" />
+                      <Badge value="EFFICACE" />
                     ) : (
-                      <Badge value="NON_CONFORME" />
+                      <Badge value="NON_EFFICACE" />
                     )
                   ) : (
                     '-'

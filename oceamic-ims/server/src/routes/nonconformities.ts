@@ -94,13 +94,18 @@ export async function registerNonconformityRoutes(
         dueAt: z.coerce.date().nullable(),
         qualityBlockRequired: z.boolean(),
         links: z.array(linkInputSchema),
+        confirmSeverityPriority: z.boolean().nullish(),
       })
       .refine((value) => (value.sourceType === null) === (value.sourceId === null), {
         message: 'sourceType et sourceId doivent être renseignés ensemble.',
       })
       .parse(request.body);
     reply.status(201);
-    return createNonconformity(pool, { ...input, detectedBy: user.id }, user.id);
+    return createNonconformity(
+      pool,
+      { ...input, confirmSeverityPriority: input.confirmSeverityPriority ?? false, detectedBy: user.id },
+      user.id,
+    );
   });
 
   app.post('/api/nonconformities/:id/liens', async (request, reply) => {
@@ -115,8 +120,10 @@ export async function registerNonconformityRoutes(
   app.post('/api/nonconformities/:id/gravite', async (request) => {
     const user = requirePermission(request, 'ncr:manage');
     const { id } = z.object({ id: uuidSchema }).parse(request.params);
-    const { severity } = z.object({ severity: z.enum(QMS_SEVERITIES) }).parse(request.body);
-    await updateNonconformitySeverity(pool, id, severity, user.id);
+    const { severity, confirmSeverityPriority } = z
+      .object({ severity: z.enum(QMS_SEVERITIES), confirmSeverityPriority: z.boolean().nullish() })
+      .parse(request.body);
+    await updateNonconformitySeverity(pool, id, severity, confirmSeverityPriority ?? false, user.id);
     return { status: 'ok' };
   });
 

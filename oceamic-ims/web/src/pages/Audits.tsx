@@ -67,7 +67,7 @@ export function Audits() {
 
       {can('audit:plan') ? (
         <Card title="Planifier un audit">
-          <form onSubmit={create}>
+          <form id="creation" onSubmit={create}>
             <div className="grille-champs">
               <Field label="Type" hint={null}>
                 <select value={auditType} onChange={(event) => setAuditType(event.target.value)}>
@@ -161,6 +161,12 @@ export function Audits() {
                 <td className="nombre">{row.openFindingCount}</td>
                 <td>
                   <Badge value={row.status} />
+                  {row.status === 'TERMINE' && row.openFindingCount > 0 ? (
+                    <div className="badge avertissement" style={{ marginTop: 6, whiteSpace: 'normal' }}>
+                      {row.openFindingCount} action{row.openFindingCount > 1 ? 's' : ''} ouverte
+                      {row.openFindingCount > 1 ? 's' : ''}
+                    </div>
+                  ) : null}
                 </td>
               </tr>
             ))}

@@ -1558,3 +1558,58 @@ entrepôt de données BI avancé. La traçabilité et le calcul d'impact des ret
 rappels s'appuient exclusivement sur les relations opérationnelles déjà enregistrées
 dans les phases précédentes ; aucune donnée qualité n'est jamais déduite ou inventée
 en dehors de ce qui est explicitement saisi ou calculé.
+
+---
+
+# Corrections QMS (audit ciblé post-Phase 6)
+
+## 113. Transitions de statut d'une non-conformité contraintes
+
+Une non-conformité ne change de statut que selon
+`NONCONFORMITY_ALLOWED_TRANSITIONS` (`server/src/domain/types.ts`), vérifié côté
+serveur dans `updateNonconformityStatus` — jamais seulement une convention d'écran.
+`OUVERTE` ne peut mener qu'à `EN_ANALYSE` ou `ANNULEE` ; `CLOTUREE` n'est atteignable
+que depuis `A_VERIFIER`. Chaque statut définit aussi un « statut suivant principal »
+(`NONCONFORMITY_PRIMARY_NEXT_STATUS`) : l'écran propose ce statut comme action
+principale, et les autres transitions valides via un contrôle secondaire « Changer le
+statut », jamais six boutons de statut à plat.
+
+## 114. Cohérence gravité/priorité
+
+Une gravité `CRITIQUE` ne doit jamais coexister silencieusement avec une priorité
+`BASSE`/`NORMALE`. Ce n'est pas un blocage strict (un incident critique déjà maîtrisé
+peut légitimement rester non urgent) mais une confirmation explicite exigée, la même
+mécanique que la confirmation d'affectation multi-ligne en Phase 3
+(`confirmationRequiredError`, code `CONFIRMATION_REQUISE`) : sans confirmation,
+`createNonconformity`/`updateNonconformitySeverity` refusent l'opération avec un
+message explicite plutôt que d'accepter silencieusement l'incohérence. Les
+non-conformités créées automatiquement depuis un constat d'audit ou une réclamation
+(sections 18/24) dérivent leur priorité de la gravité (`CRITIQUE` → `HAUTE`) au lieu
+de toujours retomber sur `NORMALE`.
+
+## 115. Échéance CAPA encouragée, obligatoire pour une priorité haute
+
+Les écrans de création d'un CAPA et d'une action CAPA exposent un champ échéance ;
+il devient obligatoire dès que la priorité est `HAUTE` ou `URGENTE`, faute de quoi le
+KPI « CAPA en retard »/« Actions en retard » (section 7.4) ne peut jamais se déclencher.
+La détection du retard elle-même existait déjà (`isOverdue`, vues
+`capa_action_progress`/`capa_summary`) ; le correctif porte sur la saisie, pas le
+calcul.
+
+## 116. Libellé de l'efficacité CAPA distinct de la conformité produit
+
+Un contrôle d'efficacité CAPA s'affiche « Efficace »/« Non efficace », jamais
+« Conforme »/« Non conforme » : ce dernier libellé, déjà utilisé pour la conformité
+produit/procédé (contrôles poids, sertissage...), prêtait à confusion sur ce que le
+contrôle évalue réellement.
+
+## 117. Clarté du statut d'exécution d'un audit face au suivi des constats
+
+Le statut `TERMINE` d'un audit (fin de la grille de contrôle) et le statut des
+constats qu'il a soulevés (`audit_findings.status`) restent deux informations
+distinctes, jamais fusionnées : un audit `TERMINE` avec des constats encore ouverts
+l'affiche explicitement (« Audit terminé — N actions ouvertes »), sur la liste comme
+sur la fiche. `audit_progress.open_finding_count` (et les autres compteurs de cette
+vue) sont désormais castés en `::integer` : laissés en `bigint` implicite, le pilote
+PostgreSQL les retournait en chaîne de caractères côté API, cassant silencieusement
+toute comparaison numérique côté client.

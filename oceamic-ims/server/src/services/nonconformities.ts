@@ -1,15 +1,16 @@
 import type pg from 'pg';
 import { withTransaction, type DatabaseClient } from '../db/pool.ts';
-import type {
-  NonconformityLinkRelationship,
-  NonconformityStatus,
-  QmsBlockableEntityType,
-  QmsEntityType,
-  QmsPriority,
-  QmsSeverity,
-  RootCauseMethod,
+import {
+  NONCONFORMITY_ALLOWED_TRANSITIONS,
+  type NonconformityLinkRelationship,
+  type NonconformityStatus,
+  type QmsBlockableEntityType,
+  type QmsEntityType,
+  type QmsPriority,
+  type QmsSeverity,
+  type RootCauseMethod,
 } from '../domain/types.ts';
-import { conflictError, notFoundError } from '../errors.ts';
+import { conflictError, confirmationRequiredError, notFoundError } from '../errors.ts';
 import { recordAudit } from './audit.ts';
 import { nextOperationalCode } from './codes.ts';
 import { decideFgQuality } from './finishedGoodsQuality.ts';
@@ -25,6 +26,7 @@ export type Nonconformity = Readonly<{
   nonconformityCode: string;
   status: NonconformityStatus;
   severity: QmsSeverity;
+  priority: QmsPriority;
 }>;
 
 export async function requireNonconformity(
@@ -36,12 +38,39 @@ export async function requireNonconformity(
     nonconformity_code: string;
     status: NonconformityStatus;
     severity: QmsSeverity;
-  }>('SELECT id, nonconformity_code, status, severity FROM nonconformities WHERE id = $1', [id]);
+    priority: QmsPriority;
+  }>('SELECT id, nonconformity_code, status, severity, priority FROM nonconformities WHERE id = $1', [id]);
   const row = result.rows[0];
   if (!row) {
     throw notFoundError('Non-conformité', id);
   }
-  return { id: row.id, nonconformityCode: row.nonconformity_code, status: row.status, severity: row.severity };
+  return {
+    id: row.id,
+    nonconformityCode: row.nonconformity_code,
+    status: row.status,
+    severity: row.severity,
+    priority: row.priority,
+  };
+}
+
+// A CRITIQUE severity should never silently coexist with a BASSE/NORMALE
+// operational priority (section 7.3): not a hard block (a critical issue
+// that is already fully contained can legitimately stay non-urgent), but a
+// confirmation the operator must explicitly give, the same discipline as
+// the cross-line confirmation in cadence.ts.
+const LOW_PRIORITIES: readonly QmsPriority[] = ['BASSE', 'NORMALE'];
+
+function assertSeverityPriorityConsistency(
+  severity: QmsSeverity,
+  priority: QmsPriority,
+  confirmed: boolean,
+): void {
+  if (severity === 'CRITIQUE' && LOW_PRIORITIES.includes(priority) && !confirmed) {
+    throw confirmationRequiredError(
+      `Attention.\nGravité critique avec une priorité ${priority === 'BASSE' ? 'basse' : 'normale'} : la priorité recommandée pour une non-conformité critique est au moins « Haute ».`,
+      { severity, priority },
+    );
+  }
 }
 
 async function insertLink(
@@ -80,6 +109,7 @@ export type CreateNonconformityInput = Readonly<{
   qualityBlockRequired: boolean;
   detectedBy: string;
   links: readonly NonconformityLinkInput[];
+  confirmSeverityPriority: boolean;
 }>;
 
 /**
@@ -93,6 +123,7 @@ export async function createNonconformity(
   input: CreateNonconformityInput,
   actorId: string,
 ): Promise<Nonconformity> {
+  assertSeverityPriorityConsistency(input.severity, input.priority, input.confirmSeverityPriority);
   return withTransaction(pool, async (client) => {
     const category = await client.query('SELECT id FROM nonconformity_categories WHERE id = $1', [
       input.categoryId,
@@ -152,7 +183,7 @@ export async function createNonconformity(
       context: null,
     });
 
-    return { id: row.id, nonconformityCode: code, status: row.status, severity: input.severity };
+    return { id: row.id, nonconformityCode: code, status: row.status, severity: input.severity, priority: input.priority };
   });
 }
 
@@ -185,10 +216,12 @@ export async function updateNonconformitySeverity(
   pool: pg.Pool,
   nonconformityId: string,
   severity: QmsSeverity,
+  confirmSeverityPriority: boolean,
   actorId: string,
 ): Promise<void> {
   await withTransaction(pool, async (client) => {
     const ncr = await requireNonconformity(client, nonconformityId);
+    assertSeverityPriorityConsistency(severity, ncr.priority, confirmSeverityPriority);
     await client.query('UPDATE nonconformities SET severity = $2, updated_at = now() WHERE id = $1', [
       ncr.id,
       severity,
@@ -272,6 +305,13 @@ export async function updateNonconformityStatus(
   await withTransaction(pool, async (client) => {
     const ncr = await requireNonconformity(client, nonconformityId);
     assertNotFinal(ncr);
+    const allowed = NONCONFORMITY_ALLOWED_TRANSITIONS[ncr.status];
+    if (!allowed.includes(status)) {
+      throw conflictError(
+        `Transition de statut invalide.\nDepuis ${ncr.status}, seuls les statuts suivants sont autorisés : ${allowed.join(', ')}.`,
+        { nonconformityId: ncr.id, from: ncr.status, to: status, allowed },
+      );
+    }
     if (status === 'CLOTUREE') {
       await assertNoOpenCapa(client, ncr.id);
     }

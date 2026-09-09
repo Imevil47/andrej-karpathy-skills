@@ -46,6 +46,12 @@ contient ni comptabilité complète, ni ERP commercial, ni gestion complète des
 ni GMAO, ni portail fournisseur/client, ni prédiction assistée par IA, mais
 l'architecture est conçue pour les accueillir sans refonte.
 
+Une passe ultérieure a appliqué l'**identité visuelle officielle OCEAMIC Laayoune II**
+(logo, palette de marque) et corrigé un ensemble de règles métier QMS identifiées lors
+d'un audit ciblé de la Phase 6 (transitions de statut, cohérence gravité/priorité,
+échéances CAPA, clarté du statut d'audit) — voir la [section 11](#11-identité-visuelle-et-corrections-qms-phase-6)
+pour le détail.
+
 L'interface utilisateur est intégralement en français. Le code, les noms de tables et
 les commentaires techniques sont en anglais.
 
@@ -667,3 +673,70 @@ NODE_ENV=production node server/dist/index.js
 `web/dist` contient des fichiers statiques à servir par le serveur web de votre choix,
 en relayant `/api` vers l'API. En production, `NODE_ENV=production` active le cookie de
 session `secure` et interdit `db:reset`.
+
+---
+
+## 11. Identité visuelle et corrections QMS (Phase 6)
+
+### Identité visuelle
+
+Le logo officiel OCEAMIC Laayoune II est la source de vérité de la marque ; il n'a été
+ni redessiné ni réinterprété. `web/src/assets/oceamic-mark.png` isole le pictogramme
+(bateau + vague), fond transparent, utilisé dans la barre latérale, l'écran de
+connexion et le favicon (`web/public/favicon.png`,
+`web/public/apple-touch-icon.png`) — le lockup complet fourni était rogné sur son bord
+droit ("OCEAMIC" et "Laayoune II" tronqués), donc le nom est composé en typographie web
+à côté du pictogramme plutôt que d'afficher l'image tronquée.
+
+La palette (`web/src/styles.css`, tokens `--marque*`) est extraite par échantillonnage
+des pixels du logo : bleu marine `#1c3a80` (coque du bateau, texte "OCEAMIC") comme
+couleur de marque principale, cyan `#4fb0de` (vague) comme accent secondaire — une
+variante assombrie `--marque-cyan-texte` (`#1f6f93`) est utilisée partout où le cyan
+sert de texte, le cyan clair ne passant pas le contraste WCAG AA sur fond blanc. Les
+actions principales (boutons, liens, état actif de la navigation) utilisent la couleur
+de marque ; le vert (`--succes`) reste réservé aux états de succès sémantiques
+(Conforme, Libéré, Terminé, Efficace...), jamais réutilisé pour une action.
+
+### Corrections du workflow QMS
+
+Un audit ciblé de la Phase 6 a identifié et corrigé les points suivants (détail des
+règles dans [`docs/regles-metier.md`](docs/regles-metier.md), sections 94 et
+suivantes) :
+
+- **Transitions de statut d'une non-conformité contraintes** (règle 7.1) : l'écran
+  n'offre plus les six statuts en boutons plats — un statut suivant « principal » est
+  proposé, les autres transitions valides restent accessibles via « Changer le
+  statut ». Le serveur refuse toute transition hors de la liste autorisée
+  (`NONCONFORMITY_ALLOWED_TRANSITIONS`), pas seulement l'écran : une non-conformité
+  fraîchement `OUVERTE` ne peut plus sauter directement à `CLOTUREE`, qui n'est
+  atteignable que depuis `A_VERIFIER`.
+- **Cohérence gravité/priorité** (règle 7.3) : une gravité `CRITIQUE` avec une
+  priorité `BASSE`/`NORMALE` exige désormais une confirmation explicite
+  (`CONFIRMATION_REQUISE`, la même mécanique que la confirmation d'affectation
+  multi-ligne en Phase 3) plutôt que de coexister silencieusement. Les non-conformités
+  créées automatiquement depuis un constat d'audit ou une réclamation dérivent
+  maintenant leur priorité de la gravité au lieu de toujours retomber sur `NORMALE`.
+- **Échéances CAPA** (règle 7.4) : les formulaires de création d'un CAPA et d'une
+  action CAPA exposent désormais un champ échéance, obligatoire pour une priorité
+  `HAUTE`/`URGENTE`. Un bug de typage a aussi été corrigé : la vue `audit_progress`
+  ne castait pas ses `COUNT(*)` en `::integer`, si bien que `openFindingCount`
+  revenait comme une chaîne de caractères côté API.
+- **Libellé de l'efficacité CAPA** (règle 7.6) : affiché « Efficace »/« Non efficace »
+  plutôt que « Conforme »/« Non conforme », qui prêtait à confusion avec la conformité
+  produit/procédé.
+- **Clarté du statut d'un audit** (règle 7.7) : un audit `TERMINE` avec des constats
+  encore ouverts l'affiche explicitement (« Audit terminé — N actions ouvertes »),
+  liste et fiche, plutôt que de laisser croire que tout est clos.
+- **Accès rapides vs actions rapides** (règle 7.9) : la page Qualité — Vue d'ensemble
+  distingue désormais la navigation pure (« Accès rapides ») des raccourcis de
+  création (« Actions rapides », qui mènent directement au formulaire de création de
+  chaque écran).
+
+Le lien relationnel réel entre une non-conformité, une réclamation, une expédition,
+une palette, un Lot PF, un cycle de stérilisation, un Run et les Lots MP d'origine
+(règle 7.10) a été vérifié : `complaintDetail` (`server/src/services/qmsQueries.ts`)
+recalcule cette chaîne via une jointure relationnelle sur neuf tables à chaque
+consultation, jamais du texte d'affichage. Une vérification exhaustive confirme
+également qu'aucune valeur d'énumération brute n'est exposée à l'écran : les 105
+valeurs d'énumération de la Phase 6 passent toutes par `label()` ou une correspondance
+dédiée.

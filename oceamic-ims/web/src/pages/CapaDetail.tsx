@@ -62,6 +62,7 @@ export function CapaDetail() {
   const [actionType, setActionType] = useState('ACTION_CORRECTIVE');
   const [actionDescription, setActionDescription] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState('');
+  const [actionDueDate, setActionDueDate] = useState('');
 
   const [checkMethod, setCheckMethod] = useState('');
   const [checkResult, setCheckResult] = useState('');
@@ -176,12 +177,13 @@ export function CapaDetail() {
                     description: actionDescription.trim(),
                     responsibleUserId,
                     plannedDate: null,
-                    dueDate: null,
+                    dueDate: actionDueDate === '' ? null : actionDueDate,
                   }),
                 'Action ajoutée.',
               ).then(() => {
                 setActionDescription('');
                 setResponsibleUserId('');
+                setActionDueDate('');
               });
             }}
           >
@@ -205,6 +207,17 @@ export function CapaDetail() {
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field
+              label="Échéance"
+              hint={capa.priority === 'HAUTE' || capa.priority === 'URGENTE' ? 'Obligatoire : CAPA à priorité haute ou urgente.' : 'Recommandée.'}
+            >
+              <input
+                type="date"
+                value={actionDueDate}
+                onChange={(event) => setActionDueDate(event.target.value)}
+                required={capa.priority === 'HAUTE' || capa.priority === 'URGENTE'}
+              />
             </Field>
             <div style={{ display: 'flex', alignItems: 'end' }}>
               <button type="submit" className="secondaire">
@@ -317,7 +330,7 @@ export function CapaDetail() {
                 <td>{formatDateTime(row.checkedAt)}</td>
                 <td>{row.method}</td>
                 <td>{row.result}</td>
-                <td>{row.effective ? <Badge value="CONFORME" /> : <Badge value="NON_CONFORME" />}</td>
+                <td>{row.effective ? <Badge value="EFFICACE" /> : <Badge value="NON_EFFICACE" />}</td>
                 <td>{row.checkedByName}</td>
               </tr>
             ))}

@@ -48,12 +48,16 @@ SELECT c.id AS capa_id,
 -- Audit progress: responses recorded against the checklist attached to the
 -- audit (if any), and open findings - the "Constats / Actions ouvertes"
 -- columns of the Audit screen (section 42).
+-- Every count is cast to ::integer, the same discipline as
+-- capa_action_progress above: left uncast, COUNT(*) is bigint and the pg
+-- driver returns it as a string, silently breaking any numeric comparison
+-- (`=== 3`) on the API response.
 CREATE VIEW audit_progress AS
 SELECT a.id AS audit_id,
-       COALESCE(items.total_items, 0)      AS total_checklist_items,
-       COALESCE(responses.response_count, 0) AS response_count,
-       COALESCE(findings.finding_count, 0)   AS finding_count,
-       COALESCE(findings.open_finding_count, 0) AS open_finding_count
+       COALESCE(items.total_items, 0)::integer      AS total_checklist_items,
+       COALESCE(responses.response_count, 0)::integer AS response_count,
+       COALESCE(findings.finding_count, 0)::integer   AS finding_count,
+       COALESCE(findings.open_finding_count, 0)::integer AS open_finding_count
   FROM audits a
   LEFT JOIN LATERAL (
         SELECT COUNT(*) AS total_items FROM audit_checklist_items i

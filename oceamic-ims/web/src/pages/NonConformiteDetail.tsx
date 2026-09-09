@@ -55,7 +55,27 @@ type NonconformityDetail = Readonly<{
 
 type AuditEntry = Readonly<{ id: string; occurredAt: string; action: string; userName: string | null }>;
 
-const STATUSES = ['OUVERTE', 'EN_ANALYSE', 'ACTION_REQUISE', 'EN_ATTENTE', 'A_VERIFIER', 'CLOTUREE', 'ANNULEE'] as const;
+type NcrStatus = 'OUVERTE' | 'EN_ANALYSE' | 'ACTION_REQUISE' | 'EN_ATTENTE' | 'A_VERIFIER' | 'CLOTUREE' | 'ANNULEE';
+
+// Mirrors server/src/domain/types.ts NONCONFORMITY_ALLOWED_TRANSITIONS /
+// NONCONFORMITY_PRIMARY_NEXT_STATUS - the server is the enforcement point
+// (section 7.1), this is only what the screen offers.
+const NCR_ALLOWED_TRANSITIONS: Readonly<Record<NcrStatus, readonly NcrStatus[]>> = {
+  OUVERTE: ['EN_ANALYSE', 'ANNULEE'],
+  EN_ANALYSE: ['ACTION_REQUISE', 'EN_ATTENTE', 'ANNULEE'],
+  ACTION_REQUISE: ['EN_ATTENTE', 'A_VERIFIER', 'ANNULEE'],
+  EN_ATTENTE: ['ACTION_REQUISE', 'A_VERIFIER', 'ANNULEE'],
+  A_VERIFIER: ['ACTION_REQUISE', 'CLOTUREE', 'ANNULEE'],
+  CLOTUREE: [],
+  ANNULEE: [],
+};
+const NCR_PRIMARY_NEXT_STATUS: Readonly<Partial<Record<NcrStatus, NcrStatus>>> = {
+  OUVERTE: 'EN_ANALYSE',
+  EN_ANALYSE: 'ACTION_REQUISE',
+  ACTION_REQUISE: 'A_VERIFIER',
+  EN_ATTENTE: 'ACTION_REQUISE',
+  A_VERIFIER: 'CLOTUREE',
+};
 const TABS = [
   { key: 'general', label: 'Vue générale' },
   { key: 'source', label: 'Source & liens' },
@@ -81,6 +101,7 @@ export function NonConformiteDetail() {
   const [method, setMethod] = useState('5_POURQUOI');
   const [analysisText, setAnalysisText] = useState('');
   const [rootCause, setRootCause] = useState('');
+  const [secondaryStatus, setSecondaryStatus] = useState('');
 
   const call = async (action: () => Promise<unknown>, message: string) => {
     setError(null);
@@ -145,25 +166,49 @@ export function NonConformiteDetail() {
               },
             ]}
           />
-          {can('ncr:manage') && isOpen ? (
-            <div className="ligne-boutons">
-              {STATUSES.filter((status) => status !== nonconformity.status).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  className="secondaire"
-                  onClick={() =>
-                    call(
-                      () => apiPost(`/api/nonconformities/${nonconformity.id}/statut`, { status, reason: null }),
-                      `Statut : ${label(status)}.`,
-                    )
-                  }
-                >
-                  {label(status)}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          {can('ncr:manage') && isOpen
+            ? (() => {
+                const currentStatus = nonconformity.status as NcrStatus;
+                const primaryNext = NCR_PRIMARY_NEXT_STATUS[currentStatus] ?? null;
+                const otherOptions = NCR_ALLOWED_TRANSITIONS[currentStatus].filter((status) => status !== primaryNext);
+                const changeStatus = (status: NcrStatus) =>
+                  call(
+                    () => apiPost(`/api/nonconformities/${nonconformity.id}/statut`, { status, reason: null }),
+                    `Statut : ${label(status)}.`,
+                  );
+                return (
+                  <div className="ligne-boutons">
+                    {primaryNext ? (
+                      <button type="button" onClick={() => void changeStatus(primaryNext)}>
+                        Passer à « {label(primaryNext)} »
+                      </button>
+                    ) : null}
+                    {otherOptions.length > 0 ? (
+                      <>
+                        <select value={secondaryStatus} onChange={(event) => setSecondaryStatus(event.target.value)}>
+                          <option value="">Changer le statut...</option>
+                          {otherOptions.map((status) => (
+                            <option key={status} value={status}>
+                              {label(status)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="secondaire"
+                          disabled={secondaryStatus === ''}
+                          onClick={() => {
+                            void changeStatus(secondaryStatus as NcrStatus).then(() => setSecondaryStatus(''));
+                          }}
+                        >
+                          Appliquer
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                );
+              })()
+            : null}
         </Card>
       ) : null}
 

@@ -50,10 +50,14 @@ export function QualiteAccueil() {
             </Link>
           </div>
 
+          {/* Navigation vers les listes (section 7.9) - jamais confondue
+              avec un raccourci de création ci-dessous. */}
           <Card title="Accès rapides">
             <div className="ligne-boutons" style={{ marginTop: 0 }}>
               <Link to="/qualite/non-conformites">
-                <button type="button">Non-conformités</button>
+                <button type="button" className="secondaire">
+                  Non-conformités
+                </button>
               </Link>
               <Link to="/qualite/capa">
                 <button type="button" className="secondaire">
@@ -79,6 +83,25 @@ export function QualiteAccueil() {
                 <button type="button" className="secondaire">
                   Retraits / rappels
                 </button>
+              </Link>
+            </div>
+          </Card>
+
+          {/* Raccourcis de création (section 7.9) - mènent directement au
+              formulaire de création de chaque écran, pas seulement à la liste. */}
+          <Card title="Actions rapides">
+            <div className="ligne-boutons" style={{ marginTop: 0 }}>
+              <Link to="/qualite/non-conformites#creation">
+                <button type="button">Nouvelle non-conformité</button>
+              </Link>
+              <Link to="/qualite/capa#creation">
+                <button type="button">Créer un CAPA</button>
+              </Link>
+              <Link to="/qualite/audits#creation">
+                <button type="button">Planifier un audit</button>
+              </Link>
+              <Link to="/qualite/reclamations#creation">
+                <button type="button">Nouvelle réclamation</button>
               </Link>
             </div>
           </Card>

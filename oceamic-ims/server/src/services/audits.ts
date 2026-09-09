@@ -326,10 +326,14 @@ export async function createNonconformityFromFinding(
       title: input.title,
       description: finding.description,
       severity: input.severity,
-      priority: 'NORMALE',
+      // A critical finding must not silently produce a normal-priority NCR
+      // (section 7.3) - priority is derived from severity here since this
+      // automated path never asks the caller to choose one.
+      priority: input.severity === 'CRITIQUE' ? 'HAUTE' : 'NORMALE',
       ownerUserId: input.ownerUserId,
       dueAt: null,
       qualityBlockRequired: false,
+      confirmSeverityPriority: true,
       detectedBy: actorId,
       links: [{ entityType: 'AUDIT', entityId: finding.auditId, relationshipType: 'DETECTE_SUR' }],
     },
