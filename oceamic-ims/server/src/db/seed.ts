@@ -81,6 +81,12 @@ import { completeWorkOrder, createWorkOrder } from '../services/workOrders.ts';
 import { endIntervention, startIntervention, updateIntervention } from '../services/interventions.ts';
 import { recordPartUsage, receiveSparePartStock } from '../services/spareParts.ts';
 import { completePreventiveTask, createMaintenancePlan } from '../services/maintenancePlans.ts';
+import { createIngredientLot } from '../services/ingredients.ts';
+import { loseFromTankBatch, receiveIngredientLot } from '../services/ingredientStock.ts';
+import { addTankBatchInput, openTankBatch } from '../services/ingredientTanks.ts';
+import { recordTankIngredientConsumption } from '../services/ingredientConsumption.ts';
+import { createRecoveredBatch, reuseRecoveredBatch } from '../services/recoveredIngredients.ts';
+import { createIngredientConsumptionStandard } from '../services/ingredientStandards.ts';
 import { createPool, withTransaction } from './pool.ts';
 
 // Development / demonstration data only. Never run against production data:
@@ -142,7 +148,7 @@ type SeedLocation = Readonly<{
   stockType: 'INTERNE' | 'EXTERNE';
   locationType: 'USINE' | 'ENTREPOT' | 'SOUS_TRAITANT' | 'ZONE_TRANSIT' | 'AUTRE';
   isSubcontractor: boolean;
-  stockDomain: 'MP' | 'PF' | 'MIXTE';
+  stockDomain: 'MP' | 'PF' | 'MIXTE' | 'INGREDIENT';
 }>;
 
 // Internal / external behaviour is configuration, never a rule derived from the
@@ -161,6 +167,11 @@ const LOCATIONS: readonly SeedLocation[] = [
   // Phase 5: Finished Goods warehouse, distinct from every raw-material
   // location above (section 54's "STOCK PF A").
   { code: 'STOCK-PF-A', name: 'Stock PF A', stockType: 'INTERNE', locationType: 'ENTREPOT', isSubcontractor: false, stockDomain: 'PF' },
+  // Phase 8: ingredient locations (section 10) - their own stock_domain,
+  // never mixed into the raw-fish or finished-goods stock calculations.
+  { code: 'MAGASIN-INGREDIENTS', name: 'Magasin ingrédients', stockType: 'INTERNE', locationType: 'ENTREPOT', isSubcontractor: false, stockDomain: 'INGREDIENT' },
+  { code: 'ZONE-CUVES', name: 'Zone des cuves', stockType: 'INTERNE', locationType: 'USINE', isSubcontractor: false, stockDomain: 'INGREDIENT' },
+  { code: 'ZONE-PREPARATION-SAUCE', name: 'Zone de préparation sauce', stockType: 'INTERNE', locationType: 'USINE', isSubcontractor: false, stockDomain: 'INGREDIENT' },
 ];
 
 // Phase 5: customer master data (section 22), demonstration only.
@@ -298,6 +309,60 @@ const FAILURE_CAUSES: readonly Readonly<{ code: string; name: string }>[] = [
 const SPARE_PARTS: readonly Readonly<{ code: string; name: string; unit: string; minimumStock: string }>[] = [
   { code: 'BRG-002', name: 'Roulement BRG-002', unit: 'PIECE', minimumStock: '2' },
   { code: 'JNT-014', name: "Joint d'étanchéité JNT-014", unit: 'PIECE', minimumStock: '5' },
+];
+
+// Phase 8: ingredients and production consumables (section 6) - a
+// configurable list, never hardcoded into UI logic.
+const INGREDIENT_TYPES: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'HUILE_TOURNESOL', name: 'Huile de tournesol' },
+  { code: 'HUILE_OLIVE', name: "Huile d'olive" },
+  { code: 'HUILE_EXTRA_VIERGE', name: "Huile d'olive extra vierge" },
+  { code: 'HUILE_EXTRA_VIERGE_BIO', name: "Huile d'olive extra vierge bio" },
+  { code: 'SAUCE_TOMATE', name: 'Sauce tomate' },
+  { code: 'SAUMURE', name: 'Saumure' },
+  { code: 'EAU', name: 'Eau' },
+  { code: 'SEL', name: 'Sel' },
+  { code: 'AUTRE', name: 'Autre' },
+];
+
+const INGREDIENT_LOSS_REASONS: readonly Readonly<{ code: string; name: string }>[] = [
+  { code: 'DEVERSEMENT', name: 'Déversement' },
+  { code: 'RESTE_NON_REUTILISABLE', name: 'Reste non réutilisable' },
+  { code: 'EXPIRATION', name: 'Expiration' },
+  { code: 'NETTOYAGE', name: 'Nettoyage' },
+  { code: 'DEFAUT_PRODUIT', name: 'Défaut produit' },
+  { code: 'AUTRE', name: 'Autre' },
+];
+
+// Ingredients (section 5): the oils are recoverable (section 24), sauce and
+// brine are not - is_recoverable is a real, per-ingredient configuration,
+// never assumed. Each oil ingredient links back to the matching Phase 4
+// filling_media row (section 16) rather than a disconnected identity.
+const INGREDIENTS: readonly Readonly<{
+  code: string;
+  name: string;
+  ingredientTypeCode: string;
+  defaultUnit: string;
+  fillingMediumCode: string | null;
+  isRecoverable: boolean;
+}>[] = [
+  { code: 'HUILE-TOURNESOL', name: 'Huile de tournesol', ingredientTypeCode: 'HUILE_TOURNESOL', defaultUnit: 'L', fillingMediumCode: 'HUILE_TOURNESOL', isRecoverable: true },
+  { code: 'HUILE-OLIVE', name: "Huile d'olive", ingredientTypeCode: 'HUILE_OLIVE', defaultUnit: 'L', fillingMediumCode: 'HUILE_OLIVE', isRecoverable: true },
+  { code: 'SAUCE-TOMATE', name: 'Sauce tomate', ingredientTypeCode: 'SAUCE_TOMATE', defaultUnit: 'L', fillingMediumCode: 'SAUCE_TOMATE', isRecoverable: false },
+  { code: 'SAUMURE-STD', name: 'Saumure standard', ingredientTypeCode: 'SAUMURE', defaultUnit: 'L', fillingMediumCode: 'SAUMURE', isRecoverable: false },
+  { code: 'SEL-FIN', name: 'Sel fin', ingredientTypeCode: 'SEL', defaultUnit: 'KG', fillingMediumCode: null, isRecoverable: false },
+];
+
+// Six oil tanks (section 46): configured through data, never hardcoded to
+// exactly six in the application. All normally hold sunflower oil (section
+// 20's "usual product") but the type is only a hint, never enforced.
+const INGREDIENT_TANKS: readonly Readonly<{ code: string; name: string; ingredientTypeCode: string | null; capacityLiters: string }>[] = [
+  { code: 'CUVE-HUILE-1', name: 'Cuve huile 1', ingredientTypeCode: 'HUILE_TOURNESOL', capacityLiters: '2000' },
+  { code: 'CUVE-HUILE-2', name: 'Cuve huile 2', ingredientTypeCode: 'HUILE_TOURNESOL', capacityLiters: '2000' },
+  { code: 'CUVE-HUILE-3', name: 'Cuve huile 3', ingredientTypeCode: 'HUILE_OLIVE', capacityLiters: '1500' },
+  { code: 'CUVE-HUILE-4', name: 'Cuve huile 4', ingredientTypeCode: 'HUILE_OLIVE', capacityLiters: '1500' },
+  { code: 'CUVE-HUILE-5', name: 'Cuve huile 5', ingredientTypeCode: 'HUILE_TOURNESOL', capacityLiters: '2000' },
+  { code: 'CUVE-HUILE-6', name: 'Cuve huile 6', ingredientTypeCode: 'HUILE_TOURNESOL', capacityLiters: '2000' },
 ];
 
 const FILLING_MEDIA: readonly Readonly<{ code: string; name: string }>[] = [
@@ -483,6 +548,43 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
         medium.name,
       ]);
     }
+
+    // Phase 8: ingredients and production consumables.
+    for (const type of INGREDIENT_TYPES) {
+      await client.query('INSERT INTO ingredient_types (code, name) VALUES ($1, $2)', [type.code, type.name]);
+    }
+    for (const reason of INGREDIENT_LOSS_REASONS) {
+      await client.query('INSERT INTO ingredient_loss_reasons (code, name) VALUES ($1, $2)', [reason.code, reason.name]);
+    }
+    for (const ingredient of INGREDIENTS) {
+      await client.query(
+        `INSERT INTO ingredients (ingredient_code, name, ingredient_type_id, default_unit, filling_medium_id, is_recoverable)
+         VALUES ($1, $2, (SELECT id FROM ingredient_types WHERE code = $3), $4,
+                 (SELECT id FROM filling_media WHERE code = $5), $6)`,
+        [
+          ingredient.code,
+          ingredient.name,
+          ingredient.ingredientTypeCode,
+          ingredient.defaultUnit,
+          ingredient.fillingMediumCode,
+          ingredient.isRecoverable,
+        ],
+      );
+    }
+    for (const tank of INGREDIENT_TANKS) {
+      await client.query(
+        `INSERT INTO ingredient_tanks (tank_code, name, ingredient_type_id, capacity_liters, location_id)
+         VALUES ($1, $2, (SELECT id FROM ingredient_types WHERE code = $3), $4,
+                 (SELECT id FROM locations WHERE code = 'ZONE-CUVES'))`,
+        [tank.code, tank.name, tank.ingredientTypeCode, tank.capacityLiters],
+      );
+    }
+    // The centralized 2-day reuse policy (section 25): one global row, the
+    // only place the maximum reuse age is configured.
+    await client.query(
+      "INSERT INTO ingredient_reuse_policies (ingredient_type_id, max_reuse_hours, allow_mixing) VALUES (NULL, 48, FALSE)",
+    );
+
     for (const parameter of SEAMING_PARAMETERS) {
       await client.query(
         'INSERT INTO seaming_parameters (code, name, default_unit) VALUES ($1, $2, $3)',
@@ -557,8 +659,8 @@ async function insertReferenceData(pool: pg.Pool): Promise<void> {
   });
 }
 
-async function idOf(pool: pg.Pool, table: string, code: string): Promise<string> {
-  const result = await pool.query<{ id: string }>(`SELECT id FROM ${table} WHERE code = $1`, [code]);
+async function idOf(pool: pg.Pool, table: string, code: string, column = 'code'): Promise<string> {
+  const result = await pool.query<{ id: string }>(`SELECT id FROM ${table} WHERE ${column} = $1`, [code]);
   const id = result.rows[0]?.id;
   if (!id) {
     throw new Error(`Donnée de référence introuvable: ${table}.${code}`);
@@ -1904,6 +2006,306 @@ async function insertDemoOperations(pool: pg.Pool): Promise<void> {
     await endIntervention(pool, intervention.id, new Date(reportedAt.getTime() + 75 * 60 * 1000), null, maintenanceUserId);
     await completeWorkOrder(pool, workOrder.id, { verificationResult: null }, maintenanceUserId);
   }
+
+  // 10. Phase 8: ingredients, oil tracking, consumption and recovery - the
+  //     acceptance scenarios (sections 67-72) reproduced with real numbers.
+  const magasinIngredients = await idOf(pool, 'locations', 'MAGASIN-INGREDIENTS');
+  const zoneCuves = await idOf(pool, 'locations', 'ZONE-CUVES');
+  const huileOlive = await idOf(pool, 'ingredients', 'HUILE-OLIVE', 'ingredient_code');
+  const huileTournesol = await idOf(pool, 'ingredients', 'HUILE-TOURNESOL', 'ingredient_code');
+  const cuveHuile1 = await idOf(pool, 'ingredient_tanks', 'CUVE-HUILE-1', 'tank_code');
+  const cuveHuile2 = await idOf(pool, 'ingredient_tanks', 'CUVE-HUILE-2', 'tank_code');
+  const cuveHuile3 = await idOf(pool, 'ingredient_tanks', 'CUVE-HUILE-3', 'tank_code');
+  const deversementReason = await idOf(pool, 'ingredient_loss_reasons', 'DEVERSEMENT');
+
+  // 10a. Acceptance scenario 1 (section 67): one oil lot -> one tank -> the
+  // demonstration Run - a genuine, non-fabricated consumption/1000 cans
+  // (300 L / 12 000 boîtes = 25 L/1000, matching the standard below).
+  const oliveOilLot = await createIngredientLot(
+    pool,
+    {
+      lotCode: 'ING-HUILE-OLIVE-001',
+      ingredientId: huileOlive,
+      supplierId: supplier,
+      supplierLotCode: 'FRN-HO-2026-014',
+      receivedAt: new Date(),
+      manufactureDate: null,
+      expiryDate: null,
+      notes: 'Lot de démonstration',
+    },
+    stockUserId,
+  );
+  await receiveIngredientLot(
+    pool,
+    {
+      ingredientLotId: oliveOilLot.id,
+      destinationLocationId: magasinIngredients,
+      quantity: '500.000',
+      unit: 'L',
+      occurredAt: new Date(),
+    },
+    stockUserId,
+  );
+  const oilTankBatch = await openTankBatch(pool, cuveHuile3, new Date(), stockUserId);
+  await addTankBatchInput(
+    pool,
+    {
+      tankBatchId: oilTankBatch.id,
+      ingredientLotId: oliveOilLot.id,
+      sourceLocationId: magasinIngredients,
+      quantity: '500.000',
+      unit: 'L',
+      addedAt: new Date(),
+    },
+    stockUserId,
+  );
+  await recordTankIngredientConsumption(
+    pool,
+    {
+      productionRunId: run.id,
+      fillingOperationId: null,
+      tankBatchId: oilTankBatch.id,
+      quantity: '300.000',
+      unit: 'L',
+      consumedAt: new Date(),
+    },
+    productionUserId,
+  );
+  await createIngredientConsumptionStandard(
+    pool,
+    {
+      ingredientId: huileOlive,
+      productId: sardineProduct,
+      format: null,
+      fillingMediumId: null,
+      targetPer1000Units: '25.000',
+      minPer1000Units: '22.500',
+      maxPer1000Units: '27.500',
+      validFrom: new Date().toISOString().slice(0, 10),
+      validTo: null,
+    },
+    stockUserId,
+  );
+
+  // 10b. Acceptance scenario 2 (section 68): a tank batch fed by two lots -
+  // genealogy resolves to both, never collapsed into one untraceable blend.
+  const tournesolLot1 = await createIngredientLot(
+    pool,
+    {
+      lotCode: 'ING-HUILE-TOURNESOL-001',
+      ingredientId: huileTournesol,
+      supplierId: supplier,
+      supplierLotCode: 'FRN-HT-2026-021',
+      receivedAt: new Date(),
+      manufactureDate: null,
+      expiryDate: null,
+      notes: 'Lot de démonstration',
+    },
+    stockUserId,
+  );
+  await receiveIngredientLot(
+    pool,
+    { ingredientLotId: tournesolLot1.id, destinationLocationId: magasinIngredients, quantity: '200.000', unit: 'L', occurredAt: new Date() },
+    stockUserId,
+  );
+  const tournesolLot2 = await createIngredientLot(
+    pool,
+    {
+      lotCode: 'ING-HUILE-TOURNESOL-002',
+      ingredientId: huileTournesol,
+      supplierId: supplier,
+      supplierLotCode: 'FRN-HT-2026-022',
+      receivedAt: new Date(),
+      manufactureDate: null,
+      expiryDate: null,
+      notes: 'Lot de démonstration',
+    },
+    stockUserId,
+  );
+  await receiveIngredientLot(
+    pool,
+    { ingredientLotId: tournesolLot2.id, destinationLocationId: magasinIngredients, quantity: '150.000', unit: 'L', occurredAt: new Date() },
+    stockUserId,
+  );
+
+  const mixedTankBatch = await openTankBatch(pool, cuveHuile1, new Date(), stockUserId);
+  await addTankBatchInput(
+    pool,
+    { tankBatchId: mixedTankBatch.id, ingredientLotId: tournesolLot1.id, sourceLocationId: magasinIngredients, quantity: '200.000', unit: 'L', addedAt: new Date() },
+    stockUserId,
+  );
+  await addTankBatchInput(
+    pool,
+    { tankBatchId: mixedTankBatch.id, ingredientLotId: tournesolLot2.id, sourceLocationId: magasinIngredients, quantity: '150.000', unit: 'L', addedAt: new Date() },
+    stockUserId,
+  );
+
+  const ingredientMixRun = await createRun(
+    pool,
+    {
+      productionDate: new Date().toISOString().slice(0, 10),
+      productId: sardineProduct,
+      format: null,
+      piecesPerCan: null,
+      responsibleUserId: productionUserId,
+      lines: [{ productionLineId: lines.rows[0]!.id, activityType: 'GRATTAGE_REMPLISSAGE' as const }],
+      notes: 'Ordre de production de démonstration - cuve mélangée (huile tournesol)',
+    },
+    productionUserId,
+  );
+  await startRun(pool, ingredientMixRun.id, productionUserId);
+  await recordTankIngredientConsumption(
+    pool,
+    {
+      productionRunId: ingredientMixRun.id,
+      fillingOperationId: null,
+      tankBatchId: mixedTankBatch.id,
+      quantity: '100.000',
+      unit: 'L',
+      consumedAt: new Date(),
+    },
+    productionUserId,
+  );
+
+  // 10c. Acceptance scenarios 3/6 (sections 69/72): an isolated Run whose
+  // ingredient balance reproduces the spec's own worked example exactly -
+  // Supplied 500 - Consumed 430 - Recovered 55 - Loss 10 = Difference 5,
+  // displayed as "Écart ingrédient à justifier" (never zeroed, never
+  // silently converted to loss).
+  const tournesolLot3 = await createIngredientLot(
+    pool,
+    {
+      lotCode: 'ING-HUILE-TOURNESOL-003',
+      ingredientId: huileTournesol,
+      supplierId: supplier,
+      supplierLotCode: 'FRN-HT-2026-030',
+      receivedAt: new Date(),
+      manufactureDate: null,
+      expiryDate: null,
+      notes: 'Lot de démonstration',
+    },
+    stockUserId,
+  );
+  await receiveIngredientLot(
+    pool,
+    { ingredientLotId: tournesolLot3.id, destinationLocationId: magasinIngredients, quantity: '500.000', unit: 'L', occurredAt: new Date() },
+    stockUserId,
+  );
+
+  const recoveryTankBatch = await openTankBatch(pool, cuveHuile2, new Date(), stockUserId);
+  await addTankBatchInput(
+    pool,
+    { tankBatchId: recoveryTankBatch.id, ingredientLotId: tournesolLot3.id, sourceLocationId: magasinIngredients, quantity: '500.000', unit: 'L', addedAt: new Date() },
+    stockUserId,
+  );
+
+  const ingredientRecoveryRun = await createRun(
+    pool,
+    {
+      productionDate: new Date().toISOString().slice(0, 10),
+      productId: sardineProduct,
+      format: null,
+      piecesPerCan: null,
+      responsibleUserId: productionUserId,
+      lines: [{ productionLineId: lines.rows[0]!.id, activityType: 'GRATTAGE_REMPLISSAGE' as const }],
+      notes: 'Ordre de production de démonstration - bilan matière huile',
+    },
+    productionUserId,
+  );
+  await startRun(pool, ingredientRecoveryRun.id, productionUserId);
+  await recordTankIngredientConsumption(
+    pool,
+    {
+      productionRunId: ingredientRecoveryRun.id,
+      fillingOperationId: null,
+      tankBatchId: recoveryTankBatch.id,
+      quantity: '430.000',
+      unit: 'L',
+      consumedAt: new Date(),
+    },
+    productionUserId,
+  );
+
+  const recoveredOilBatch = await createRecoveredBatch(
+    pool,
+    {
+      ingredientId: huileTournesol,
+      sourceProductionRunId: ingredientRecoveryRun.id,
+      sourceFillingOperationId: null,
+      recoveredAt: new Date(),
+      quantity: '55.000',
+      unit: 'L',
+      storageLocationId: zoneCuves,
+      containerId: null,
+      notes: 'Huile récupérée en sortie de remplissage (démo)',
+    },
+    productionUserId,
+  );
+
+  await loseFromTankBatch(
+    pool,
+    {
+      tankBatchId: recoveryTankBatch.id,
+      sourceLocationId: zoneCuves,
+      quantity: '10.000',
+      unit: 'L',
+      occurredAt: new Date(),
+      lossReasonId: deversementReason,
+      reason: 'Déversement lors du procédé (démo)',
+      productionRunId: ingredientRecoveryRun.id,
+    },
+    stockUserId,
+  );
+
+  // 10d. Acceptance scenario 4 (section 70): partial reuse of the recovered
+  // batch above into a different Run - 30 L of the 55 L available, leaving
+  // 25 L remaining, full Run -> recovered -> Run genealogy.
+  const ingredientReuseRun = await createRun(
+    pool,
+    {
+      productionDate: new Date().toISOString().slice(0, 10),
+      productId: sardineProduct,
+      format: null,
+      piecesPerCan: null,
+      responsibleUserId: productionUserId,
+      lines: [{ productionLineId: lines.rows[0]!.id, activityType: 'GRATTAGE_REMPLISSAGE' as const }],
+      notes: 'Ordre de production de démonstration - réutilisation huile récupérée',
+    },
+    productionUserId,
+  );
+  await startRun(pool, ingredientReuseRun.id, productionUserId);
+  await reuseRecoveredBatch(
+    pool,
+    {
+      recoveredBatchId: recoveredOilBatch.id,
+      destinationProductionRunId: ingredientReuseRun.id,
+      destinationFillingOperationId: null,
+      quantity: '30.000',
+      unit: 'L',
+      reusedAt: new Date(),
+    },
+    productionUserId,
+  );
+
+  // 10e. Deliberately expired recovered batch (deliverable D): recorded 5
+  // days ago, well past the 48-hour policy, never reused - the
+  // recovered_batch_status view computes EXPIRE automatically, with no
+  // manual status flip involved.
+  await createRecoveredBatch(
+    pool,
+    {
+      ingredientId: huileTournesol,
+      sourceProductionRunId: ingredientMixRun.id,
+      sourceFillingOperationId: null,
+      recoveredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+      quantity: '20.000',
+      unit: 'L',
+      storageLocationId: zoneCuves,
+      containerId: null,
+      notes: 'Huile récupérée non réutilisée dans le délai (démo)',
+    },
+    productionUserId,
+  );
 }
 
 export async function seedDatabase(pool: pg.Pool): Promise<boolean> {

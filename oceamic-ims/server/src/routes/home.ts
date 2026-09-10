@@ -11,6 +11,7 @@ import { countReceptionsToday } from '../services/receptions.ts';
 import { qmsHomeSummary, qmsMetrics } from '../services/qmsQueries.ts';
 import { stockSummary } from '../services/stockQueries.ts';
 import { maintenanceHomeSummary } from '../services/maintenanceQueries.ts';
+import { ingredientHomeSummary } from '../services/ingredientQueries.ts';
 
 /**
  * Lightweight operational summary of the home page. No analytics, no charts:
@@ -106,5 +107,13 @@ export async function registerHomeRoutes(
     return users
       .filter((user) => user.isActive && (user.role === 'MAINTENANCE' || user.role === 'RESPONSABLE_MAINTENANCE'))
       .map((user) => ({ id: user.id, fullName: user.fullName, role: user.role }));
+  });
+
+  // Section 48: Ingrédients home KPIs - Stock huile/Lots bloqués/Huile
+  // récupérée disponible/Huile récupérée expirant bientôt/Écarts à
+  // justifier, no decorative analytics.
+  app.get('/api/ingredients/home-summary', async (request) => {
+    requirePermission(request, 'ingredient:read');
+    return ingredientHomeSummary(pool);
   });
 }

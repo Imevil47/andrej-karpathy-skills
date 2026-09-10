@@ -29,6 +29,9 @@ const ENTITY_LABEL_LOOKUP: Readonly<Record<string, Readonly<{ table: string; col
   // point back at the failure/work order investigated alongside it.
   FAILURE_REPORT: { table: 'failure_reports', column: 'failure_code' },
   MAINTENANCE_WORK_ORDER: { table: 'maintenance_work_orders', column: 'work_order_code' },
+  // Phase 8 (section 54): an ingredient lot incident can raise an NCR the
+  // same way a raw-material lot does.
+  INGREDIENT_LOT: { table: 'ingredient_lots', column: 'lot_code' },
 };
 
 async function resolveEntityLabel(pool: pg.Pool, entityType: string, entityId: string): Promise<string | null> {

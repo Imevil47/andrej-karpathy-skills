@@ -59,6 +59,16 @@ const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
+    title: 'Ingrédients',
+    entries: [
+      { to: '/ingredients/accueil', label: "Vue d'ensemble", permission: 'ingredient:read' },
+      { to: '/ingredients/stock', label: 'Stocks', permission: 'ingredient:read' },
+      { to: '/ingredients/lots', label: 'Lots', permission: 'ingredient:read' },
+      { to: '/ingredients/cuves', label: 'Cuves', permission: 'ingredient:read' },
+      { to: '/ingredients/recuperation', label: 'Récupération', permission: 'ingredient:read' },
+    ],
+  },
+  {
     title: null,
     entries: [
       { to: '/sous-traitance', label: 'Sous-traitance', permission: 'subcontracting:read' },

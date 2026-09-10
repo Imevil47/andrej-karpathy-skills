@@ -1743,3 +1743,189 @@ Déclaration et annulation de panne, création et changement de statut d'un ordr
 travail, démarrage/mise à jour/clôture d'une intervention, consommation et ajustement
 de pièce, création d'un plan préventif et complétion d'une tâche sont tous enregistrés
 dans `audit_log`, au même titre que toute opération sensible des phases précédentes.
+
+# Ingrédients (Phase 8)
+
+## 131. Le stock ingrédient n'est jamais stocké, et ne peut jamais devenir négatif
+
+Comme le stock matière première de la Phase 1, le stock ingrédient est **toujours**
+calculé depuis `ingredient_stock_movements` (vues
+`current_ingredient_stock_by_lot[_location]`) — aucune colonne « stock actuel » n'est
+jamais écrite ou lue directement. `createIngredientStockMovement`
+(`services/ingredientStock.ts`) verrouille (`pg_advisory_xact_lock`,
+`lockIngredientLotLocation`) le couple lot + emplacement (ou la disponibilité du lot
+de cuve) avant de vérifier la quantité disponible, dans la même transaction que
+l'écriture du mouvement : une sortie qui dépasserait le disponible est refusée avec le
+message exact « Stock insuffisant.\nDisponible : ...\nDemandé : ... », jamais un stock
+négatif silencieux, même sous forte concurrence.
+
+## 132. Le grand livre ingrédient est un registre distinct de celui de la matière première
+
+`ingredient_stock_movements` partage la forme de `stock_movements` (Phase 1) mais reste
+une table et un vocabulaire de mouvement **entièrement séparés** : un mouvement
+ingrédient ne peut jamais référencer un lot matière première, et inversement. Les
+consommations d'un Run (section 137) créent toujours un mouvement `CONSOMMATION` dans
+ce registre ingrédient, jamais dans celui de la Phase 1 même quand elles concernent le
+même Run.
+
+## 133. Un lot ingrédient bloqué ne peut plus alimenter une cuve ni un Run
+
+`isIngredientMovementBlockedByQuality` (`domain/types.ts`) scope le contrôle qualité
+aux mouvements `TRANSFERT`/`ALIMENTATION_CUVE`/`CONSOMMATION` uniquement — un
+`PERTE`/`AJUSTEMENT`/`RETOUR` reste possible sur un lot bloqué, car ce sont des
+corrections administratives qui doivent pouvoir s'appliquer même à un lot déjà bloqué
+(par exemple pour l'écrire en perte totale). Le statut qualité d'un lot ingrédient
+(`LIBERE`/`BLOQUE`/`A_VERIFIER`/`REJETE`) est sa propre colonne
+(`ingredient_lots.quality_status`), jamais `lot_blocks` de la Phase 1 (câblée à un lot
+matière première) ni `finished_goods_quality_blocks` de la Phase 5 (câblée au Lot
+PF/palette) — le même choix « statut propre » que la Phase 5 avait déjà fait.
+
+## 134. Une cuve n'est jamais liée en permanence à un ingrédient
+
+`ingredient_tanks.ingredient_type_id` reste une indication d'usage habituel — jamais
+vérifiée ni imposée par un service ou une route : une cuve peut recevoir n'importe quel
+lot de cuve, quel que soit l'ingrédient indiqué. C'est le **lot de cuve**
+(`tank_batches`), pas la cuve, qui porte le contenu traçable réel d'un événement
+donné.
+
+## 135. Le mélange de plusieurs lots dans une cuve reste toujours une liste complète, jamais une fusion
+
+Alimenter un lot de cuve depuis plusieurs lots ingrédient (`addTankBatchInput`, un
+appel par lot) conserve **chaque** entrée comme sa propre ligne dans
+`tank_batch_inputs`, avec sa propre quantité. Lire la généalogie d'un lot de cuve
+mélangé (`getTankBatchGenealogy`) retourne systématiquement la liste intégrale des
+lots contributeurs — **jamais** une allocation proportionnelle par litre calculée pour
+un retrait ultérieur : cette répartition n'est pas physiquement mesurable et n'est
+donc jamais fabriquée, le même principe que « Données insuffisantes plutôt que fausse
+précision » de la règle 127 (MTTR).
+
+## 136. Une mesure manuelle de cuve n'écrase jamais le stock théorique
+
+`tank_measurements` reste une table distincte de `tank_batch_stock` (vue calculée
+depuis les mouvements) : la mesure manuelle et la valeur théorique restent toutes deux
+consultables, sans qu'aucune des deux ne remplace l'autre — exactement le même principe
+que les mesures de procédé de la Phase 4, explicitement distinguées d'une donnée
+équipement.
+
+## 137. La consommation d'un Run crée toujours exactement un mouvement, jamais une seconde saisie
+
+`recordDirectIngredientConsumption`/`recordTankIngredientConsumption`
+(`services/ingredientConsumption.ts`) créent, dans une seule transaction, le mouvement
+`CONSOMMATION` **et** la ligne `production_run_ingredient_consumptions` dont
+`ingredient_stock_movement_id` est `NOT NULL UNIQUE` — une consommation ne peut
+structurellement jamais soustraire le stock deux fois. Le nombre de boîtes produites
+(pour la consommation par 1000, règle 139) vient exclusivement de `packaging_outputs`
+(Phase 5) : jamais un second total ressaisi à la main.
+
+## 138. Récupération et réutilisation d'huile ne touchent jamais le grand livre ingrédient
+
+Une récupération (`createRecoveredBatch`) et une réutilisation (`reuseRecoveredBatch`)
+ne créent **aucun** mouvement `ingredient_stock_movements` : ce sont des événements
+d'un matériau réellement nouveau, né du procédé d'un Run, jamais une correction ou une
+reprise du mouvement `CONSOMMATION` initial. C'est pour cette même raison que
+`RECUPERATION`/`REUTILISATION` sont absentes de `INGREDIENT_MOVEMENT_TYPES` — les
+dupliquer comme mouvements créerait une seconde source de vérité concurrente pour le
+même événement (voir la note de `033_ingredient_stock.sql`).
+
+## 139. La consommation par 1000 boîtes est toujours calculée, jamais saisie
+
+`consumptionPer1000Units` (`domain/types.ts`) est une fonction pure appliquée à la
+quantité consommée et au nombre de boîtes réellement produites (`packaging_outputs`).
+Sans aucune boîte encore produite, le résultat est `null` — jamais zéro, jamais une
+division masquée. La comparaison à un standard configuré (`compareConsumptionToStandard`)
+distingue explicitement deux faits qui ne sont jamais confondus : `STANDARD_NON_DEFINI`
+(aucun standard ne s'applique à cet ingrédient/produit/format) contre un résultat
+`null` (un standard existe, mais aucune donnée réelle n'est encore disponible pour
+comparer). Une surconsommation détectée (`HORS_STANDARD`) reste une alerte
+opérationnelle, **jamais** traitée automatiquement comme une non-conformité de
+sécurité alimentaire — cette décision reste humaine.
+
+## 140. Le délai de réutilisation d'huile récupérée est toujours calculé depuis une politique centralisée, jamais saisi
+
+`getReusePolicy` (`services/recoveredIngredients.ts`) est le **seul** point de lecture
+de la durée maximale de réutilisation (`ingredient_reuse_policies.max_reuse_hours`) —
+une ligne globale (`ingredient_type_id IS NULL`, seedée à 48 h, la « règle des deux
+jours » actuelle d'OCEAMIC) et une éventuelle ligne spécifique par type d'ingrédient
+qui la surclasse. `createRecoveredBatch` calcule `reuse_deadline = recovered_at +
+max_reuse_hours` **à la création**, sans jamais laisser un opérateur saisir ou modifier
+cette échéance. Changer la politique — pour toute l'usine ou pour un seul type
+d'ingrédient — se fait par une ligne de configuration, jamais par une modification de
+code ni un écran dédié à chaque durée.
+
+## 141. Un lot de récupération expiré ne redevient jamais réutilisable par un changement de statut
+
+Seuls `DISPONIBLE`/`BLOQUE`/`ELIMINE` sont des statuts **stockés**, réglables
+uniquement par une décision explicite (`setRecoveredBatchManualStatus`, réservé à
+`ingredient:quality`). `UTILISE_PARTIELLEMENT`/`EPUISE`/`EXPIRE` sont **toujours**
+dérivés par la vue `recovered_batch_status` à partir de la quantité restante et de la
+comparaison de `reuse_deadline` à `now()` — il n'existe donc structurellement aucun
+moyen de « débloquer » un lot expiré en changeant une valeur stockée.
+`reuseRecoveredBatch` relit systématiquement `effective_status` juste avant de valider
+une réutilisation et rejette un statut `EXPIRE` avec le message exact :
+
+```
+Réutilisation impossible.
+Cette huile récupérée a dépassé la durée maximale autorisée.
+```
+
+Un statut `BLOQUE`/`ELIMINE`/`EPUISE` est refusé de la même façon, avec un message
+nommant le statut constaté. Une réutilisation partielle reste pleinement supportée :
+plusieurs lignes `recovered_ingredient_reuse` peuvent porter sur le même lot de
+récupération, tant que la quantité restante le permet.
+
+## 142. Le bilan matière d'un Run n'est jamais forcé à zéro ni converti automatiquement en perte
+
+`runIngredientMaterialBalance` (`services/ingredientQueries.ts`) calcule, par
+ingrédient : **Fourni** (ce qui a alimenté le ou les lots de cuve dont ce Run a tiré sa
+consommation — égal au Consommé pour une consommation directe sans cuve intermédiaire)
+moins **Consommé** (`production_run_ingredient_consumptions`) moins **Récupéré**
+(`recovered_ingredient_batches` dont ce Run est la source) moins **Perte** (mouvements
+`PERTE` référençant ce Run, qu'ils portent sur un lot précis ou sur une cuve). Un écart
+dont la valeur absolue dépasse 2 % de la quantité consommée
+(`MATERIAL_BALANCE_TOLERANCE_RATIO`) est signalé « Écart ingrédient à justifier » —
+**jamais** forcé à zéro, **jamais** converti automatiquement en une ligne de perte :
+seule une déclaration de perte explicite et typée (règle 143) peut expliquer un manque
+réel. Si un même lot de cuve alimente plusieurs Runs, son Fourni complet est rapporté
+identiquement pour chacun d'eux — une répartition proportionnelle par Run n'est pas
+mesurable physiquement et n'est donc jamais fabriquée (même principe que la règle 135).
+
+## 143. Une perte ingrédient est toujours explicite et typée, jamais dissimulée dans un ajustement
+
+`loseIngredientLot` (lot précis) et `loseFromTankBatch` (retrait direct d'une cuve, par
+exemple un déversement pendant le procédé) créent chacun un mouvement `PERTE` distinct,
+avec un `loss_reason_id` obligatoire — jamais une quantité simplement absorbée dans un
+`AJUSTEMENT`. `loseFromTankBatch` accepte un `productionRunId` optionnel : quand il est
+fourni, le mouvement porte `reference_type = 'PRODUCTION_RUN'`, ce qui le rend visible
+dans le bilan matière du Run concerné (règle 142) sans qu'aucune seconde saisie ne soit
+nécessaire.
+
+## 144. Ingrédients, cuves, consommation et récupération ont leurs propres permissions
+
+`ingredient:reception`/`ingredient:transfer` (STOCK) couvrent la logistique du grand
+livre (réception, transfert, alimentation/clôture de cuve, perte, mesure manuelle) ;
+`ingredient:consume` (PRODUCTION) couvre uniquement la consommation d'un Run et la
+récupération/réutilisation d'huile ; `ingredient:quality` (QUALITE/RESPONSABLE_QUALITE)
+couvre le statut qualité d'un lot ingrédient et le blocage/élimination d'un lot de
+récupération ; `ingredient:adjust`, réservé à l'ADMIN, couvre l'ajustement du grand
+livre — le même principe de séparation des pouvoirs que la Phase 1 (`stock:adjust`)
+appliqué au domaine ingrédient, jamais une permission générique partagée entre ces
+quatre responsabilités.
+
+## 145. La traçabilité Run ↔ Produit fini résout les ingrédients à la lecture, jamais par copie
+
+`ingredientTraceabilityForRun` (`services/ingredientQueries.ts`) résout, à chaque
+lecture, les lots ingrédient utilisés par un Run (directement ou via un lot de cuve) et
+l'huile récupérée qui y a été réutilisée — en remontant `recovered_ingredient_reuse` →
+`recovered_ingredient_batches` → le Run source. Aucun champ ingrédient n'est jamais
+copié sur un Lot PF ou recalculé par un chemin différent de celui du bilan matière
+(règle 142) : la chaîne fournisseur → réception → lot → cuve → Run → Lot PF →
+expédition reste interrogeable dans les deux sens sans qu'aucune donnée ne soit
+dupliquée entre phases.
+
+## 146. Chaque mouvement, consommation, récupération et réutilisation ingrédient reste audité
+
+Réception, transfert, perte et ajustement d'un lot ingrédient, changement de statut
+qualité, ouverture/alimentation/clôture d'un lot de cuve, mesure manuelle,
+consommation d'un Run, création d'un standard, récupération et réutilisation d'huile
+sont tous enregistrés dans `audit_log`, au même titre que toute opération sensible des
+phases précédentes.

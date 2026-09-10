@@ -16,6 +16,8 @@ import { ControleRound } from './pages/ControleRound';
 import { ControlesHoraires } from './pages/ControlesHoraires';
 import { ControleSertissageDetail } from './pages/ControleSertissageDetail';
 import { ControlesSertissage } from './pages/ControlesSertissage';
+import { Cuves } from './pages/Cuves';
+import { CuveDetail } from './pages/CuveDetail';
 import { DeviationDetail } from './pages/DeviationDetail';
 import { Deviations } from './pages/Deviations';
 import { DocumentDetail } from './pages/DocumentDetail';
@@ -27,6 +29,10 @@ import { ExpeditionDetail } from './pages/ExpeditionDetail';
 import { ExpeditionNouvelle } from './pages/ExpeditionNouvelle';
 import { Expeditions } from './pages/Expeditions';
 import { IncidentsFournisseurs } from './pages/IncidentsFournisseurs';
+import { IngredientLotDetail } from './pages/IngredientLotDetail';
+import { IngredientLots } from './pages/IngredientLots';
+import { IngredientsAccueil } from './pages/IngredientsAccueil';
+import { IngredientStock } from './pages/IngredientStock';
 import { LotPFSituation } from './pages/LotPFSituation';
 import { LotSituation } from './pages/LotSituation';
 import { Lots } from './pages/Lots';
@@ -53,6 +59,7 @@ import { Reclamations } from './pages/Reclamations';
 import { ReclamationDetail } from './pages/ReclamationDetail';
 import { ReceptionNouvelle } from './pages/ReceptionNouvelle';
 import { Receptions } from './pages/Receptions';
+import { RecuperationHuile } from './pages/RecuperationHuile';
 import { Remplissage } from './pages/Remplissage';
 import { RetraitDetail } from './pages/RetraitDetail';
 import { Retraits } from './pages/Retraits';
@@ -148,6 +155,13 @@ export function App() {
           <Route path="/maintenance/ordres-de-travail/:id" element={<OrdreDeTravailDetail />} />
           <Route path="/maintenance/preventif" element={<Preventif />} />
           <Route path="/maintenance/pieces" element={<PiecesDeRechange />} />
+          <Route path="/ingredients/accueil" element={<IngredientsAccueil />} />
+          <Route path="/ingredients/stock" element={<IngredientStock />} />
+          <Route path="/ingredients/lots" element={<IngredientLots />} />
+          <Route path="/ingredients/lots/:id" element={<IngredientLotDetail />} />
+          <Route path="/ingredients/cuves" element={<Cuves />} />
+          <Route path="/ingredients/cuves/:id" element={<CuveDetail />} />
+          <Route path="/ingredients/recuperation" element={<RecuperationHuile />} />
           <Route path="/parametres" element={<Parametres />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

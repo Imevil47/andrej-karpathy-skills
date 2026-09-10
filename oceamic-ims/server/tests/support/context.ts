@@ -11,6 +11,24 @@ import { hashPassword } from '../../src/services/auth.ts';
 // live in transactions, constraints and locks, which mocks cannot exercise.
 
 const TABLES_IN_TRUNCATION_ORDER = [
+  // Phase 8: ingredients, consumables, oil tracking, consumption and
+  // recovery - most dependent tables first, mirroring the rest of this list.
+  'ingredient_consumption_standards',
+  'recovered_ingredient_reuse',
+  'recovered_ingredient_batches',
+  'ingredient_reuse_policies',
+  'ingredient_containers',
+  'process_utility_consumptions',
+  'production_run_ingredient_consumptions',
+  'tank_measurements',
+  'tank_batch_inputs',
+  'tank_batches',
+  'ingredient_tanks',
+  'ingredient_stock_movements',
+  'ingredient_lots',
+  'ingredients',
+  'ingredient_loss_reasons',
+  'ingredient_types',
   // Phase 7: maintenance / CMMS - most dependent tables first, mirroring
   // the rest of this list.
   'maintenance_part_usage',
@@ -160,6 +178,12 @@ export type Fixtures = Readonly<{
   failureModeBourrageId: string;
   failureCauseDefautPieceId: string;
   sparePartId: string;
+  ingredientLocationId: string;
+  tankLocationId: string;
+  ingredientTypeHuileId: string;
+  ingredientHuileId: string;
+  ingredientLossReasonId: string;
+  ingredientTankId: string;
 }>;
 
 export type TestContext = Readonly<{
@@ -227,7 +251,9 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
      VALUES ('OCEAMIC-2', 'OCEAMIC 2', 'INTERNE', 'USINE', 'MP'),
             ('DAMSA', 'DAMSA', 'EXTERNE', 'ENTREPOT', 'MP'),
             ('SARMA', 'SARMA', 'EXTERNE', 'SOUS_TRAITANT', 'MP'),
-            ('STOCK-PF-A', 'Stock PF A', 'INTERNE', 'ENTREPOT', 'PF')
+            ('STOCK-PF-A', 'Stock PF A', 'INTERNE', 'ENTREPOT', 'PF'),
+            ('MAGASIN-INGREDIENTS-TEST', 'Magasin ingrédients (test)', 'INTERNE', 'ENTREPOT', 'INGREDIENT'),
+            ('ZONE-CUVES-TEST', 'Zone des cuves (test)', 'INTERNE', 'USINE', 'INGREDIENT')
      RETURNING id, code`,
   );
   const customer = await pool.query<{ id: string }>(
@@ -353,6 +379,34 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     [auditChecklistId],
   );
 
+  // Phase 8: ingredients, oil tracking, consumption and recovery - minimal
+  // master data (one recoverable oil ingredient, one tank, one loss reason,
+  // the global reuse policy).
+  const ingredientLocationId = locations.rows.find((row) => row.code === 'MAGASIN-INGREDIENTS-TEST')?.id ?? '';
+  const tankLocationId = locations.rows.find((row) => row.code === 'ZONE-CUVES-TEST')?.id ?? '';
+  const ingredientType = await pool.query<{ id: string }>(
+    `INSERT INTO ingredient_types (code, name) VALUES ('HUILE_TEST', 'Huile test') RETURNING id`,
+  );
+  const ingredientTypeHuileId = ingredientType.rows[0]?.id ?? '';
+  const ingredient = await pool.query<{ id: string }>(
+    `INSERT INTO ingredients (ingredient_code, name, ingredient_type_id, default_unit, filling_medium_id, is_recoverable)
+     VALUES ('HUILE-TEST', 'Huile test', $1, 'L', $2, TRUE)
+     RETURNING id`,
+    [ingredientTypeHuileId, fillingMedium.rows[0]?.id ?? null],
+  );
+  const ingredientLossReason = await pool.query<{ id: string }>(
+    `INSERT INTO ingredient_loss_reasons (code, name) VALUES ('DEVERSEMENT', 'Déversement') RETURNING id`,
+  );
+  const ingredientTank = await pool.query<{ id: string }>(
+    `INSERT INTO ingredient_tanks (tank_code, name, ingredient_type_id, capacity_liters, location_id)
+     VALUES ('CUVE-TEST', 'Cuve test', $1, 1000, $2)
+     RETURNING id`,
+    [ingredientTypeHuileId, tankLocationId],
+  );
+  await pool.query(
+    `INSERT INTO ingredient_reuse_policies (ingredient_type_id, max_reuse_hours, allow_mixing) VALUES (NULL, 48, FALSE)`,
+  );
+
   return {
     employeeNumbers: employees.rows.map((row) => row.employee_number),
     cadenceStandardId: cadenceStandard.rows[0]?.id ?? '',
@@ -391,6 +445,12 @@ async function insertFixtures(pool: pg.Pool): Promise<Fixtures> {
     failureModeBourrageId: failureMode.rows[0]?.id ?? '',
     failureCauseDefautPieceId: failureCause.rows[0]?.id ?? '',
     sparePartId: sparePart.rows[0]?.id ?? '',
+    ingredientLocationId,
+    tankLocationId,
+    ingredientTypeHuileId,
+    ingredientHuileId: ingredient.rows[0]?.id ?? '',
+    ingredientLossReasonId: ingredientLossReason.rows[0]?.id ?? '',
+    ingredientTankId: ingredientTank.rows[0]?.id ?? '',
   };
 }
 

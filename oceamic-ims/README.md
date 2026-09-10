@@ -1,4 +1,4 @@
-# OCEAMIC IMS — Phases 1, 2, 3, 4, 5, 6 et 7
+# OCEAMIC IMS — Phases 1, 2, 3, 4, 5, 6, 7 et 8
 
 Système de gestion industrielle pour la conserverie de poisson OCEAMIC.
 
@@ -71,6 +71,25 @@ aucun de ces modules n'a été reconstruit. Elle ne contient ni achat de pièces
 comptabilité de maintenance, ni maintenance prédictive par IA, ni intégration capteurs/
 automates, ni calibration/métrologie complète, ni OEE complet, mais prépare les
 champs nécessaires à un futur sous-module de calibration.
+
+La **Phase 8** ajoute la **couche ingrédients et consommables**, native elle aussi :
+matières de production traçables (huiles, sauces, saumure, sel...) avec leurs propres
+lots, un grand livre de mouvements distinct de celui de la matière première, des cuves
+(matériel physique) et leurs lots de cuve (contenu traçable, mélange de plusieurs lots
+jamais fusionné), consommation d'un Run résolue jusqu'aux lots d'ingrédient (directe ou
+via une cuve), consommation par 1000 boîtes toujours calculée depuis les sorties
+d'emballage réelles, huile récupérée comme un matériau réellement nouveau (délai de
+réutilisation toujours calculé depuis une politique centralisée, jamais saisi ; matériau
+expiré jamais réutilisable par un simple changement de statut ; réutilisation partielle
+supportée), pertes ingrédient explicites et typées, et un bilan matière par Run
+(Fourni - Consommé - Récupéré - Perte = Écart) dont un écart hors tolérance reste
+« à justifier », jamais forcé à zéro ni converti automatiquement en perte. Elle
+réutilise directement les Runs de production, les opérations de remplissage, le milieu
+de remplissage de la Phase 4, le concept d'emplacement/stock, le journal d'audit et le
+RBAC des phases précédentes. Elle ne contient ni achats, ni commandes fournisseur, ni
+comptabilité, ni chiffrage de recette, ni mesure automatique de cuve par automate, ni
+gestion complète des utilités énergétiques, ni moteur de formulation avancé, ni
+optimisation par IA — voir la [section 13](#13-ingrédients-phase-8) pour le détail.
 
 L'interface utilisateur est intégralement en français. Le code, les noms de tables et
 les commentaires techniques sont en anglais.
@@ -213,6 +232,13 @@ dans la table `schema_migrations`.
 | `029_maintenance_preventive.sql` | Plans préventifs, listes de contrôle, tâches préventives, réponses de liste de contrôle |
 | `030_maintenance_spare_parts.sql` | Pièces de rechange, mouvements de stock de pièces, usage de pièces en intervention |
 | `031_maintenance_views.sql` | Vues de stock de pièces, de statut de tâche préventive (retard calculé), de panne active par équipement et de MTTR |
+| `032_ingredients_master.sql` | Domaine de stock `INGREDIENT` sur les emplacements, types d'ingrédient, motifs de perte ingrédient, ingrédients (unité, milieu de remplissage, récupérable), lots ingrédient (statut qualité propre) |
+| `033_ingredient_stock.sql` | Grand livre `ingredient_stock_movements` (réception/transfert/alimentation cuve/consommation/perte/ajustement/retour — récupération et réutilisation en sont volontairement absentes) |
+| `034_ingredient_tanks.sql` | Cuves, lots de cuve, entrées de lot de cuve (généalogie), mesures manuelles de cuve ; ajout de `tank_batch_id` et de la contrainte lot-XOR-cuve sur le grand livre |
+| `035_ingredient_consumption.sql` | Consommation d'ingrédient par Run (directe ou via une cuve), consommation d'utilité process (eau/vapeur/autre, volontairement simple) |
+| `036_ingredient_recovery.sql` | Contenants, politiques de réutilisation (délai centralisé), lots de récupération, événements de réutilisation |
+| `037_ingredient_standards.sql` | Standards de consommation (cible et bande min/max par 1000 unités) |
+| `038_ingredient_views.sql` | Vues de grand livre et de stock ingrédient, de stock de lot de cuve, et de statut calculé de lot de récupération |
 
 Pour ajouter une évolution du schéma : créer un nouveau fichier `005_....sql`.
 Ne jamais modifier une migration déjà appliquée en production.
@@ -295,7 +321,23 @@ Il crée :
   (générant automatiquement la suivante) et un plan trimestriel Autoclave 2
   volontairement laissé en retard — une alerte « Préventifs en retard » réelle ;
 - quatre pannes similaires sur Remplisseuse 1 en 30 jours (même mode/cause), pour
-  vérifier l'analyse de panne répétée sans aucune IA.
+  vérifier l'analyse de panne répétée sans aucune IA ;
+- des ingrédients de démonstration (huile de tournesol, huile d'olive, sauce tomate,
+  saumure, sel) reliés à leur milieu de remplissage de la Phase 4, six cuves à huile
+  et la politique de réutilisation globale (48 h — la « règle des deux jours ») ;
+- un lot d'huile d'olive de 500 L réceptionné, alimentant intégralement une cuve, dont
+  300 L sont consommés par le Run de démonstration (12 000 boîtes ⇒ 25 L / 1000, avec
+  un standard de consommation correspondant, conforme) ;
+- une cuve alimentée par deux lots distincts d'huile de tournesol (200 L + 150 L) sur
+  un Run dédié, démontrant une généalogie de mélange jamais fusionnée ;
+- un Run isolé reproduisant exactement le scénario d'acceptation du bilan matière :
+  une cuve alimentée par 500 L, 430 L consommés, 55 L d'huile récupérée et 10 L de
+  perte déclarée depuis la cuve — bilan Fourni 500 - Consommé 430 - Récupéré 55 -
+  Perte 10 = Écart 5 L, dans la tolérance ;
+- une réutilisation partielle de 30 L sur les 55 L récupérés ci-dessus (25 L restants)
+  vers un autre Run, et un second lot de récupération volontairement recréé il y a
+  5 jours, jamais réutilisé, dont le statut `EXPIRE` est calculé automatiquement par
+  la vue de statut — sans aucun changement de statut manuel.
 
 > La répartition entrepôt / sous-traitant des partenaires externes est une hypothèse
 > de démonstration. Elle est portée par la configuration des emplacements et doit être
@@ -328,11 +370,11 @@ autorisé.
 | Rôle | Droits |
 |---|---|
 | **ADMIN** | Toutes les permissions, dont l'ajustement de stock et l'annulation de mouvement |
-| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, contrôles poids, contrôles sertissage, vérification du marquage, **validation CCP**, gestion des déviations, **décisions qualité PF (blocage/libération de Lot PF ou palette)**, **crée et gère non-conformités/CAPA/réclamations/incidents fournisseur, planifie et conduit les audits, rédige les documents qualité, mène les exercices de traçabilité** — mais n'approuve ni cause racine, ni clôture CAPA, ni document, et n'initie pas un vrai retrait/rappel, consultation |
+| **QUALITE** | Contrôles, décisions qualité, blocage et **libération** des lots, contrôles poids, contrôles sertissage, vérification du marquage, **validation CCP**, gestion des déviations, **décisions qualité PF (blocage/libération de Lot PF ou palette)**, **crée et gère non-conformités/CAPA/réclamations/incidents fournisseur, planifie et conduit les audits, rédige les documents qualité, mène les exercices de traçabilité**, **inspecte, bloque et libère les lots ingrédient, bloque ou élimine un lot d'huile récupérée** — mais n'approuve ni cause racine, ni clôture CAPA, ni document, et n'initie pas un vrai retrait/rappel, consultation |
 | **RESPONSABLE_QUALITE** | Tout ce que QUALITE détient, **plus** les autorisations d'approbation : valider une cause racine, clôturer un CAPA, approuver et mettre en vigueur une révision de document, initier un retrait/rappel réel |
 | **AUDITEUR** | **Conduit uniquement les audits qui lui sont assignés** (réponses de grille, constats) — ne planifie jamais d'audit, ne décide jamais d'une non-conformité ou d'un blocage de sa propre initiative, consultation |
-| **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, **stock PF, transferts/ajustements de palette, préparation et confirmation d'expédition**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, consultation |
-| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, **emballage (lots d'emballage, Lots PF, palettes)**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, **déclare une panne équipement (`failure:report`) et consulte le statut de maintenance, mais ne modifie jamais un ordre de travail ou une intervention**, consultation |
+| **STOCK** | Réceptions, transferts, pertes, logistique de sous-traitance, **stock PF, transferts/ajustements de palette, préparation et confirmation d'expédition**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, **réceptionne et transfère les lots ingrédient, alimente/clôture les lots de cuve, déclare une perte ingrédient (lot ou cuve), enregistre une mesure manuelle de cuve — mais n'ajuste jamais le stock ingrédient (réservé à l'ADMIN) et ne décide jamais du statut qualité**, consultation |
+| **PRODUCTION** | Ordres de production, consommation, sorties, pertes, corrections de production, personnel du Run, tours de contrôle, cadence, arrêts, remplissage, sertissage, marquage, stérilisation, **emballage (lots d'emballage, Lots PF, palettes)**, **peut compléter une action CAPA ou de constat d'audit qui lui est assignée, mais ne clôture jamais une non-conformité/CAPA/audit/document**, **déclare une panne équipement (`failure:report`) et consulte le statut de maintenance, mais ne modifie jamais un ordre de travail ou une intervention**, **consomme un ingrédient (directement ou depuis une cuve) sur son Run, enregistre une récupération et une réutilisation d'huile récupérée — mais ne décide jamais du statut qualité d'un lot ingrédient ou d'un lot de récupération**, consultation |
 | **MAINTENANCE** *(Phase 7)* | Déclare et gère les pannes, crée et travaille les ordres de travail, mène les interventions (diagnostic, action, pièces utilisées), complète les tâches préventives, consomme des pièces de rechange — **mais ne clôture jamais un ordre de travail « important » (équipement HAUTE/CRITIQUE ou OT urgent), ne configure pas les plans préventifs, ne gère pas les données de référence équipement, n'autorise pas d'ajustement de stock de pièces**, consultation |
 | **RESPONSABLE_MAINTENANCE** *(Phase 7)* | Tout ce que MAINTENANCE détient, **plus** : clôture les ordres de travail importants, configure les plans préventifs, gère les données de référence équipement (`equipment:manage`), autorise les ajustements de stock de pièces (`sparepart:adjust`) |
 | **LECTURE** | Consultation |
@@ -388,6 +430,18 @@ lot matière première. Le stock PF, les transferts de palette et les expéditio
 ni de QUALITE. Créer un lot d'emballage, un Lot PF ou une palette (`packaging:manage`)
 reste une activité de production, au même titre que le remplissage ou le sertissage.
 
+**Ingrédients (Phase 8)** suit exactement la même logique de séparation que la
+matière première de la Phase 1 : `ingredient:reception` et `ingredient:transfer`
+(STOCK) couvrent la logistique du grand livre ingrédient (réception, transfert,
+alimentation/clôture de cuve, perte, mesure manuelle) ; `ingredient:consume`
+(PRODUCTION) couvre uniquement la consommation d'un Run et la récupération/
+réutilisation d'huile — jamais la logistique de stock ; `ingredient:quality`
+(QUALITE/RESPONSABLE_QUALITE) couvre le statut qualité d'un lot ingrédient et le
+blocage/élimination d'un lot de récupération, jamais la logistique ni la
+consommation ; `ingredient:adjust`, réservé à l'ADMIN, couvre l'ajustement du grand
+livre — le même principe que `stock:adjust` en Phase 1, jamais accessible à STOCK ou
+PRODUCTION seuls.
+
 ---
 
 ## 6. Tests
@@ -421,6 +475,7 @@ série car ils partagent cette base.
 | `tests/phase5.test.ts` | Héritage du blocage Run/CCP sur un Lot PF nouvellement créé, unicité d'un Lot PF sur une palette, double affectation d'une palette à une expédition refusée (message exact), blocage qualité empêchant la confirmation d'expédition sans aucun mouvement de stock, transaction complète de confirmation d'expédition (mouvements, palettes, réservations cohérents), et le scénario complet d'acceptation (sections 54-59) : Lot PF → palettes → stock PF → expédition → traçabilité avant/arrière |
 | `tests/phase6.test.ts` | Création d'une non-conformité avec ses liens vers l'entité source (jamais isolée), droits (AUDITEUR ne peut pas créer de non-conformité), blocage qualité déclenché depuis une non-conformité en réutilisant `lot_blocks` (sans nouveau système de blocage), clôture d'une non-conformité bloquée tant qu'un CAPA lié reste ouvert (PRODUCTION ne peut jamais clôturer), CAPA restant ouvert tant que le contrôle d'efficacité requis n'a pas conclu positivement (message exact « Clôture impossible. Des actions obligatoires restent ouvertes. », QUALITE ne peut jamais approuver sa propre clôture), non-écrasement d'une révision de document (révision 01 en vigueur jusqu'à la mise en vigueur de la 02, approbation réservée à RESPONSABLE_QUALITE), traçabilité d'une réclamation client recalculée depuis l'expédition sans ressaisie manuelle, exercice de traçabilité depuis un Lot MP retrouvant Run/cycle/Lot PF/palettes/expédition/client affectés (STOCK ne peut pas lancer l'exercice), audit interne avec réponses de grille et constats menés par l'auditeur assigné, constat majeur générant une non-conformité |
 | `tests/phase7.test.ts` | Panne qui arrête la production ouvrant un vrai arrêt lié à l'équipement/la ligne/le Run (jamais dupliqué, visible identiquement depuis `/api/downtime`), panne sans arrêt de production, transition de statut d'ordre de travail invalide refusée, création d'un ordre de travail depuis une panne la faisant passer `PRISE_EN_CHARGE`, clôture refusée sans intervention à action réalisée documentée, clôture d'un ordre de travail sur équipement HAUTE exigeant `workorder:approve` (403 pour MAINTENANCE seul, 400 sans résultat de vérification, puis clôture réussie remettant l'équipement `EN_SERVICE` et la panne `RESOLUE`), durée d'intervention calculée (10:00→10:45 = 45 min), fin antérieure au début refusée, intervention sans action réalisée ne pouvant se terminer, consommation de pièce réduisant le stock exactement une fois (10 → 8, une seule ligne `SORTIE_INTERVENTION`), ajustement de stock réservé à RESPONSABLE_MAINTENANCE, plan préventif en retard détecté automatiquement puis complété générant sa prochaine occurrence, quatre pannes similaires en 30 jours regroupées par mode/cause sans IA, non-conformité liée à une panne et à un ordre de travail avec libellés résolus |
+| `tests/phase8.test.ts` | Réception puis consommation d'un lot ingrédient (stock jamais négatif, message exact « Stock insuffisant »), lot ingrédient bloqué par la Qualité refusant toute consommation, cuve alimentée par deux lots distincts préservant la généalogie complète (jamais fusionnée), remaining calculé correctement après une consommation depuis une cuve mélangée, consommation par 1000 boîtes calculée depuis les sorties d'emballage réelles (`null` avant tout emballage, jamais une fausse valeur), délai de réutilisation d'huile récupérée calculé automatiquement depuis la politique configurée (48 h), réutilisation d'une huile récupérée expirée refusée avec le message exact « Réutilisation impossible.\nCette huile récupérée a dépassé la durée maximale autorisée. », réutilisation partielle laissant le reste disponible puis épuisement complet refusant toute nouvelle réutilisation, lot de récupération bloqué par la Qualité non disponible à la réutilisation, bilan matière d'un Run reproduisant exactement le scénario d'acceptation (Fourni 500 - Consommé 430 - Récupéré 55 - Perte 10 = Écart 5, dans la tolérance de 2 %), comparaison au standard de consommation distinguant « aucun standard configuré » de « aucune donnée réelle encore » (jamais confondus) |
 
 ---
 
@@ -704,7 +759,7 @@ directement affichable à l'opérateur.
 | Situation du lot | **Page unique de traçabilité** : identité, stock, réceptions, mouvements, contrôles, décisions, blocages, sous-traitance, **Runs consommateurs**, lots enfants |
 | Runs de production | Liste des ordres de production : entrée MP, sortie utile, rendement, écart, statut |
 | Nouveau Run | Contexte de production (date, produit, format, pièces/boîte, lignes actives, responsable) — sans sélection de matière première |
-| Situation du Run | **Page unique de production**, en onglets : vue générale (avec **vue du process**), lots consommés, lignes, sorties, pertes, bilan matière, traçabilité, contrôles horaires, cadence, arrêts, **remplissage, sertissage, stérilisation** ; personnel du Run affecté et présence directement sur l'onglet lignes |
+| Situation du Run | **Page unique de production**, en onglets : vue générale (avec **vue du process**), lots consommés, lignes, sorties, pertes, bilan matière, traçabilité, contrôles horaires, cadence, arrêts, **remplissage, sertissage, stérilisation, ingrédients** (consommation directe/cuve, bilan matière ingrédient, traçabilité, huile récupérée réutilisée) ; personnel du Run affecté et présence directement sur l'onglet lignes |
 | Contrôles horaires | Liste filtrable de tous les tours de contrôle |
 | Tour de contrôle | **Écran de saisie terrain** : sélection de la ligne, puis uniquement matricule + quantité par employée — produit, espèce, activité, nom, standard et horodatage sont déjà connus ; le focus revient automatiquement sur la prochaine employée à contrôler |
 | Cadence | Historique filtrable des mesures de cadence individuelles |
@@ -747,6 +802,11 @@ directement affichable à l'opérateur.
 | Ordre de travail | Fiche en onglets : vue générale (statut contraint, remise en service), clôture dédiée (résultat de vérification, `workorder:approve` si nécessaire), interventions (**flux technicien rapide** : démarrer → diagnostic → action → pièces utilisées → terminer) |
 | Préventif | Vues Aujourd'hui / 7 jours / 30 jours / En retard (jamais un Gantt complexe), création de plan, complétion de liste de contrôle en ligne |
 | Pièces de rechange | Inventaire (stock/minimum, alerte « Stock de sécurité atteint »), réception et ajustement (`sparepart:adjust`) |
+| Ingrédients — Vue d'ensemble | Cinq indicateurs ciblés (stock huile, lots bloqués, huile récupérée disponible/expirant bientôt, écarts ingrédient à justifier), sans graphique décoratif |
+| Stock ingrédients | Stock calculé à partir du grand livre, par lot et par emplacement, filtrable |
+| Lots ingrédient | Liste filtrable et **écran unique** de nouveau lot + réception ; fiche : identité, stock total, statut qualité, transfert, perte, mouvements |
+| Cuves | Liste des cuves (matériel physique, ingrédient habituel indicatif) et création ; fiche : lots de cuve (statut, total alimenté, restant théorique), généalogie complète d'un lot de cuve mélangé, alimentation, perte depuis la cuve, clôture, mesures manuelles distinguées du stock théorique |
+| Huile récupérée | Liste triée par échéance (FEFO), statut calculé mis en évidence, réutilisation (batches expirés non sélectionnables), blocage/élimination qualité, enregistrement d'une nouvelle récupération |
 
 ---
 
@@ -910,3 +970,151 @@ sans historique suffisant, l'écran affiche « Données insuffisantes », jamais
 moyenne à zéro. L'analyse de panne répétée (`repeatedFailureAnalysis`) est un simple
 `GROUP BY` mode/cause sur une fenêtre glissante — aucune IA, conformément au
 scénario d'acceptation correspondant.
+
+---
+
+## 13. Ingrédients (Phase 8)
+
+### Dix concepts jamais fusionnés
+
+INGRÉDIENT (identité de référence) ; LOT INGRÉDIENT (matière traçable reçue) ;
+MOUVEMENT DE STOCK INGRÉDIENT (grand livre) ; CUVE (matériel physique) ; LOT DE CUVE
+(contenu traçable d'un événement de cuve — jamais confondu avec la cuve elle-même) ;
+CONSOMMATION D'INGRÉDIENT PAR RUN (matière réellement consommée par la production) ;
+LOT DE RÉCUPÉRATION (matériau réellement nouveau, né du procédé, jamais une reprise du
+mouvement de consommation initial) ; ÉVÉNEMENT DE RÉUTILISATION (une réutilisation,
+partielle ou totale, d'un lot de récupération) ; PERTE INGRÉDIENT (toujours son propre
+mouvement `PERTE` typé, jamais dissimulée dans un ajustement) ; STANDARD DE
+CONSOMMATION (référence attendue, configurée, jamais devinée). Chacun a sa propre
+table et son propre sens — voir `033_ingredient_stock.sql` pour le détail du
+raisonnement.
+
+### Le grand livre ingrédient, séparé de celui de la matière première
+
+Comme en Phase 1, le stock ingrédient n'est **jamais stocké** : il est calculé à
+partir de `ingredient_stock_movements` (vues `current_ingredient_stock_by_lot[_location]`,
+`038_ingredient_views.sql`), avec la même discipline de verrou consultatif
+(`pg_advisory_xact_lock`) qu'en Phase 1 pour interdire tout stock négatif sous
+concurrence. C'est un registre **distinct** de celui de la matière première (Phase 1) :
+même s'il partage la même forme, un mouvement ingrédient ne peut jamais toucher un lot
+matière première ni inversement. `RECUPERATION` et `REUTILISATION` sont **délibérément
+absentes** des types de mouvement (`INGREDIENT_MOVEMENT_TYPES`) : ce sont des
+concepts distincts avec leurs propres tables (section 75 de la spécification), jamais
+une seconde source de vérité concurrente pour le même événement — l'huile qui quitte le
+stock vers le remplissage est déjà une ligne `CONSOMMATION` ; ce qu'une récupération
+capture ensuite est une identité matière **réellement nouvelle**.
+
+### Cuve vs lot de cuve : matériel contre contenu traçable
+
+Une cuve (`ingredient_tanks`) n'est **jamais** liée en permanence à un ingrédient : son
+`ingredient_type_id` n'est qu'une indication d'usage habituel, jamais imposée ni
+vérifiée par le serveur. Un lot de cuve (`tank_batches`) capture un événement de
+contenu réel, ouvert puis alimenté par un ou plusieurs lots ingrédient
+(`tank_batch_inputs`). Mélanger deux lots dans une même cuve ne produit **jamais** une
+« huile mélangée » intraçable : chaque entrée reste sa propre ligne, avec sa propre
+quantité et son propre lot source — la généalogie d'un lot de cuve mélangé retourne
+toujours la liste complète des lots contributeurs, jamais une allocation
+proportionnelle par litre fabriquée (physiquement non mesurable, donc jamais simulée,
+le même principe « Données insuffisantes plutôt que fausse précision » que le MTTR de
+la Phase 7). Une consommation de Run tirée d'une cuve pointe sur le lot de cuve, jamais
+sur un lot inventé pour l'occasion ; la résolution Run → cuve → lots se fait à la
+lecture (`getTankBatchGenealogy`).
+
+### Huile récupérée et réutilisation : un matériau réellement nouveau
+
+Une récupération (`recovered_ingredient_batches`) n'est **pas** un mouvement de
+correction du lot ou de la cuve d'origine : c'est un nouveau matériau, avec sa propre
+identité, sa propre quantité et sa propre échéance de réutilisation. Cette échéance
+(`reuse_deadline`) est **toujours calculée automatiquement** — `recoveredAt` + la durée
+maximale configurée — **jamais saisie** par l'opérateur. La durée elle-même est lue
+depuis une politique centralisée (`ingredient_reuse_policies`, section suivante),
+jamais codée en dur dans un écran.
+
+Le statut effectif d'un lot de récupération distingue explicitement ce qu'un
+opérateur/QUALITE peut décider de ce qui est toujours calculé :
+
+- **`DISPONIBLE` / `BLOQUE` / `ELIMINE`** — les trois seuls statuts stockés,
+  réglables uniquement par une action explicite (`ingredient:quality` pour bloquer ou
+  éliminer) ;
+- **`UTILISE_PARTIELLEMENT` / `EPUISE` / `EXPIRE`** — toujours **dérivés** par la vue
+  `recovered_batch_status` (`quantité restante = quantité − Σ réutilisations`,
+  comparaison de `reuse_deadline` à `now()`), jamais stockés.
+
+Cette séparation garantit qu'un matériau expiré ne peut **jamais** redevenir
+réutilisable par un simple changement de statut manuel : `reuseRecoveredBatch`
+relit systématiquement `effective_status` juste avant de valider, et rejette un lot
+`EXPIRE` avec le message exact :
+
+```
+Réutilisation impossible.
+Cette huile récupérée a dépassé la durée maximale autorisée.
+```
+
+Une réutilisation partielle est pleinement supportée (`recovered_ingredient_reuse`,
+plusieurs lignes possibles par lot de récupération) ; une réutilisation vers plusieurs
+Runs mélangeant plusieurs lots de récupération resterait, comme pour une cuve, une
+liste complète et jamais une fusion silencieuse — `allow_mixing` sur la politique de
+réutilisation centralise ce choix pour un futur écran, sans qu'aucun service actuel ne
+mélange implicitement.
+
+### La politique de réutilisation « deux jours », centralisée
+
+`ingredient_reuse_policies` porte une ligne globale (`ingredient_type_id IS NULL`,
+seedée à 48 h — la règle actuelle d'OCEAMIC) et peut porter une ligne spécifique par
+type d'ingrédient qui la surclasse (deux index uniques partiels garantissent au plus
+une ligne globale et une ligne par type). `getReusePolicy` (`services/recoveredIngredients.ts`)
+est le **seul point de lecture** de cette durée : aucun écran, aucune route ne
+recalcule ou ne réécrit ce nombre ailleurs. Changer la politique OCEAMIC (par exemple à
+72 h, ou une durée différente pour l'huile d'olive extra vierge) se fait par une seule
+ligne de configuration, jamais par une modification de code.
+
+### Bilan matière d'un Run : Fourni − Consommé − Récupéré − Perte = Écart
+
+`runIngredientMaterialBalance` (`services/ingredientQueries.ts`) calcule, par
+ingrédient et par Run :
+
+- **Consommé** = somme de `production_run_ingredient_consumptions` pour ce Run et cet
+  ingrédient (ce qui a réellement quitté le stock/la cuve vers le remplissage) ;
+- **Fourni** = somme des entrées (`tank_batch_inputs`) du ou des lots de cuve dont ce
+  Run a tiré sa consommation — pour une consommation directe sans cuve intermédiaire,
+  Fourni égale Consommé (il n'y a pas d'étape intermédiaire à mesurer séparément) ;
+- **Récupéré** = somme des lots de récupération dont ce Run est la source ;
+- **Perte** = somme des mouvements `PERTE` référençant ce Run (`reference_type =
+  'PRODUCTION_RUN'`), qu'ils soient rattachés à un lot précis ou à une cuve (la
+  résolution de l'ingrédient concerné suit alors la même généalogie que pour une
+  consommation) ;
+- **Écart** = Fourni − Consommé − Récupéré − Perte.
+
+Un écart dont la valeur absolue dépasse 2 % de la quantité consommée
+(`MATERIAL_BALANCE_TOLERANCE_RATIO`) est signalé « **Écart ingrédient à justifier** »
+— il n'est **jamais forcé à zéro**, ni **jamais converti automatiquement en perte** :
+seule une déclaration de perte explicite et typée peut expliquer un manque réel. Si un
+lot de cuve alimente plus d'un Run, son Fourni complet est rapporté identiquement pour
+chacun des Runs contributeurs — une répartition proportionnelle par Run n'est pas
+mesurable physiquement et n'est donc jamais fabriquée, le même principe que la
+généalogie de mélange ci-dessus.
+
+### Consommation par 1000 boîtes : calculée, jamais saisie
+
+`consumptionPer1000Units` (`domain/types.ts`) est une fonction pure ; le nombre de
+boîtes produites vient exclusivement de `packaging_outputs` (la même source que le
+module Emballage de la Phase 5), jamais d'un second total ressaisi à la main. Sans
+aucune boîte encore produite, l'écran affiche l'absence de valeur (`per1000 = null`),
+jamais une valeur fabriquée ou une division par zéro déguisée. La comparaison à un
+standard de consommation (`compareConsumptionToStandard`) distingue explicitement deux
+faits différents, jamais confondus : `STANDARD_NON_DEFINI` (aucun standard configuré
+pour cet ingrédient/produit/format) contre un résultat `null` (un standard existe, mais
+aucune boîte n'a encore été produite pour comparer). Une surconsommation détectée
+(`HORS_STANDARD`) reste une alerte opérationnelle : elle n'est **jamais** traitée
+automatiquement comme une non-conformité de sécurité alimentaire, une décision qui
+reste humaine.
+
+### Traçabilité Run ↔ Produit fini
+
+`ingredientTraceabilityForRun` résout, à la lecture, les lots ingrédient utilisés par
+un Run (directement ou via un lot de cuve, `tank_batch_inputs`) et l'huile récupérée
+qui y a été réutilisée (`recovered_ingredient_reuse` → `recovered_ingredient_batches` →
+Run source) — jamais un champ ingrédient copié à la main sur un Lot PF ou recalculé par
+un autre chemin que celui déjà utilisé pour le bilan matière. La chaîne complète
+fournisseur → réception → lot → cuve → Run → Lot PF → expédition reste ainsi
+interrogeable dans les deux sens sans qu'aucune donnée ne soit dupliquée entre phases.

@@ -495,6 +495,10 @@ export const QMS_ENTITY_TYPES = [
   // reusing this same polymorphic mechanism rather than a new one.
   'FAILURE_REPORT',
   'MAINTENANCE_WORK_ORDER',
+  // Phase 8 (section 54): an ingredient lot incident (contamination,
+  // certificate mismatch...) can raise an NCR/quality block the same way
+  // any other lot does, reusing this mechanism rather than a parallel one.
+  'INGREDIENT_LOT',
 ] as const;
 export type QmsEntityType = (typeof QMS_ENTITY_TYPES)[number];
 
@@ -796,3 +800,126 @@ export const SPARE_PART_MOVEMENT_TYPES = [
   'AJUSTEMENT',
 ] as const;
 export type SparePartMovementType = (typeof SPARE_PART_MOVEMENT_TYPES)[number];
+
+// --- Phase 8: ingredients and production consumables ------------------------
+
+// Controlled units (section 7): weight and volume are never assumed
+// interchangeable (1 g is never treated as 1 mL) - a lot, a movement and a
+// consumption always carry their own unit, compared only against
+// quantities already expressed in that same unit.
+export const INGREDIENT_UNITS = ['L', 'KG', 'G', 'ML', 'UNITE'] as const;
+export type IngredientUnit = (typeof INGREDIENT_UNITS)[number];
+
+// Ingredient lot quality status (section 9): its own truth, not a forced
+// fit into Phase 1's raw-material lot_blocks (hardwired to
+// raw_material_lot_id) or Phase 5's finished_goods_quality_blocks
+// (hardwired to Lot PF/pallet) - neither is polymorphic, so this mirrors
+// the same "own status column" choice Phase 5 already made for finished
+// goods quality.
+export const INGREDIENT_QUALITY_STATUSES = ['LIBERE', 'BLOQUE', 'A_VERIFIER', 'REJETE'] as const;
+export type IngredientQualityStatus = (typeof INGREDIENT_QUALITY_STATUSES)[number];
+
+// Ingredient stock ledger (section 12). RECUPERATION/REUTILISATION are
+// deliberately absent - see 033_ingredient_stock.sql for why recovered
+// material is modeled through its own dedicated tables instead.
+export const INGREDIENT_MOVEMENT_TYPES = [
+  'RECEPTION',
+  'TRANSFERT',
+  'ALIMENTATION_CUVE',
+  'CONSOMMATION',
+  'PERTE',
+  'AJUSTEMENT',
+  'RETOUR',
+] as const;
+export type IngredientMovementType = (typeof INGREDIENT_MOVEMENT_TYPES)[number];
+
+// A blocked/rejected/under-review ingredient lot may never be moved into a
+// tank or consumed by a Run (section 66); PERTE/AJUSTEMENT/RETOUR stay
+// available since they are administrative corrections that may need to
+// apply even to a blocked lot (e.g. writing it off entirely).
+const INGREDIENT_MOVEMENTS_BLOCKED_BY_QUALITY: readonly IngredientMovementType[] = [
+  'TRANSFERT',
+  'ALIMENTATION_CUVE',
+  'CONSOMMATION',
+];
+export function isIngredientMovementBlockedByQuality(movementType: IngredientMovementType): boolean {
+  return INGREDIENT_MOVEMENTS_BLOCKED_BY_QUALITY.includes(movementType);
+}
+
+export const TANK_BATCH_STATUSES = ['OUVERT', 'CLOTURE'] as const;
+export type TankBatchStatus = (typeof TANK_BATCH_STATUSES)[number];
+
+// Recovered-batch status (section 27): DISPONIBLE/BLOQUE/ELIMINE are the
+// only values ever stored (a person's decision); UTILISE_PARTIELLEMENT,
+// EPUISE and EXPIRE are always computed (recovered_batch_status view,
+// 038_ingredient_views.sql) from remaining quantity and reuse_deadline -
+// this const covers every value the *effective* status can take, stored or
+// derived, for the type system and the UI's label lookup.
+export const RECOVERED_BATCH_STATUSES = [
+  'DISPONIBLE',
+  'UTILISE_PARTIELLEMENT',
+  'EPUISE',
+  'EXPIRE',
+  'BLOQUE',
+  'ELIMINE',
+] as const;
+export type RecoveredBatchStatus = (typeof RECOVERED_BATCH_STATUSES)[number];
+
+// The subset an operator/QUALITE may actually set on
+// recovered_ingredient_batches.status (section 28: nobody can type EXPIRE
+// away by hand).
+export const RECOVERED_BATCH_MANUAL_STATUSES = ['DISPONIBLE', 'BLOQUE', 'ELIMINE'] as const;
+export type RecoveredBatchManualStatus = (typeof RECOVERED_BATCH_MANUAL_STATUSES)[number];
+
+export const PROCESS_UTILITY_TYPES = ['EAU', 'VAPEUR', 'AUTRE'] as const;
+export type ProcessUtilityType = (typeof PROCESS_UTILITY_TYPES)[number];
+
+// Actual vs. standard comparison (section 41): overconsumption is never
+// automatically treated as a food-safety non-conformity, only flagged as an
+// efficiency signal.
+export const STANDARD_COMPARISON_STATUSES = [
+  'CONFORME',
+  'A_SURVEILLER',
+  'HORS_STANDARD',
+  'STANDARD_NON_DEFINI',
+] as const;
+export type StandardComparisonStatus = (typeof STANDARD_COMPARISON_STATUSES)[number];
+
+/**
+ * Consumption per 1 000 cans (section 17): quantity / cans * 1000, computed
+ * wherever it is shown, never typed by hand. Returns null when no cans have
+ * been produced yet rather than dividing by zero.
+ */
+export function consumptionPer1000Units(quantity: number, unitsProduced: number): number | null {
+  if (unitsProduced <= 0) {
+    return null;
+  }
+  return (quantity / unitsProduced) * 1000;
+}
+
+/**
+ * Compares an actual consumption/1000 against a standard's band (section
+ * 41). A standard with no min/max still yields CONFORME at the target and
+ * A_SURVEILLER outside a ±10% tolerance of it, HORS_STANDARD beyond a
+ * defined min/max - never a fabricated pass/fail when the standard itself
+ * only defines a target.
+ */
+export function compareToStandard(
+  actualPer1000: number,
+  standard: Readonly<{ targetPer1000: number; minPer1000: number | null; maxPer1000: number | null }> | null,
+): StandardComparisonStatus {
+  if (standard === null) {
+    return 'STANDARD_NON_DEFINI';
+  }
+  if (standard.minPer1000 !== null && actualPer1000 < standard.minPer1000) {
+    return 'HORS_STANDARD';
+  }
+  if (standard.maxPer1000 !== null && actualPer1000 > standard.maxPer1000) {
+    return 'HORS_STANDARD';
+  }
+  const tolerance = standard.targetPer1000 * 0.1;
+  if (Math.abs(actualPer1000 - standard.targetPer1000) > tolerance) {
+    return 'A_SURVEILLER';
+  }
+  return 'CONFORME';
+}

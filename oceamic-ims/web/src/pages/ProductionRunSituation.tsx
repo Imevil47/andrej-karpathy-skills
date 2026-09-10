@@ -5,7 +5,7 @@ import { useAuth } from '../auth';
 import { Badge, Card, DataTable, Field, KeyValue, Message, PageHeader } from '../components/ui';
 import { formatDate, formatDateTime, formatDuration, formatQuantity, label, nowLocalInput } from '../format';
 import { useResource } from '../hooks';
-import { useDowntimeCategories, useEmployees, useLossReasons, useProductionStages } from '../masterdata';
+import { useDowntimeCategories, useEmployees, useLocations, useLossReasons, useProductionStages } from '../masterdata';
 
 type RunDetailPayload = Readonly<{
   run: Readonly<{
@@ -166,6 +166,7 @@ const TABS = [
   'Remplissage',
   'Sertissage',
   'Stérilisation',
+  'Ingrédients',
   'Sorties',
   'Pertes',
   'Bilan matière',
@@ -245,6 +246,48 @@ type RunGenealogy = Readonly<{
 
 const LOSS_TYPES = ['PERTE_REELLE', 'SOUS_PRODUIT', 'REWORK', 'RECLASSEMENT'] as const;
 
+type IngredientConsumptionRow = Readonly<{
+  id: string;
+  ingredientId: string;
+  ingredientCode: string;
+  ingredientName: string;
+  ingredientLotId: string | null;
+  lotCode: string | null;
+  tankBatchId: string | null;
+  tankBatchCode: string | null;
+  quantity: string;
+  unit: string;
+  consumedAt: string;
+}>;
+
+type IngredientBalanceRow = Readonly<{
+  ingredientId: string;
+  ingredientCode: string;
+  ingredientName: string;
+  suppliedQuantity: number;
+  consumedQuantity: number;
+  recoveredQuantity: number;
+  lossQuantity: number;
+  difference: number;
+  unit: string;
+  toleranceExceeded: boolean;
+}>;
+
+type IngredientTraceability = Readonly<{
+  ingredientLotsUsed: readonly Readonly<{ ingredientCode: string; lotCode: string; quantity: string; unit: string }>[];
+  recoveredOilReused: readonly Readonly<{ recoveryCode: string; sourceRunCode: string; quantity: string; unit: string }>[];
+}>;
+
+type RunIngredientsPayload = Readonly<{
+  consumptions: readonly IngredientConsumptionRow[];
+  balance: readonly IngredientBalanceRow[];
+  cansProduced: number;
+  traceability: IngredientTraceability;
+}>;
+
+type IngredientLotOption = Readonly<{ id: string; lotCode: string; ingredientId: string; ingredientCode: string }>;
+type TankBatchOption = Readonly<{ id: string; batchCode: string; tankCode: string; status: string; remainingQuantity: string }>;
+
 /** "Situation du Run": one page, one tab per concern. */
 export function ProductionRunSituation() {
   const { id } = useParams();
@@ -274,6 +317,10 @@ export function ProductionRunSituation() {
   );
   const processOverview = useResource<ProcessOverview>(`/api/production/runs/${id}/vue-process`);
   const genealogy = useResource<RunGenealogy>(`/api/production/runs/${id}/genealogie`);
+  const ingredientsView = useResource<RunIngredientsPayload>(`/api/production/runs/${id}/ingredients`);
+  const availableIngredientLots = useResource<readonly IngredientLotOption[]>('/api/ingredient-lots?statut=LIBERE');
+  const availableTankBatches = useResource<readonly TankBatchOption[]>('/api/tank-batches');
+  const ingredientLocationOptions = useLocations();
 
   const [tab, setTab] = useState<(typeof TABS)[number]>('Vue générale');
   const [actionError, setActionError] = useState<string | null>(null);
@@ -304,6 +351,12 @@ export function ProductionRunSituation() {
   const [lossNotes, setLossNotes] = useState('');
 
   const [justification, setJustification] = useState('');
+
+  const [consumptionMode, setConsumptionMode] = useState<'DIRECTE' | 'CUVE'>('CUVE');
+  const [consumptionLotId, setConsumptionLotId] = useState('');
+  const [consumptionSourceLocationId, setConsumptionSourceLocationId] = useState('');
+  const [consumptionTankBatchId, setConsumptionTankBatchId] = useState('');
+  const [consumptionQuantity, setConsumptionQuantity] = useState('');
 
   const stockLines = useMemo(() => {
     const byCode = new Map((locations.data ?? []).map((location) => [location.code, location.id]));
@@ -1218,6 +1271,212 @@ export function ProductionRunSituation() {
             ))}
           </DataTable>
         </Card>
+      ) : null}
+
+      {tab === 'Ingrédients' ? (
+        <>
+          {can('ingredient:consume') && isOpen ? (
+            <Card title="Enregistrer une consommation">
+              <div className="grille-champs">
+                <Field label="Source" hint={null}>
+                  <select value={consumptionMode} onChange={(event) => setConsumptionMode(event.target.value as 'DIRECTE' | 'CUVE')}>
+                    <option value="CUVE">Depuis une cuve</option>
+                    <option value="DIRECTE">Lot ingrédient direct</option>
+                  </select>
+                </Field>
+                {consumptionMode === 'CUVE' ? (
+                  <Field label="Lot de cuve" hint={null}>
+                    <select value={consumptionTankBatchId} onChange={(event) => setConsumptionTankBatchId(event.target.value)}>
+                      <option value="">Sélectionner...</option>
+                      {(availableTankBatches.data ?? []).map((batch) => (
+                        <option key={batch.id} value={batch.id}>
+                          {batch.batchCode} — {batch.tankCode} — restant {formatQuantity(batch.remainingQuantity)} L
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : (
+                  <>
+                    <Field label="Lot ingrédient (libéré)" hint={null}>
+                      <select value={consumptionLotId} onChange={(event) => setConsumptionLotId(event.target.value)}>
+                        <option value="">Sélectionner...</option>
+                        {(availableIngredientLots.data ?? []).map((lot) => (
+                          <option key={lot.id} value={lot.id}>
+                            {lot.lotCode} — {lot.ingredientCode}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Emplacement source" hint={null}>
+                      <select value={consumptionSourceLocationId} onChange={(event) => setConsumptionSourceLocationId(event.target.value)}>
+                        <option value="">Sélectionner...</option>
+                        {(ingredientLocationOptions.data ?? [])
+                          .filter((location) => location.stockDomain === 'INGREDIENT')
+                          .map((location) => (
+                            <option key={location.id} value={location.id}>
+                              {location.name}
+                            </option>
+                          ))}
+                      </select>
+                    </Field>
+                  </>
+                )}
+                <Field label="Quantité (L)" hint={null}>
+                  <input value={consumptionQuantity} onChange={(event) => setConsumptionQuantity(event.target.value)} inputMode="decimal" />
+                </Field>
+              </div>
+              <div className="ligne-boutons">
+                <button
+                  type="button"
+                  disabled={
+                    consumptionQuantity === '' ||
+                    (consumptionMode === 'CUVE' ? consumptionTankBatchId === '' : consumptionLotId === '' || consumptionSourceLocationId === '')
+                  }
+                  onClick={() =>
+                    call(
+                      () =>
+                        consumptionMode === 'CUVE'
+                          ? apiPost(`/api/production/runs/${run.id}/ingredients/consommation-cuve`, {
+                              fillingOperationId: null,
+                              tankBatchId: consumptionTankBatchId,
+                              quantity: consumptionQuantity,
+                              unit: 'L',
+                              consumedAt: new Date().toISOString(),
+                            })
+                          : apiPost(`/api/production/runs/${run.id}/ingredients/consommation-directe`, {
+                              fillingOperationId: null,
+                              ingredientLotId: consumptionLotId,
+                              sourceLocationId: consumptionSourceLocationId,
+                              quantity: consumptionQuantity,
+                              unit: 'L',
+                              consumedAt: new Date().toISOString(),
+                            }),
+                      'Consommation enregistrée.',
+                    ).then(() => {
+                      setConsumptionQuantity('');
+                      ingredientsView.reload();
+                    })
+                  }
+                >
+                  Enregistrer la consommation
+                </button>
+              </div>
+            </Card>
+          ) : null}
+
+          <Card title={`Consommations d'ingrédients (${ingredientsView.data?.cansProduced ?? 0} boîtes produites)`}>
+            <DataTable
+              columns={[
+                { key: 'heure', label: 'Heure', numeric: false },
+                { key: 'ingredient', label: 'Ingrédient', numeric: false },
+                { key: 'source', label: 'Lot / cuve', numeric: false },
+                { key: 'quantite', label: 'Quantité', numeric: true },
+              ]}
+              isEmpty={(ingredientsView.data?.consumptions ?? []).length === 0}
+              emptyText="Aucune consommation d'ingrédient enregistrée."
+            >
+              {(ingredientsView.data?.consumptions ?? []).map((row) => (
+                <tr key={row.id}>
+                  <td>{formatDateTime(row.consumedAt)}</td>
+                  <td>
+                    {row.ingredientCode} — {row.ingredientName}
+                  </td>
+                  <td>{row.lotCode ?? row.tankBatchCode ?? '-'}</td>
+                  <td className="nombre">
+                    {formatQuantity(row.quantity)} {label(row.unit)}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
+          </Card>
+
+          <Card title="Bilan matière ingrédient">
+            <p className="aide">
+              Fourni - Consommé - Récupéré - Perte = Écart. Un écart hors tolérance n'est jamais forcé à zéro ni
+              converti automatiquement en perte : il reste « à justifier ».
+            </p>
+            <DataTable
+              columns={[
+                { key: 'ingredient', label: 'Ingrédient', numeric: false },
+                { key: 'fourni', label: 'Fourni', numeric: true },
+                { key: 'consomme', label: 'Consommé', numeric: true },
+                { key: 'recupere', label: 'Récupéré', numeric: true },
+                { key: 'perte', label: 'Perte', numeric: true },
+                { key: 'ecart', label: 'Écart', numeric: true },
+              ]}
+              isEmpty={(ingredientsView.data?.balance ?? []).length === 0}
+              emptyText="Aucun ingrédient consommé sur ce Run."
+            >
+              {(ingredientsView.data?.balance ?? []).map((row) => (
+                <tr key={row.ingredientId}>
+                  <td>
+                    {row.ingredientCode} — {row.ingredientName}
+                  </td>
+                  <td className="nombre">
+                    {row.suppliedQuantity} {label(row.unit)}
+                  </td>
+                  <td className="nombre">
+                    {row.consumedQuantity} {label(row.unit)}
+                  </td>
+                  <td className="nombre">
+                    {row.recoveredQuantity} {label(row.unit)}
+                  </td>
+                  <td className="nombre">
+                    {row.lossQuantity} {label(row.unit)}
+                  </td>
+                  <td className="nombre">
+                    {row.difference} {label(row.unit)}{' '}
+                    {row.toleranceExceeded ? <Badge value="ECART_A_JUSTIFIER" /> : null}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
+          </Card>
+
+          <Card title="Traçabilité ingrédient">
+            <h3 style={{ marginTop: 0 }}>Lots ingrédient utilisés (directement ou via une cuve)</h3>
+            <DataTable
+              columns={[
+                { key: 'ingredient', label: 'Ingrédient', numeric: false },
+                { key: 'lot', label: 'Lot', numeric: false },
+                { key: 'quantite', label: 'Quantité', numeric: true },
+              ]}
+              isEmpty={(ingredientsView.data?.traceability.ingredientLotsUsed ?? []).length === 0}
+              emptyText="Aucun lot ingrédient résolu pour ce Run."
+            >
+              {(ingredientsView.data?.traceability.ingredientLotsUsed ?? []).map((row, index) => (
+                <tr key={`${row.lotCode}-${index}`}>
+                  <td>{row.ingredientCode}</td>
+                  <td>{row.lotCode}</td>
+                  <td className="nombre">
+                    {formatQuantity(row.quantity)} {label(row.unit)}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
+
+            <h3>Huile récupérée réutilisée dans ce Run</h3>
+            <DataTable
+              columns={[
+                { key: 'recuperation', label: 'Récupération', numeric: false },
+                { key: 'source', label: 'Run source', numeric: false },
+                { key: 'quantite', label: 'Quantité', numeric: true },
+              ]}
+              isEmpty={(ingredientsView.data?.traceability.recoveredOilReused ?? []).length === 0}
+              emptyText="Aucune huile récupérée réutilisée dans ce Run."
+            >
+              {(ingredientsView.data?.traceability.recoveredOilReused ?? []).map((row, index) => (
+                <tr key={`${row.recoveryCode}-${index}`}>
+                  <td>{row.recoveryCode}</td>
+                  <td>{row.sourceRunCode}</td>
+                  <td className="nombre">
+                    {formatQuantity(row.quantity)} {label(row.unit)}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
+          </Card>
+        </>
       ) : null}
 
       {tab === 'Sorties' ? (

@@ -12,7 +12,7 @@ export type Location = Readonly<{
   canReceive: boolean;
   canStore: boolean;
   isActive: boolean;
-  stockDomain: 'MP' | 'PF' | 'MIXTE';
+  stockDomain: 'MP' | 'PF' | 'MIXTE' | 'INGREDIENT';
 }>;
 export type Subcontractor = Readonly<{
   id: string;
@@ -333,4 +333,54 @@ export type SparePartOption = Readonly<{
 
 export function useSpareParts(belowMinimumOnly = false) {
   return useResource<readonly SparePartOption[]>(`/api/spare-parts${belowMinimumOnly ? '?sousMinimum=true' : ''}`);
+}
+
+// --- Phase 8: ingredients, consumables, oil tracking, consumption, recovery -
+
+export type IngredientType = Readonly<{ id: string; code: string; name: string; isActive: boolean }>;
+
+export type IngredientOption = Readonly<{
+  id: string;
+  ingredientCode: string;
+  name: string;
+  ingredientTypeId: string;
+  ingredientTypeName: string;
+  defaultUnit: string;
+  fillingMediumId: string | null;
+  fillingMediumCode: string | null;
+  requiresLotTraceability: boolean;
+  isRecoverable: boolean;
+  isActive: boolean;
+}>;
+
+export type IngredientTankOption = Readonly<{
+  id: string;
+  tankCode: string;
+  name: string;
+  ingredientTypeId: string | null;
+  ingredientTypeName: string | null;
+  capacityLiters: string | null;
+  locationId: string | null;
+  locationCode: string | null;
+  isActive: boolean;
+}>;
+
+export type IngredientLossReason = Readonly<{ id: string; code: string; name: string }>;
+
+export type IngredientContainer = Readonly<{ id: string; containerCode: string; containerType: string; capacity: string | null }>;
+
+export function useIngredientTypes() {
+  return useResource<readonly IngredientType[]>('/api/ingredient-types');
+}
+export function useIngredients() {
+  return useResource<readonly IngredientOption[]>('/api/ingredients');
+}
+export function useIngredientTanks() {
+  return useResource<readonly IngredientTankOption[]>('/api/ingredient-tanks');
+}
+export function useIngredientLossReasons() {
+  return useResource<readonly IngredientLossReason[]>('/api/ingredient-loss-reasons');
+}
+export function useIngredientContainers() {
+  return useResource<readonly IngredientContainer[]>('/api/ingredient-containers');
 }

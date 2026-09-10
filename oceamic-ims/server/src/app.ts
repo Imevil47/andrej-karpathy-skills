@@ -17,6 +17,10 @@ import { registerEquipmentHistoryRoutes } from './routes/equipmentHistory.ts';
 import { registerFailureRoutes } from './routes/failures.ts';
 import { registerFillingRoutes } from './routes/filling.ts';
 import { registerHomeRoutes } from './routes/home.ts';
+import { registerIngredientConsumptionRoutes } from './routes/ingredientConsumption.ts';
+import { registerIngredientRoutes } from './routes/ingredients.ts';
+import { registerIngredientStandardRoutes } from './routes/ingredientStandards.ts';
+import { registerIngredientTankRoutes } from './routes/ingredientTanks.ts';
 import { registerLotRoutes } from './routes/lots.ts';
 import { registerMaintenancePlanRoutes } from './routes/maintenancePlans.ts';
 import { registerMasterDataRoutes } from './routes/masterdata.ts';
@@ -29,6 +33,7 @@ import { registerQualityRoutes } from './routes/quality.ts';
 import { registerQualityDocumentRoutes } from './routes/qualityDocuments.ts';
 import { registerRecallRoutes } from './routes/recall.ts';
 import { registerReceptionRoutes } from './routes/receptions.ts';
+import { registerRecoveredIngredientRoutes } from './routes/recoveredIngredients.ts';
 import { registerSeamingRoutes } from './routes/seaming.ts';
 import { registerShipmentRoutes } from './routes/shipments.ts';
 import { registerSparePartRoutes } from './routes/spareParts.ts';
@@ -118,6 +123,11 @@ export async function buildApp(dependencies: AppDependencies): Promise<FastifyIn
   await registerMaintenancePlanRoutes(app, dependencies);
   await registerSparePartRoutes(app, dependencies);
   await registerEquipmentHistoryRoutes(app, dependencies);
+  await registerIngredientRoutes(app, dependencies);
+  await registerIngredientTankRoutes(app, dependencies);
+  await registerIngredientConsumptionRoutes(app, dependencies);
+  await registerRecoveredIngredientRoutes(app, dependencies);
+  await registerIngredientStandardRoutes(app, dependencies);
 
   return app;
 }

@@ -27,7 +27,11 @@ export type CodePrefix =
   | 'RAP'
   | 'PAN'
   | 'OT'
-  | 'MP';
+  | 'MP'
+  | 'ING'
+  | 'MVI'
+  | 'CB'
+  | 'RCI';
 
 const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   LOT: 3,
@@ -89,6 +93,18 @@ const CODE_WIDTH: Readonly<Record<CodePrefix, number>> = {
   OT: 3,
   // Preventive maintenance plan.
   MP: 3,
+  // Phase 8: ingredients and production consumables.
+  // Ingredient lot.
+  ING: 3,
+  // Ingredient stock movement - a frequent ledger, the same width as MVT/MVP.
+  MVI: 5,
+  // Tank batch ("CB-001" per section 21's own example - cuve batch).
+  CB: 3,
+  // Recovered ingredient batch. RCI (récupération ingrédient), never REC:
+  // REC is already the Phase 1 reception prefix (the spec's own illustrative
+  // "REC-HUILE-001" collides with it, the same kind of deviation already
+  // documented for RMP/STE/RECL above).
+  RCI: 3,
 };
 
 /**

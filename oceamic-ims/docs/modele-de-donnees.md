@@ -1465,3 +1465,185 @@ production_lines >── equipment >── equipment (parent_equipment_id, hiér
 
 nonconformities ──< nonconformity_links >── failure_reports | maintenance_work_orders | equipment (QMS_ENTITY_TYPES, section 63)
 ```
+
+## Ingrédients — données de référence (Phase 8)
+
+### `ingredient_types` / `ingredient_loss_reasons`
+Données de référence configurables (`code`, `name`, `is_active`), le même patron que
+`failure_modes`/`downtime_categories` : jamais un ENUM contraint côté base, pour que
+`ingredient_tanks.ingredient_type_id` (une simple indication d'usage habituel, jamais
+imposée) puisse référencer une table plutôt qu'une valeur codée en dur dans l'interface.
+
+### `ingredients`
+`ingredient_code`, `name`, `ingredient_type_id` (NOT NULL), `default_unit`
+(`L`/`KG`/`G`/`ML`/`UNITE`), `filling_medium_id` (FK nullable **directe** vers
+`filling_media` de la Phase 4 — aucune identité de milieu dupliquée), `requires_lot_traceability`
+(booléen, `TRUE` par défaut), `is_recoverable` (booléen — seuls les ingrédients
+recouvrables, typiquement les huiles, peuvent porter un lot de récupération).
+
+### `ingredient_lots`
+`lot_code` unique, `ingredient_id`, `supplier_id`/`supplier_lot_code` (facultatifs),
+`received_at`, `manufacture_date`/`expiry_date`, et surtout **`quality_status`**
+(`LIBERE`/`BLOQUE`/`A_VERIFIER`/`REJETE`) — sa **propre** colonne de statut, jamais
+`lot_blocks` de la Phase 1 (câblée à `raw_material_lot_id`, non polymorphe) ni
+`finished_goods_quality_blocks` de la Phase 5 (câblée au Lot PF/palette) : le même
+choix « statut propre » que la Phase 5 avait déjà fait pour la qualité PF. Un incident
+qualité sur un lot ingrédient reste néanmoins lié au NCR par le mécanisme polymorphe
+existant (`INGREDIENT_LOT` ajouté à `QMS_ENTITY_TYPES`) — aucune logique NCR dupliquée.
+
+## Grand livre ingrédient (section « Ingredient Stock Rules »)
+
+### `ingredient_stock_movements`
+Le registre unique du stock ingrédient, sur le même principe que `stock_movements` de
+la Phase 1 : `quantity` **toujours positive**, `source_location_id`/`destination_location_id`
+(au moins un des deux renseigné), `movement_type` contraint à `RECEPTION`/`TRANSFERT`/
+`ALIMENTATION_CUVE`/`CONSOMMATION`/`PERTE`/`AJUSTEMENT`/`RETOUR` — **`RECUPERATION` et
+`REUTILISATION` en sont délibérément absentes** : ce sont des concepts distincts avec
+leurs propres tables (`recovered_ingredient_batches`/`recovered_ingredient_reuse`
+ci-dessous) ; les y dupliquer créerait une seconde source de vérité concurrente pour le
+même événement. Exactement une des colonnes `ingredient_lot_id`/`tank_batch_id` est
+renseignée (`CHECK` XOR) : un mouvement concerne soit un lot précis, soit le contenu
+global (éventuellement mélangé) d'un lot de cuve — jamais un lot fabriqué pour
+représenter un retrait de cuve mélangée. `loss_reason_id` n'est réglable que pour un
+mouvement `PERTE`. Le stock courant n'est **jamais stocké** : toujours calculé par les
+vues `current_ingredient_stock_by_lot[_location]` (`038_ingredient_views.sql`), avec un
+verrou consultatif (`pg_advisory_xact_lock`, `lockIngredientLotLocation`) identique à
+celui de la Phase 1 pour interdire tout stock négatif sous concurrence.
+
+## Cuves et lots de cuve (section « Tank genealogy »)
+
+### `ingredient_tanks`
+Le matériel physique. `tank_code`, `name`, `ingredient_type_id` (nullable — l'usage
+habituel, jamais vérifié ni imposé par le serveur), `capacity_liters`, `location_id`.
+Une cuve n'est **jamais** liée en permanence à un ingrédient : la même cuve peut
+recevoir n'importe quel lot de cuve successif.
+
+### `tank_batches`
+Le contenu traçable d'un événement de cuve — distinct de la cuve elle-même.
+`batch_code`, `tank_id`, `started_at`/`closed_at`, `status` (`OUVERT`/`CLOTURE`). Ouvrir
+un lot de cuve est volontairement séparé de l'alimenter : une cuve peut être ouverte
+vide puis recevoir un ou plusieurs lots au fil du temps.
+
+### `tank_batch_inputs`
+La généalogie complète d'un lot de cuve : une ligne par lot ingrédient ayant alimenté
+le lot de cuve (`ingredient_lot_id`, `quantity`, `unit`, `added_at`). Mélanger deux
+lots est **deux appels** à cette table, tous deux conservés — jamais une fusion en une
+seule ligne « huile mélangée ». `ingredient_stock_movement_id` est `NOT NULL UNIQUE` :
+chaque entrée produit exactement un mouvement `ALIMENTATION_CUVE`, dans la même
+transaction. Lire la composition complète d'un lot de cuve mélangé retourne **toujours**
+la liste intégrale des lots contributeurs avec leurs quantités propres — jamais une
+répartition proportionnelle par litre calculée après coup pour un retrait ultérieur :
+cette allocation n'est pas physiquement mesurable et n'est donc jamais fabriquée (le
+même principe « Données insuffisantes plutôt que fausse précision » que le MTTR de la
+Phase 7).
+
+### `tank_measurements`
+Une mesure physique manuelle de cuve (jauge, sonde...) — sa propre table, distincte du
+stock théorique calculé à partir des mouvements. Une mesure manuelle **n'écrase
+jamais** la valeur théorique : les deux restent consultables côte à côte.
+
+## Consommation par un Run (section « Run/PF traceability »)
+
+### `production_run_ingredient_consumptions`
+Ce qu'un Run consomme réellement (jamais une seconde source de vérité manuelle) :
+`production_run_id`, `filling_operation_id` (facultatif), exactement une des colonnes
+`ingredient_lot_id`/`tank_batch_id` (même contrainte XOR que le grand livre — une
+consommation directe d'un lot précis, ou tirée d'un lot de cuve, jamais un lot inventé
+pour une cuve mélangée). `ingredient_stock_movement_id` est `NOT NULL UNIQUE` : chaque
+consommation produit exactement un mouvement `CONSOMMATION`, dans la même transaction.
+La résolution Run → cuve → lots (généalogie complète, jamais une allocation fabriquée)
+se fait à la lecture via `tank_batch_inputs`.
+
+### `process_utility_consumptions`
+Eau/vapeur/autre (section 33), volontairement **simple** : pas de traçabilité par lot,
+pas de généalogie — une utilité de process n'est pas une matière traçable comme une
+huile ou une sauce, et Phase 8 n'introduit aucune gestion complète des utilités
+énergétiques.
+
+## Huile récupérée et réutilisation (section « Recovery/reuse logic »)
+
+### `ingredient_containers`
+Une identité de contenant facultative (`container_code`, `container_type`, `capacity`)
+— une donnée de référence légère, jamais une exigence pour enregistrer une
+récupération.
+
+### `ingredient_reuse_policies`
+La politique de réutilisation centralisée (section « 2-day policy configuration ») :
+`ingredient_type_id` **nullable** — `NULL` porte la politique globale, une ligne
+spécifique par type d'ingrédient la surclasse quand elle existe (deux index uniques
+partiels garantissent au plus une ligne globale et une ligne par type).
+`max_reuse_hours` (seedé à 48 — la « règle des deux jours » actuelle d'OCEAMIC),
+`allow_mixing` (centralise la règle de mélange de lots de récupération, section 32,
+pas encore câblée dans un service d'écriture — aucune donnée de démonstration Phase 8
+ne tente un tel mélange). `getReusePolicy` (`services/recoveredIngredients.ts`) est le
+**seul point de lecture** : changer la durée pour toute l'usine, ou pour un seul type
+d'ingrédient, se fait par une ligne de configuration, jamais par une modification de
+code.
+
+### `recovered_ingredient_batches`
+Un matériau **réellement nouveau**, né du procédé d'un Run — jamais une reprise ou une
+correction du mouvement de consommation initial (voir la note de
+`033_ingredient_stock.sql`). `recovery_code`, `ingredient_id` (doit être
+`is_recoverable`), `source_production_run_id`/`source_filling_operation_id`,
+`recovered_at`, `quantity`/`unit`, `storage_location_id`/`container_id`, et deux
+colonnes de statut délibérément séparées :
+
+- `status` : **seuls** `DISPONIBLE`/`BLOQUE`/`ELIMINE` sont stockés — les décisions
+  qu'un opérateur ou QUALITE peut réellement prendre ;
+- `reuse_deadline` : **toujours calculée** à la création (`recovered_at` + la durée de
+  la politique applicable), jamais saisie.
+
+Les statuts `UTILISE_PARTIELLEMENT`/`EPUISE`/`EXPIRE` ne sont **jamais** stockés : ils
+sont dérivés par la vue `recovered_batch_status` ci-dessous, garantissant qu'un lot
+expiré ne peut jamais redevenir réutilisable par un simple changement de statut manuel.
+
+### `recovered_ingredient_reuse`
+Un événement de réutilisation, partielle ou totale — plusieurs lignes possibles par
+lot de récupération, la réutilisation partielle est pleinement supportée.
+`recovered_batch_id`, `destination_production_run_id`/`destination_filling_operation_id`,
+`quantity`/`unit`, `reused_at`. **Aucune** colonne `stock_movement_id` : une
+réutilisation ne touche jamais le grand livre ingrédient (voir la note de
+`036_ingredient_recovery.sql`) — c'est un événement de matériau récupéré, pas un
+mouvement de stock matière première.
+
+## Standards de consommation
+
+### `ingredient_consumption_standards`
+La référence attendue (section 40), configurée, **jamais devinée** : `ingredient_id`,
+`product_id`/`format`/`filling_medium_id` (facultatifs, pour une spécificité
+croissante), `target_per_1000_units`, `min_per_1000_units`/`max_per_1000_units`
+(bande de tolérance facultative), `valid_from`/`valid_to`. `findApplicableStandard`
+retient toujours le standard le plus spécifique (produit + format, puis produit seul,
+puis ingrédient seul) et retourne `null` — jamais un standard fabriqué — quand rien ne
+s'applique.
+
+## Vues de calcul de la Phase 8
+
+| Vue | Contenu |
+|---|---|
+| `ingredient_stock_ledger_entries` / `current_ingredient_stock_by_lot[_location]` | Le grand livre signé et le solde courant, par lot (et par emplacement) — jamais une colonne stockée |
+| `tank_batch_stock` | Total alimenté, total sorti (`CONSOMMATION`/`PERTE` référençant le lot de cuve) et restant théorique d'un lot de cuve |
+| `recovered_batch_status` | Quantité restante, expiration et **statut effectif** d'un lot de récupération — la seule source des statuts dérivés `UTILISE_PARTIELLEMENT`/`EPUISE`/`EXPIRE` |
+
+## Relations de la Phase 8
+
+```
+ingredient_types ──< ingredients ──> filling_media (Phase 4, réutilisé)
+                          │
+                          └──< ingredient_lots ──< ingredient_stock_movements >── locations
+                                     │                       │
+                                     │                       └──> ingredient_loss_reasons (PERTE)
+                                     │
+                                     ├──< tank_batch_inputs >── tank_batches >── ingredient_tanks
+                                     │                                │
+                                     │                                └──< production_run_ingredient_consumptions >── production_runs
+                                     │
+                                     └──< recovered_ingredient_batches ──> production_runs (source)
+                                                    │
+                                                    └──< recovered_ingredient_reuse ──> production_runs (destination)
+
+ingredient_reuse_policies ──> ingredient_types (politique spécifique, ou globale si NULL)
+ingredient_consumption_standards ──> ingredients / products / filling_media
+
+nonconformities ──< nonconformity_links >── ingredient_lots (QMS_ENTITY_TYPES, INGREDIENT_LOT)
+```

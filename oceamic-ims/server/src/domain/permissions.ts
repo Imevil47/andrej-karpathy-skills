@@ -86,6 +86,17 @@ export const PERMISSIONS = [
   'sparepart:consume',
   'sparepart:adjust',
   'equipment:manage',
+  // Phase 8: ingredients and production consumables. Read access joins the
+  // shared READ_ONLY bundle below. Mirrors the Phase 1 stock split
+  // (reception/transfer with STOCK, adjustment ADMIN-only) rather than one
+  // catch-all permission, so the same separation of duties applies to
+  // ingredient stock as to raw-material stock.
+  'ingredient:read',
+  'ingredient:reception',
+  'ingredient:transfer',
+  'ingredient:adjust',
+  'ingredient:consume',
+  'ingredient:quality',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -99,6 +110,7 @@ const READ_ONLY: readonly Permission[] = [
   'production:read',
   'qms:read',
   'maintenance:read',
+  'ingredient:read',
 ];
 
 const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
@@ -138,6 +150,10 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     'audit:conduct',
     'document:manage',
     'recall:exercise',
+    // Phase 8: QUALITE inspects, blocks and releases ingredient lots -
+    // the same authority it already holds over raw-material lots (section
+    // 54), never a parallel Quality truth for ingredients.
+    'ingredient:quality',
   ],
   // Full QA authority: everything QUALITE holds, plus the approval gates
   // section 54 reserves so the same broad role never both raises a critical
@@ -166,6 +182,7 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     'document:approve',
     'recall:exercise',
     'recall:manage',
+    'ingredient:quality',
   ],
   // Conducts assigned audits and records findings only - never creates or
   // plans an audit, never decides a non-conformity or a block on its own.
@@ -189,6 +206,12 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     // assigned to it, but can never close a Quality non-conformity, CAPA,
     // audit finding or document on its own (section 53).
     'action:complete',
+    // Phase 8: STOCK/magasin receives ingredient lots and transfers them
+    // (including feeding a cuve) - ingredient stock adjustment stays
+    // ADMIN-only, the same separation as stock:adjust for raw material
+    // (section 59).
+    'ingredient:reception',
+    'ingredient:transfer',
   ],
   // Production runs the transformation: runs, consumption, outputs and losses.
   // Corrections stay available because they are reversals, fully audited, and a
@@ -226,6 +249,12 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permission[]>> = {
     // maintenance:read (READ_ONLY above), but never edits a failure,
     // intervention or work order - that stays with MAINTENANCE.
     'failure:report',
+    // Phase 8: PRODUCTION records what it actually consumes and recovers
+    // on the floor - Run ingredient consumption, tank-batch draw, oil
+    // recovery and reuse (section 59) - but never receives, transfers or
+    // adjusts ingredient stock, and never overrides an ingredient lot's
+    // quality status.
+    'ingredient:consume',
   ],
   // Works failures, work orders, interventions, preventive tasks and
   // spare-part consumption (section 52) - but cannot close an "important"
