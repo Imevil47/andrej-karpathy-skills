@@ -1,0 +1,29 @@
+{
+  "name": "@oceamic/server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/db/migrations','dist/db/migrations',{recursive:true})\"",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "db:migrate": "node --env-file-if-exists=.env --import tsx src/db/migrate.ts",
+    "db:seed": "node --env-file-if-exists=.env --import tsx src/db/seed.ts",
+    "test": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/*.test.ts",
+    "db:reset": "node --env-file-if-exists=.env --import tsx src/db/reset.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.0",
+    "@fastify/jwt": "^10.2.0",
+    "fastify": "^5.6.0",
+    "pg": "^8.16.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
